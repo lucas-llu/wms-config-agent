@@ -42,8 +42,12 @@ class DenseEncoder:
     @staticmethod
     def embedding_text(chunk: Chunk) -> str:
         """Add searchable business context without changing the cited source text."""
+        tags = chunk.metadata.get("tags")
+        searchable_tags = ", ".join(str(tag) for tag in tags) if isinstance(tags, list) else tags
         context_fields = (
             ("Title", chunk.metadata.get("title")),
+            ("Summary", chunk.metadata.get("summary")),
+            ("Tags", searchable_tags),
             ("Process code", chunk.metadata.get("process_code")),
             ("Process stage", chunk.metadata.get("process_stage")),
             ("Domain", chunk.metadata.get("domain")),

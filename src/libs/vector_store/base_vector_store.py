@@ -30,3 +30,11 @@ class BaseVectorStore(ABC):
     @abstractmethod
     def count(self) -> int:
         """Return the number of stored records."""
+
+    def list_ids(self) -> list[str]:
+        """Return all stored IDs when the backend supports corpus synchronization."""
+        raise NotImplementedError
+
+    def delete(self, ids: list[str]) -> None:
+        """Delete records by ID when the backend supports corpus synchronization."""
+        raise NotImplementedError

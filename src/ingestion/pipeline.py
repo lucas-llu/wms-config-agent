@@ -25,6 +25,7 @@ class IndexingReport:
     model_trained: bool
     dense_upserted: int
     dense_skipped: int
+    dense_deleted: int
     vector_count: int
     bm25_count: int
     embedding_signature: str
@@ -91,6 +92,7 @@ class IndexingPipeline:
         if not chunks:
             raise ValueError("chunks must not be empty")
         ordered_chunks = sorted(chunks, key=lambda chunk: chunk.id)
+        dense_deleted = 0
         started = time.perf_counter()
         model_trained = self.embedding.fit(
             [DenseEncoder.embedding_text(chunk) for chunk in ordered_chunks], force=force
@@ -131,6 +133,8 @@ class IndexingPipeline:
         )
         if on_progress:
             on_progress("vector_upsert", len(records), len(pending))
+        if force:
+            dense_deleted = self._delete_stale_chunks(ordered_chunks, trace)
 
         started = time.perf_counter()
         sparse_encodings = SparseEncoder().encode(ordered_chunks)
@@ -145,6 +149,7 @@ class IndexingPipeline:
             model_trained=model_trained,
             dense_upserted=len(records),
             dense_skipped=len(ordered_chunks) - len(records),
+            dense_deleted=dense_deleted,
             vector_count=self.vector_store.count(),
             bm25_count=self.bm25_indexer.count(),
             embedding_signature=signature,
@@ -181,3 +186,21 @@ class IndexingPipeline:
             ):
                 pending.append(chunk)
         return pending
+
+    def _delete_stale_chunks(self, chunks: list[Chunk], trace: Any | None) -> int:
+        started = time.perf_counter()
+        try:
+            existing_ids = set(self.vector_store.list_ids())
+        except NotImplementedError:
+            return 0
+        current_ids = {chunk.id for chunk in chunks}
+        stale_ids = sorted(existing_ids - current_ids)
+        if stale_ids:
+            self.vector_store.delete(stale_ids)
+        self._record_stage(
+            trace,
+            "vector_delete_stale",
+            started,
+            {"record_count": len(stale_ids)},
+        )
+        return len(stale_ids)

@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from core.settings import SplitterSettings
 from core.types import Document
 from ingestion.corpus_manifest import CorpusManifestBuilder
@@ -110,3 +112,22 @@ def test_processor_records_failure_without_stopping_batch(tmp_path: Path) -> Non
     assert report.failed == 1
     assert report.errors[0]["error_type"] == "RuntimeError"
     assert (tmp_path / "processed" / "processing_report.json").is_file()
+
+
+def test_atomic_replace_retries_transient_windows_permission_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TemporarilyLockedPath:
+        calls = 0
+
+        def replace(self, destination) -> None:
+            self.calls += 1
+            if self.calls < 3:
+                raise PermissionError("temporarily locked")
+
+    temporary = TemporarilyLockedPath()
+    monkeypatch.setattr("ingestion.corpus_processor.time.sleep", lambda _: None)
+
+    CorpusProcessor._replace_with_retry(temporary, Path("destination"))
+
+    assert temporary.calls == 3

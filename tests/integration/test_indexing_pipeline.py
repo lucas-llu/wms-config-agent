@@ -49,12 +49,38 @@ def test_indexing_pipeline_is_incremental(tmp_path) -> None:
 
     assert first.model_trained is True
     assert first.dense_upserted == 4
+    assert first.dense_deleted == 0
     assert first.vector_count == first.bm25_count == 4
     assert second.model_trained is False
     assert second.dense_upserted == 0
     assert second.dense_skipped == 4
     assert ("dense_encode", 4, 4) in progress
     assert progress[-1] == ("bm25_build", 4, 4)
+
+
+def test_force_rebuild_removes_vector_records_not_in_current_corpus(tmp_path) -> None:
+    chunks = _chunks()
+    pipeline = IndexingPipeline(
+        embedding=LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path / "models"),
+        vector_store=ChromaStore(
+            persist_path=tmp_path / "chroma", collection_name="chunks"
+        ),
+        bm25_indexer=BM25Indexer(tmp_path / "bm25"),
+        batch_size=2,
+    )
+    pipeline.index(chunks, force=True)
+
+    replacement = Chunk(
+        id="replacement",
+        text="Cycle count adjustment configuration",
+        metadata={"source_path": "replacement.pdf", "domain": "WMS"},
+        start_offset=0,
+        end_offset=36,
+    )
+    report = pipeline.index([*chunks[:3], replacement], force=True)
+
+    assert report.dense_deleted == 1
+    assert report.vector_count == report.bm25_count == 4
 
 
 def test_load_preprocessed_chunks_is_deterministic(tmp_path) -> None:

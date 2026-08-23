@@ -18,6 +18,26 @@ splitter:
   chunk_size: 1000
   chunk_overlap: 150
 
+ingestion:
+  extract_images: true
+  chunk_refiner:
+    enabled: true
+    use_llm: false
+    prompt_path: config/prompts/chunk_refinement.txt
+  metadata_enricher:
+    enabled: true
+    use_llm: false
+    prompt_path: null
+  image_captioner:
+    enabled: false
+    prompt_path: config/prompts/image_captioning.txt
+    append_to_text: true
+  image_storage:
+    enabled: true
+    root_path: data/images
+    database_path: data/db/image_index.db
+    collection: wms-system-training
+
 vector_store:
   backend: chroma
   persist_path: data/db/chroma

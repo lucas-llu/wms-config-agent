@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from core.settings import SplitterSettings
 from ingestion.chunking import DocumentChunker
 from ingestion.corpus_manifest import CorpusManifestEntry
+from ingestion.storage import ImageStorage
+from ingestion.transform import BaseTransform
 from libs.loader import BaseLoader, LoaderFactory, SQLiteIntegrityChecker
 
 LoaderBuilder = Callable[..., BaseLoader]
@@ -40,6 +43,9 @@ class CorpusProcessor:
         database_path: str | Path,
         splitter_settings: SplitterSettings,
         extract_images: bool = False,
+        transforms: Sequence[BaseTransform] = (),
+        image_storage: ImageStorage | None = None,
+        image_collection: str = "wms-system-training",
         loader_builder: LoaderBuilder = LoaderFactory.create,
     ) -> None:
         self.source_root = Path(source_root).resolve()
@@ -50,6 +56,9 @@ class CorpusProcessor:
         self.integrity = SQLiteIntegrityChecker(database_path)
         self.chunker = DocumentChunker(splitter_settings)
         self.extract_images = extract_images
+        self.transforms = tuple(transforms)
+        self.image_storage = image_storage
+        self.image_collection = image_collection
         self.loader_builder = loader_builder
 
     def process(
@@ -89,7 +98,10 @@ class CorpusProcessor:
                     extract_images=self.extract_images,
                 )
                 document = loader.load(source_path, self._domain_metadata(entry))
+                self._store_document_images(document.metadata)
                 chunks = self.chunker.split_document(document)
+                for transform in self.transforms:
+                    chunks = transform.transform(chunks)
                 self._write_json(document_output, document.to_dict())
                 self._write_jsonl(chunks_output, [chunk.to_dict() for chunk in chunks])
                 self.integrity.mark_success(
@@ -128,6 +140,24 @@ class CorpusProcessor:
         self._write_json(self.output_root / "processing_report.json", report.to_dict())
         return report
 
+    def _store_document_images(self, metadata: dict[str, object]) -> None:
+        images = metadata.get("images")
+        if self.image_storage is None or not isinstance(images, list) or not images:
+            return
+        try:
+            metadata["images"] = self.image_storage.store_metadata_images(
+                images,
+                collection=self.image_collection,
+                doc_hash=(
+                    str(metadata["file_hash"])
+                    if isinstance(metadata.get("file_hash"), str)
+                    else None
+                ),
+            )
+        except (OSError, ValueError):
+            # Extracted paths remain valid even if the optional image index is unavailable.
+            metadata["image_storage_status"] = "fallback_to_extracted_paths"
+
     @staticmethod
     def _domain_metadata(entry: CorpusManifestEntry) -> dict[str, object]:
         return {
@@ -151,7 +181,7 @@ class CorpusProcessor:
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
-        temporary.replace(path)
+        CorpusProcessor._replace_with_retry(temporary, path)
 
     @staticmethod
     def _write_jsonl(path: Path, payloads: list[dict[str, object]]) -> None:
@@ -162,4 +192,16 @@ class CorpusProcessor:
             for payload in payloads
         )
         temporary.write_text(content, encoding="utf-8")
-        temporary.replace(path)
+        CorpusProcessor._replace_with_retry(temporary, path)
+
+    @staticmethod
+    def _replace_with_retry(temporary: Path, destination: Path) -> None:
+        """Handle transient Windows readers that briefly lock an existing artifact."""
+        for attempt in range(6):
+            try:
+                temporary.replace(destination)
+                return
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.05 * (2**attempt))

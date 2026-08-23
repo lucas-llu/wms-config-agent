@@ -31,3 +31,16 @@ def test_sparse_encoder_and_bm25_round_trip(tmp_path) -> None:
     reloaded = BM25Indexer(tmp_path)
     assert reloaded.count() == 3
     assert reloaded.query("appointment", top_k=1)[0]["chunk_id"] == "appointment"
+
+
+def test_sparse_encoder_includes_enriched_summary_and_tags() -> None:
+    chunk = _chunk("policy", "configuration steps")
+    chunk.metadata.update(
+        {"summary": "Controls allocation behavior", "tags": ["MOCA", "allocation"]}
+    )
+
+    encoding = SparseEncoder().encode([chunk])[0]
+
+    assert encoding.term_frequencies["controls"] == 1
+    assert encoding.term_frequencies["moca"] == 1
+    assert encoding.term_frequencies["allocation"] == 2

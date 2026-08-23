@@ -110,6 +110,21 @@ class ChromaStore(BaseVectorStore):
     def count(self) -> int:
         return self.collection.count()
 
+    def list_ids(self) -> list[str]:
+        ids: list[str] = []
+        offset = 0
+        while True:
+            result = self.collection.get(limit=1000, offset=offset, include=[])
+            batch = [str(value) for value in (result.get("ids") or [])]
+            if not batch:
+                return ids
+            ids.extend(batch)
+            offset += len(batch)
+
+    def delete(self, ids: list[str]) -> None:
+        for start in range(0, len(ids), 500):
+            self.collection.delete(ids=ids[start : start + 500])
+
     @staticmethod
     def _flatten_metadata(metadata: dict[str, Any]) -> dict[str, str | int | float | bool]:
         flattened: dict[str, str | int | float | bool] = {

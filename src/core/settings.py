@@ -46,6 +46,37 @@ class SplitterSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class TransformSettings:
+    enabled: bool
+    use_llm: bool
+    prompt_path: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ImageCaptionerSettings:
+    enabled: bool
+    prompt_path: Path
+    append_to_text: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ImageStorageSettings:
+    enabled: bool
+    root_path: Path
+    database_path: Path
+    collection: str
+
+
+@dataclass(frozen=True, slots=True)
+class IngestionSettings:
+    extract_images: bool
+    chunk_refiner: TransformSettings
+    metadata_enricher: TransformSettings
+    image_captioner: ImageCaptionerSettings
+    image_storage: ImageStorageSettings
+
+
+@dataclass(frozen=True, slots=True)
 class VectorStoreSettings:
     backend: str
     persist_path: Path
@@ -91,6 +122,7 @@ class Settings:
     llm: ProviderSettings
     embedding: EmbeddingSettings
     splitter: SplitterSettings
+    ingestion: IngestionSettings
     vector_store: VectorStoreSettings
     retrieval: RetrievalSettings
     rerank: RerankSettings
@@ -127,6 +159,7 @@ def validate_settings(settings: Settings) -> None:
         "embedding.provider": settings.embedding.provider,
         "embedding.model": settings.embedding.model,
         "splitter.provider": settings.splitter.provider,
+        "ingestion.image_storage.collection": settings.ingestion.image_storage.collection,
         "vector_store.backend": settings.vector_store.backend,
         "retrieval.sparse_backend": settings.retrieval.sparse_backend,
         "retrieval.fusion_algorithm": settings.retrieval.fusion_algorithm,
@@ -177,6 +210,11 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
     llm = _section(raw, "llm")
     embedding = _section(raw, "embedding")
     splitter = _section(raw, "splitter")
+    ingestion = _optional_section(raw, "ingestion")
+    chunk_refiner = _optional_section(ingestion, "chunk_refiner")
+    metadata_enricher = _optional_section(ingestion, "metadata_enricher")
+    image_captioner = _optional_section(ingestion, "image_captioner")
+    image_storage = _optional_section(ingestion, "image_storage")
     vector_store = _section(raw, "vector_store")
     retrieval = _section(raw, "retrieval")
     rerank = _section(raw, "rerank")
@@ -208,6 +246,90 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
             chunk_size=_required_int(splitter, "chunk_size", "splitter.chunk_size"),
             chunk_overlap=_required_int(
                 splitter, "chunk_overlap", "splitter.chunk_overlap"
+            ),
+        ),
+        ingestion=IngestionSettings(
+            extract_images=_optional_bool(
+                ingestion.get("extract_images"),
+                "ingestion.extract_images",
+                default=False,
+            ),
+            chunk_refiner=TransformSettings(
+                enabled=_optional_bool(
+                    chunk_refiner.get("enabled"),
+                    "ingestion.chunk_refiner.enabled",
+                    default=True,
+                ),
+                use_llm=_optional_bool(
+                    chunk_refiner.get("use_llm"),
+                    "ingestion.chunk_refiner.use_llm",
+                    default=False,
+                ),
+                prompt_path=_optional_path(
+                    chunk_refiner.get("prompt_path"),
+                    "ingestion.chunk_refiner.prompt_path",
+                ),
+            ),
+            metadata_enricher=TransformSettings(
+                enabled=_optional_bool(
+                    metadata_enricher.get("enabled"),
+                    "ingestion.metadata_enricher.enabled",
+                    default=True,
+                ),
+                use_llm=_optional_bool(
+                    metadata_enricher.get("use_llm"),
+                    "ingestion.metadata_enricher.use_llm",
+                    default=False,
+                ),
+                prompt_path=_optional_path(
+                    metadata_enricher.get("prompt_path"),
+                    "ingestion.metadata_enricher.prompt_path",
+                ),
+            ),
+            image_captioner=ImageCaptionerSettings(
+                enabled=_optional_bool(
+                    image_captioner.get("enabled"),
+                    "ingestion.image_captioner.enabled",
+                    default=False,
+                ),
+                prompt_path=Path(
+                    _optional_non_empty_str(
+                        image_captioner.get("prompt_path"),
+                        "ingestion.image_captioner.prompt_path",
+                        default="config/prompts/image_captioning.txt",
+                    )
+                ),
+                append_to_text=_optional_bool(
+                    image_captioner.get("append_to_text"),
+                    "ingestion.image_captioner.append_to_text",
+                    default=True,
+                ),
+            ),
+            image_storage=ImageStorageSettings(
+                enabled=_optional_bool(
+                    image_storage.get("enabled"),
+                    "ingestion.image_storage.enabled",
+                    default=True,
+                ),
+                root_path=Path(
+                    _optional_non_empty_str(
+                        image_storage.get("root_path"),
+                        "ingestion.image_storage.root_path",
+                        default="data/images",
+                    )
+                ),
+                database_path=Path(
+                    _optional_non_empty_str(
+                        image_storage.get("database_path"),
+                        "ingestion.image_storage.database_path",
+                        default="data/db/image_index.db",
+                    )
+                ),
+                collection=_optional_non_empty_str(
+                    image_storage.get("collection"),
+                    "ingestion.image_storage.collection",
+                    default="wms-system-training",
+                ),
             ),
         ),
         vector_store=VectorStoreSettings(
@@ -270,6 +392,13 @@ def _section(raw: dict[str, Any], key: str) -> dict[str, Any]:
     return value
 
 
+def _optional_section(raw: dict[str, Any], key: str) -> dict[str, Any]:
+    value = raw.get(key, {})
+    if not isinstance(value, dict):
+        raise SettingsError(f"Setting section {key} must be a mapping")
+    return value
+
+
 def _required(section: dict[str, Any], key: str, field_path: str) -> Any:
     if key not in section or section[key] is None:
         raise SettingsError(f"Missing required setting: {field_path}")
@@ -310,6 +439,30 @@ def _optional_str(value: Any, field_path: str) -> str | None:
     if not isinstance(value, str):
         raise SettingsError(f"Setting {field_path} must be a string or null")
     return value
+
+
+def _optional_non_empty_str(value: Any, field_path: str, *, default: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str) or not value.strip():
+        raise SettingsError(f"Setting {field_path} must be a non-empty string")
+    return value
+
+
+def _optional_bool(value: Any, field_path: str, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise SettingsError(f"Setting {field_path} must be a boolean")
+    return value
+
+
+def _optional_path(value: Any, field_path: str) -> Path | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise SettingsError(f"Setting {field_path} must be a non-empty string or null")
+    return Path(value)
 
 
 def _expand_environment(value: Any) -> Any:

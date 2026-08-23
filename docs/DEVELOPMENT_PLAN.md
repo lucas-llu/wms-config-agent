@@ -102,3 +102,21 @@ Status: completed on 2026-08-24.
 Delivered: all 40 private benchmark cases now pass. Hit@1/3/5 and MRR@5 reached 100%,
 refusal and evidence accuracy remained 100%, and the candidate comparison reports no quality
 regression. A sanitized ingest-to-benchmark E2E recall test now enforces the evaluation path.
+
+## Day 7 — Document quality and multimodal enrichment (2026-08-24)
+
+Status: completed on 2026-08-24.
+
+- Add an atomic `BaseTransform` contract and deterministic chunk cleanup that preserves code.
+- Generate rule-based title, summary, and retrieval tags with optional LLM fallback paths.
+- Add optional Vision caption injection while preserving image references when disabled or failed.
+- Store images by content hash and persist image ID mappings in SQLite WAL mode.
+- Reprocess the private corpus, synchronize stale vector IDs, and enforce Benchmark V1 gates.
+- Exit criteria: 191 PDFs process successfully, Chroma and BM25 counts match the enhanced Chunk
+  count, all automated tests pass, and neither private nor public benchmarks regress.
+
+Delivered: 1,593 enhanced chunks from all 191 PDFs, including 1,115 chunks with image references.
+The image index tracks 3,316 logical IDs backed by 1,883 deduplicated local files. Chroma and BM25
+both contain exactly 1,593 records after 1,024 stale vector IDs were removed. The 40-case private
+and four-case public benchmarks remain at 100% with no regression; caption generation is safely
+disabled until a Vision provider is configured.

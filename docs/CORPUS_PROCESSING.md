@@ -13,8 +13,9 @@ and later vector indexes all live under `data/`, which is ignored by Git.
 - Configuration documents: 88
 - Operation documents: 103
 - Paired configuration/operation process codes: 88
-- First text preprocessing run: 191 succeeded, 0 failed, 1,274 chunks
-- Incremental verification run: 191 skipped, 0 reprocessed
+- Day 7 enriched preprocessing: 191 succeeded, 0 failed, 1,593 chunks
+- Chunks with image references: 1,115
+- Logical image IDs: 3,316; content-deduplicated image files: 1,883
 
 The manifest parser uses the stable `SWL.<domain>.<group>.<process>` code for relationships. It
 also recognizes misspelled configuration suffixes such as `Configurtaion` and `Configuratoin`.
@@ -44,10 +45,14 @@ Outputs:
 - `data/corpus/processed/chunks/`: traceable Chunk JSONL grouped by document
 - `data/corpus/processed/processing_report.json`: last-run result
 - `data/db/corpus_preprocessing.db`: preprocessing-only SHA256 status
+- `data/images/wms-system-training/`: content-addressed extracted images
+- `data/db/image_index.db`: SQLite image ID to local-path index
 
-Use `--force` after intentionally changing preprocessing or chunk settings. Image extraction is
-off by default for the initial text pass; use `--extract-images` only for a targeted corpus run
-until repeated logos, icons, and screenshots can be classified and deduplicated.
+Use `--force` after intentionally changing preprocessing, transform, or chunk settings. Image
+extraction is controlled by `ingestion.extract_images` and is enabled for this local corpus.
+Use `--no-extract-images` for a temporary text-only run. The transform chain performs
+deterministic cleanup and title/summary/tag enrichment locally; image captioning remains disabled
+until a Vision LLM is explicitly configured, and unprocessed image references remain traceable.
 
 ## Build the retrieval indexes
 
@@ -70,16 +75,20 @@ Private outputs:
 - `data/db/chroma/`: persistent Chroma collection `wms_config_chunks`;
 - `data/db/bm25/index.json`: persistent Okapi BM25 index.
 
-Verified baseline on 2026-08-23:
+Verified Day 7 baseline on 2026-08-24:
 
-- dense vectors in Chroma: 1,274;
-- documents in BM25: 1,274;
-- first indexing run: 1,274 upserted;
-- unchanged second run: 1,274 skipped, 0 upserted.
+- dense vectors in Chroma: 1,593;
+- documents in BM25: 1,593;
+- full indexing run: 1,593 upserted and 1,024 stale vectors removed;
+- private Benchmark V1: 40/40 passed with Hit@1/3/5 and MRR@5 at 100%;
+- public sanitized benchmark: 4/4 passed with no regression.
 
-Use `--force` after intentionally changing embedding behavior. Index freshness is determined by
-the embedding-model signature and each chunk's SHA256 content hash. Metadata stored with each
-vector includes its process code, domain, document type, source path, and page range.
+Use `--force` after intentionally changing embedding behavior or replacing the full corpus. A
+forced full rebuild now removes Chroma IDs absent from the current corpus after current records
+are successfully upserted.
+Index freshness is determined by the embedding-model signature and each chunk's SHA256 content
+hash. Metadata stored with each vector includes its process code, domain, document type, source
+path, page range, summary, tags, and image references.
 
 ## Diagnostic vector query
 

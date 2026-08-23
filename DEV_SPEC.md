@@ -1951,17 +1951,17 @@ dashboard:
 | C2 | 文件完整性检查（SHA256） | [x] | 2026-08-23 | SQLite WAL、幂等状态与并发写入测试 |
 | C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-08-23 | PDF/Markdown/TXT；PDF 文本、页码与图片降级提取 |
 | C4 | Splitter 集成（调用 Libs） | [x] | 2026-08-23 | 稳定 Chunk ID、来源偏移、页码与图片引用分发 |
-| C5 | Transform 基类 + ChunkRefiner | [ ] | | |
-| C6 | MetadataEnricher | [ ] | | |
-| C7 | ImageCaptioner | [ ] | | |
+| C5 | Transform 基类 + ChunkRefiner | [x] | 2026-08-24 | 原子化规则去噪、代码块保护、可选 LLM 与逐 Chunk 降级 |
+| C6 | MetadataEnricher | [x] | 2026-08-24 | 规则生成 title/summary/tags；可选结构化 LLM 与降级 |
+| C7 | ImageCaptioner | [x] | 2026-08-24 | Mock 可验证 Vision 接口、幂等描述注入、禁用/异常不阻塞 |
 | C8 | DenseEncoder | [x] | 2026-08-23 | 正文与 WMS 业务元数据上下文编码、模型签名与内容哈希 |
 | C9 | SparseEncoder | [x] | 2026-08-23 | 确定性中英文/标识符分词与词频统计 |
 | C10 | BatchProcessor | [x] | 2026-08-23 | 稳定批处理与进度回调 |
 | C11 | BM25Indexer（倒排索引+IDF计算） | [x] | 2026-08-23 | Okapi BM25 倒排索引、持久化、加载与查询 |
 | C12 | VectorUpserter（幂等upsert） | [x] | 2026-08-23 | 分批 Chroma upsert；稳定 ID 保证幂等 |
-| C13 | ImageStorage（图片存储+SQLite索引） | [ ] | | |
-| C14 | Pipeline 编排（MVP 串起来） | [x] | 2026-08-23 | 预处理产物→fit→dense/sparse encode→Chroma/BM25 已串联 |
-| C15 | 脚本入口 ingest.py | [x] | 2026-08-23 | 真实 1,274 Chunk 入库；二次运行全部增量跳过 |
+| C13 | ImageStorage（图片存储+SQLite索引） | [x] | 2026-08-24 | SHA256 文件去重、SQLite WAL 映射、collection/doc 查询字段 |
+| C14 | Pipeline 编排（MVP 串起来） | [x] | 2026-08-24 | 图片入库→split→refine→metadata→caption→dense/sparse→store |
+| C15 | 脚本入口 ingest.py | [x] | 2026-08-24 | 真实 1,593 Chunk 入库；force 重建同步清理 1,024 个陈旧向量 |
 
 #### 阶段 D：Retrieval MVP
 
@@ -2035,14 +2035,14 @@ dashboard:
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
 | 阶段 B | 16 | 7 | 44% |
-| 阶段 C | 15 | 11 | 73% |
+| 阶段 C | 15 | 15 | 100% |
 | 阶段 D | 7 | 7 | 100% |
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
 | 阶段 G | 6 | 0 | 0% |
 | 阶段 H | 5 | 3 | 60% |
 | 阶段 I | 5 | 1 | 20% |
-| **总计** | **68** | **43** | **63.2%** |
+| **总计** | **68** | **47** | **69.1%** |
 
 
 ---

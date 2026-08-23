@@ -8,6 +8,8 @@ from pathlib import Path
 
 from core.settings import SplitterSettings, load_settings
 from ingestion import CorpusManifestBuilder, CorpusProcessor
+from ingestion.storage import ImageStorage
+from ingestion.transform import ChunkRefiner, ImageCaptioner, MetadataEnricher
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,7 +32,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--chunk-size", type=int)
     parser.add_argument("--chunk-overlap", type=int)
-    parser.add_argument("--extract-images", action="store_true")
+    parser.add_argument(
+        "--extract-images",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override ingestion.extract_images from settings.yaml",
+    )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     return parser.parse_args()
@@ -52,12 +59,31 @@ def main() -> None:
     builder = CorpusManifestBuilder()
     entries = builder.scan(args.source)
     builder.write(entries, args.manifest)
+    image_storage = (
+        ImageStorage(
+            settings.ingestion.image_storage.root_path,
+            settings.ingestion.image_storage.database_path,
+        )
+        if settings.ingestion.image_storage.enabled
+        else None
+    )
     processor = CorpusProcessor(
         source_root=args.source,
         output_root=args.output,
         database_path=args.database,
         splitter_settings=splitter_settings,
-        extract_images=args.extract_images,
+        extract_images=(
+            settings.ingestion.extract_images
+            if args.extract_images is None
+            else args.extract_images
+        ),
+        transforms=(
+            ChunkRefiner(settings),
+            MetadataEnricher(settings),
+            ImageCaptioner(settings),
+        ),
+        image_storage=image_storage,
+        image_collection=settings.ingestion.image_storage.collection,
     )
     report = processor.process(entries, force=args.force, fail_fast=args.fail_fast)
     result = {
