@@ -106,13 +106,21 @@ def test_ingest_to_benchmark_recall_and_refusal(tmp_path) -> None:
                 case_id="putaway",
                 category="semantic",
                 query="directed putaway storage location configuration",
-                expected=BenchmarkExpectation(process_codes=("PROCESS-1",)),
+                expected=BenchmarkExpectation(
+                    chunk_ids=("putaway",),
+                    process_codes=("PROCESS-1",),
+                    text_contains=("storage location rules",),
+                ),
             ),
             BenchmarkCase(
                 case_id="appointment",
                 category="semantic",
                 query="inbound appointment dock configuration",
-                expected=BenchmarkExpectation(process_codes=("PROCESS-2",)),
+                expected=BenchmarkExpectation(
+                    chunk_ids=("appointment",),
+                    process_codes=("PROCESS-2",),
+                    text_contains=("dock schedules",),
+                ),
             ),
             BenchmarkCase(
                 case_id="refusal",

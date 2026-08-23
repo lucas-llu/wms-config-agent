@@ -10,6 +10,7 @@ from typing import Any
 from core.settings import Settings, TransformSettings
 from core.types import Chunk
 from ingestion.transform.base_transform import BaseTransform
+from libs.llm import BaseLLM
 
 _DEFAULT_PROMPT = """Refine this WMS/JDA MOCA fragment without changing technical meaning.
 Preserve commands, configuration keys, versions, and identifiers. Return only the refined text.
@@ -36,14 +37,10 @@ class ChunkRefiner(BaseTransform):
     def __init__(
         self,
         settings: Settings | TransformSettings,
-        llm: Any | None = None,
+        llm: BaseLLM | None = None,
         prompt_path: str | Path | None = None,
     ) -> None:
-        config = (
-            settings.ingestion.chunk_refiner
-            if isinstance(settings, Settings)
-            else settings
-        )
+        config = settings.ingestion.chunk_refiner if isinstance(settings, Settings) else settings
         self.enabled = config.enabled
         self.use_llm = config.use_llm
         self.llm = llm
@@ -70,8 +67,12 @@ class ChunkRefiner(BaseTransform):
             try:
                 refined = self._rule_based_refine(chunk.text)
                 refined_by = "rule"
+                if chunk.text.strip() and not refined.strip():
+                    refined = chunk.text
+                    refined_by = "original"
+                    metadata["refinement_fallback_reason"] = "empty_rule_result"
                 if self.use_llm:
-                    llm_result, fallback_reason = self._llm_refine(refined, trace)
+                    llm_result = self._llm_refine(refined, trace)
                     if llm_result is not None:
                         refined = llm_result
                         refined_by = "llm"
@@ -79,7 +80,9 @@ class ChunkRefiner(BaseTransform):
                         metadata.pop("refinement_fallback_reason", None)
                     else:
                         fallback_count += 1
-                        metadata["refinement_fallback_reason"] = fallback_reason
+                        metadata["refinement_fallback_reason"] = (
+                            "llm_unavailable" if self.llm is None else "llm_failed_or_empty"
+                        )
                 metadata["refined_by"] = refined_by
                 metadata["refinement_changed"] = refined != chunk.text
                 result.append(self.clone_chunk(chunk, text=refined, metadata=metadata))
@@ -132,7 +135,7 @@ class ChunkRefiner(BaseTransform):
             else:
                 prose.append(line)
         flush_prose()
-        return "\n".join(output).strip()
+        return "\n".join(output).strip("\n")
 
     @staticmethod
     def _clean_prose(text: str) -> str:
@@ -142,34 +145,35 @@ class ChunkRefiner(BaseTransform):
         for line in text.splitlines():
             if _PAGE_MARKER.match(line) or _SEPARATOR.match(line):
                 continue
-            cleaned_lines.append(re.sub(r"[ \t]+", " ", line).strip())
+            if line.startswith("\t") or len(line) - len(line.lstrip(" ")) >= 4:
+                cleaned_lines.append(line.rstrip())
+                continue
+            hard_break = line.endswith("  ")
+            leading = line[: len(line) - len(line.lstrip(" \t"))]
+            content = re.sub(r"[ \t]+", " ", line.strip())
+            structural = bool(
+                re.match(r"(?:[-+*]|\d+[.)]|>)\s+", content) or re.match(r"#{1,6}\s+", content)
+            )
+            prefix = leading if structural else ""
+            suffix = "  " if hard_break and content else ""
+            cleaned_lines.append(f"{prefix}{content}{suffix}")
         cleaned = "\n".join(cleaned_lines)
-        return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        return re.sub(r"\n{3,}", "\n\n", cleaned).strip("\n")
 
-    def _llm_refine(
-        self, text: str, trace: Any | None = None
-    ) -> tuple[str | None, str | None]:
-        del trace  # reserved for provider-level tracing
+    def _llm_refine(self, text: str, trace: Any | None = None) -> str | None:
         if self.llm is None:
-            return None, "llm_unavailable"
+            return None
         try:
-            response = self.llm.generate(self.prompt.format(text=text))
-            value = self._response_text(response)
-            if not value:
-                return None, "empty_llm_response"
-            return value.strip(), None
-        except Exception as exc:
-            return None, type(exc).__name__
-
-    @staticmethod
-    def _response_text(response: Any) -> str:
-        if isinstance(response, str):
-            return response
-        if isinstance(response, dict):
-            value = response.get("text") or response.get("content")
-            return value if isinstance(value, str) else ""
-        value = getattr(response, "content", None)
-        return value if isinstance(value, str) else ""
+            response = self.llm.chat(
+                [{"role": "user", "content": self.prompt.format(text=text)}],
+                trace=trace,
+            )
+            value = response.content
+            if not value.strip():
+                return None
+            return value.strip()
+        except Exception:
+            return None
 
     @staticmethod
     def _load_prompt(prompt_path: str | Path | None) -> str:

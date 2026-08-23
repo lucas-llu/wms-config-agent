@@ -9,6 +9,7 @@ from typing import Any
 from core.settings import ImageCaptionerSettings, Settings
 from core.types import Chunk
 from ingestion.transform.base_transform import BaseTransform
+from libs.llm import BaseVisionLLM
 
 _DEFAULT_PROMPT = """Describe this WMS/JDA MOCA document image using only visible evidence.
 Preserve UI labels, configuration keys, commands, table values, and warnings.
@@ -27,14 +28,10 @@ class ImageCaptioner(BaseTransform):
     def __init__(
         self,
         settings: Settings | ImageCaptionerSettings,
-        vision_llm: Any | None = None,
+        vision_llm: BaseVisionLLM | None = None,
         prompt_path: str | Path | None = None,
     ) -> None:
-        config = (
-            settings.ingestion.image_captioner
-            if isinstance(settings, Settings)
-            else settings
-        )
+        config = settings.ingestion.image_captioner if isinstance(settings, Settings) else settings
         self.enabled = config.enabled
         self.append_to_text = config.append_to_text
         self.vision_llm = vision_llm
@@ -153,17 +150,8 @@ class ImageCaptioner(BaseTransform):
 
     def _generate_caption(self, *, image_path: Path, context: str) -> str:
         prompt = self.prompt.format(context=context)
-        if hasattr(self.vision_llm, "caption"):
-            response = self.vision_llm.caption(prompt=prompt, image_path=image_path)
-        else:
-            response = self.vision_llm.generate(prompt=prompt, image_path=image_path)
-        if isinstance(response, str):
-            return response.strip()
-        if isinstance(response, dict):
-            value = response.get("text") or response.get("content")
-            return value.strip() if isinstance(value, str) else ""
-        value = getattr(response, "content", None)
-        return value.strip() if isinstance(value, str) else ""
+        response = self.vision_llm.chat_with_image(prompt, image_path)
+        return response.content.strip()
 
     @staticmethod
     def _image_refs(metadata: dict[str, Any]) -> list[str]:

@@ -6,6 +6,10 @@ llm:
   provider: disabled
   model: null
 
+vision_llm:
+  provider: disabled
+  model: null
+
 embedding:
   provider: local_lsa
   model: tfidf-svd

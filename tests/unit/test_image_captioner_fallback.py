@@ -5,6 +5,7 @@ from pathlib import Path
 from core.settings import ImageCaptionerSettings
 from core.types import Chunk
 from ingestion.transform import ImageCaptioner
+from libs.llm import ChatResponse
 
 
 def _settings(tmp_path: Path, *, enabled: bool) -> ImageCaptionerSettings:
@@ -35,9 +36,7 @@ def test_disabled_captioner_preserves_refs_and_marks_unprocessed(tmp_path: Path)
     image = tmp_path / "diagram.png"
     image.write_bytes(b"image")
 
-    output = ImageCaptioner(_settings(tmp_path, enabled=False)).transform(
-        [_chunk(image)]
-    )[0]
+    output = ImageCaptioner(_settings(tmp_path, enabled=False)).transform([_chunk(image)])[0]
 
     assert output.metadata["image_refs"] == ["img-1"]
     assert output.metadata["has_unprocessed_images"] is True
@@ -62,11 +61,11 @@ def test_mock_vision_caption_is_persisted_and_appended_idempotently(tmp_path: Pa
     class FakeVision:
         calls = 0
 
-        def caption(self, *, prompt: str, image_path: Path) -> str:
+        def chat_with_image(self, text: str, image_path: Path, trace=None) -> ChatResponse:
             self.calls += 1
-            assert "Configuration diagram" in prompt
+            assert "Configuration diagram" in text
             assert image_path == image
-            return "The image shows the MOCA policy screen."
+            return ChatResponse("The image shows the MOCA policy screen.")
 
     vision = FakeVision()
     captioner = ImageCaptioner(_settings(tmp_path, enabled=True), vision_llm=vision)
@@ -88,13 +87,13 @@ def test_vision_error_marks_failed_and_keeps_original_text(tmp_path: Path) -> No
 
     class BrokenVision:
         @staticmethod
-        def caption(*, prompt: str, image_path: Path) -> str:
+        def chat_with_image(text: str, image_path: Path, trace=None) -> ChatResponse:
             raise RuntimeError("provider offline")
 
     original = _chunk(image)
-    output = ImageCaptioner(
-        _settings(tmp_path, enabled=True), vision_llm=BrokenVision()
-    ).transform([original])[0]
+    output = ImageCaptioner(_settings(tmp_path, enabled=True), vision_llm=BrokenVision()).transform(
+        [original]
+    )[0]
 
     assert output.text == original.text
     assert output.metadata["image_caption_status"] == "failed"

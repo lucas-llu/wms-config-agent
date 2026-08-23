@@ -120,6 +120,7 @@ class Settings:
 
     project: ProjectSettings
     llm: ProviderSettings
+    vision_llm: ProviderSettings
     embedding: EmbeddingSettings
     splitter: SplitterSettings
     ingestion: IngestionSettings
@@ -156,6 +157,7 @@ def validate_settings(settings: Settings) -> None:
         "project.name": settings.project.name,
         "project.environment": settings.project.environment,
         "llm.provider": settings.llm.provider,
+        "vision_llm.provider": settings.vision_llm.provider,
         "embedding.provider": settings.embedding.provider,
         "embedding.model": settings.embedding.model,
         "splitter.provider": settings.splitter.provider,
@@ -177,9 +179,7 @@ def validate_settings(settings: Settings) -> None:
         "retrieval.top_k_sparse": settings.retrieval.top_k_sparse,
         "retrieval.top_k_final": settings.retrieval.top_k_final,
         "retrieval.rrf_k": settings.retrieval.rrf_k,
-        "retrieval.max_chunks_per_document": (
-            settings.retrieval.max_chunks_per_document
-        ),
+        "retrieval.max_chunks_per_document": (settings.retrieval.max_chunks_per_document),
         "rerank.top_m": settings.rerank.top_m,
     }
     for field_path, value in positive_values.items():
@@ -208,6 +208,7 @@ def validate_settings(settings: Settings) -> None:
 def _build_settings(raw: dict[str, Any]) -> Settings:
     project = _section(raw, "project")
     llm = _section(raw, "llm")
+    vision_llm = _optional_section(raw, "vision_llm")
     embedding = _section(raw, "embedding")
     splitter = _section(raw, "splitter")
     ingestion = _optional_section(raw, "ingestion")
@@ -234,6 +235,14 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
             provider=_required_str(llm, "provider", "llm.provider"),
             model=_optional_str(llm.get("model"), "llm.model"),
         ),
+        vision_llm=ProviderSettings(
+            provider=_optional_non_empty_str(
+                vision_llm.get("provider"),
+                "vision_llm.provider",
+                default="disabled",
+            ),
+            model=_optional_str(vision_llm.get("model"), "vision_llm.model"),
+        ),
         embedding=EmbeddingSettings(
             provider=_required_str(embedding, "provider", "embedding.provider"),
             model=_required_str(embedding, "model", "embedding.model"),
@@ -244,9 +253,7 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
         splitter=SplitterSettings(
             provider=_required_str(splitter, "provider", "splitter.provider"),
             chunk_size=_required_int(splitter, "chunk_size", "splitter.chunk_size"),
-            chunk_overlap=_required_int(
-                splitter, "chunk_overlap", "splitter.chunk_overlap"
-            ),
+            chunk_overlap=_required_int(splitter, "chunk_overlap", "splitter.chunk_overlap"),
         ),
         ingestion=IngestionSettings(
             extract_images=_optional_bool(
@@ -342,16 +349,12 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
             ),
         ),
         retrieval=RetrievalSettings(
-            sparse_backend=_required_str(
-                retrieval, "sparse_backend", "retrieval.sparse_backend"
-            ),
+            sparse_backend=_required_str(retrieval, "sparse_backend", "retrieval.sparse_backend"),
             fusion_algorithm=_required_str(
                 retrieval, "fusion_algorithm", "retrieval.fusion_algorithm"
             ),
             top_k_dense=_required_int(retrieval, "top_k_dense", "retrieval.top_k_dense"),
-            top_k_sparse=_required_int(
-                retrieval, "top_k_sparse", "retrieval.top_k_sparse"
-            ),
+            top_k_sparse=_required_int(retrieval, "top_k_sparse", "retrieval.top_k_sparse"),
             top_k_final=_required_int(retrieval, "top_k_final", "retrieval.top_k_final"),
             rrf_k=_required_int(retrieval, "rrf_k", "retrieval.rrf_k"),
             max_chunks_per_document=_required_int(
@@ -371,16 +374,12 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
         evaluation=EvaluationSettings(
             backends=tuple(backends),
             golden_test_set=Path(
-                _required_str(
-                    evaluation, "golden_test_set", "evaluation.golden_test_set"
-                )
+                _required_str(evaluation, "golden_test_set", "evaluation.golden_test_set")
             ),
         ),
         observability=ObservabilitySettings(
             enabled=_required_bool(observability, "enabled", "observability.enabled"),
-            trace_file=Path(
-                _required_str(observability, "trace_file", "observability.trace_file")
-            ),
+            trace_file=Path(_required_str(observability, "trace_file", "observability.trace_file")),
         ),
     )
 

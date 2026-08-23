@@ -9,6 +9,8 @@ def test_load_project_settings() -> None:
     settings = load_settings("config/settings.yaml")
 
     assert settings.project.name == "wms-config-agent"
+    assert settings.llm.provider == "disabled"
+    assert settings.vision_llm.provider == "disabled"
     assert settings.embedding.provider == "local_lsa"
     assert settings.embedding.dimensions == 256
     assert settings.embedding.batch_size == 32

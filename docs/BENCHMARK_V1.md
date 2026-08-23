@@ -20,9 +20,10 @@ text and absolute filesystem paths.
 ## Ground-truth policy
 
 Every case has a stable ID, one intent category, a query, optional explicit metadata filters,
-and an `expected` object. Positive relevance can be constrained by process code, sanitized
-relative source, domain, and document type; all specified constraints must match the same
-retrieval result. Negative cases set `should_refuse` and cannot contain positive labels.
+and an `expected` object. Positive relevance can be constrained by exact chunk ID, process code,
+sanitized relative source, domain, document type, and required text fragments; all specified
+constraints must match the same retrieval result. Negative cases set `should_refuse` and cannot
+contain positive labels.
 
 Labels follow these rules:
 
@@ -31,9 +32,17 @@ Labels follow these rules:
 3. Configuration and operation documents are distinct relevance targets.
 4. A refusal case is included only after confirming that the authorized corpus has no answer.
 5. Generated or paraphrased questions require human review before entering the frozen set.
+6. New answer-quality cases should add `chunk_ids` and/or `text_contains` so a wrong section from
+   the correct document cannot pass. The original private V1 labels remain document-level until
+   an authorized reviewer completes paragraph-level labeling; they must not be auto-labeled from
+   current retrieval output.
 
 The loader rejects duplicate IDs, empty positive labels, unknown fields, unsupported filters,
 absolute source paths, and parent-directory traversal.
+
+The committed smoke set now exercises required text fragments, and the sanitized E2E recall test
+uses exact chunk IDs plus text fragments. Benchmark V2 will extend those paragraph-level labels to
+the private semantic set and add expected-answer evaluation after the generation layer exists.
 
 ## V1 composition
 

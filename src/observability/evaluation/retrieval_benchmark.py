@@ -163,20 +163,23 @@ class RetrievalBenchmarkRunner:
         expected = case.expected
         metadata = result.metadata
         checks: list[bool] = []
+        if expected.chunk_ids:
+            checks.append(result.chunk_id in expected.chunk_ids)
         if expected.process_codes:
             checks.append(str(metadata.get("process_code", "")) in expected.process_codes)
         if expected.sources:
             source = str(
-                metadata.get("source_relative_path")
-                or metadata.get("source_name")
-                or ""
+                metadata.get("source_relative_path") or metadata.get("source_name") or ""
             ).replace("\\", "/")
             checks.append(source in {value.replace("\\", "/") for value in expected.sources})
         if expected.domains:
             checks.append(str(metadata.get("domain", "")) in expected.domains)
         if expected.document_types:
+            checks.append(str(metadata.get("document_type", "")) in expected.document_types)
+        if expected.text_contains:
+            lowered_text = result.text.casefold()
             checks.append(
-                str(metadata.get("document_type", "")) in expected.document_types
+                all(fragment.casefold() in lowered_text for fragment in expected.text_contains)
             )
         return bool(checks) and all(checks)
 
@@ -206,8 +209,7 @@ class RetrievalBenchmarkRunner:
             if not positives:
                 return 0.0
             return sum(
-                result.first_relevant_rank is not None
-                and result.first_relevant_rank <= k
+                result.first_relevant_rank is not None and result.first_relevant_rank <= k
                 for result in positives
             ) / len(positives)
 
@@ -215,8 +217,7 @@ class RetrievalBenchmarkRunner:
             sum(
                 1 / result.first_relevant_rank
                 for result in positives
-                if result.first_relevant_rank is not None
-                and result.first_relevant_rank <= 5
+                if result.first_relevant_rank is not None and result.first_relevant_rank <= 5
             )
             / len(positives)
             if positives
@@ -245,6 +246,7 @@ class RetrievalBenchmarkRunner:
             "p50_latency_ms": round(_percentile(elapsed, 0.50), 3) if elapsed else None,
             "p95_latency_ms": round(_percentile(elapsed, 0.95), 3) if elapsed else None,
         }
+
 
 def _percentile(values: list[float], percentile: float) -> float:
     if not values:

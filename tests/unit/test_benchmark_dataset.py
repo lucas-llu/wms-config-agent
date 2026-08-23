@@ -20,8 +20,10 @@ def _dataset() -> dict:
                 "query": "How is putaway configured?",
                 "filters": {"document_type": "configuration"},
                 "expected": {
+                    "chunk_ids": ["putaway-config"],
                     "process_codes": ["PROCESS-1"],
                     "sources": ["Inbound/putaway.pdf"],
+                    "text_contains": ["storage location"],
                 },
             },
             {
@@ -43,6 +45,8 @@ def test_dataset_loads_and_has_stable_fingerprint(tmp_path) -> None:
 
     assert first.name == "test-v1"
     assert len(first.test_cases) == 2
+    assert first.test_cases[0].expected.chunk_ids == ("putaway-config",)
+    assert first.test_cases[0].expected.text_contains == ("storage location",)
     assert first.fingerprint == second.fingerprint
     assert len(first.fingerprint) == 64
 
@@ -73,9 +77,7 @@ def test_committed_golden_set_conforms_to_benchmark_schema() -> None:
         ),
     ],
 )
-def test_dataset_rejects_unreliable_or_private_ground_truth(
-    tmp_path, mutation, message
-) -> None:
+def test_dataset_rejects_unreliable_or_private_ground_truth(tmp_path, mutation, message) -> None:
     payload = _dataset()
     mutation(payload)
     path = tmp_path / "invalid.json"

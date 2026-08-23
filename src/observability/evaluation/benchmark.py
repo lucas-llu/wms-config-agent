@@ -15,18 +15,22 @@ class BenchmarkValidationError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkExpectation:
+    chunk_ids: tuple[str, ...] = ()
     process_codes: tuple[str, ...] = ()
     sources: tuple[str, ...] = ()
     domains: tuple[str, ...] = ()
     document_types: tuple[str, ...] = ()
+    text_contains: tuple[str, ...] = ()
     should_refuse: bool = False
 
     def __post_init__(self) -> None:
         positive_labels = (
+            self.chunk_ids,
             self.process_codes,
             self.sources,
             self.domains,
             self.document_types,
+            self.text_contains,
         )
         if self.should_refuse and any(positive_labels):
             raise BenchmarkValidationError(
@@ -35,7 +39,7 @@ class BenchmarkExpectation:
         if not self.should_refuse and not any(positive_labels):
             raise BenchmarkValidationError(
                 "A positive case must define at least one relevance label"
-        )
+            )
         for source in self.sources:
             if (
                 Path(source).is_absolute()
@@ -52,10 +56,12 @@ class BenchmarkExpectation:
         if not isinstance(payload, dict):
             raise BenchmarkValidationError("expected must be an object")
         allowed = {
+            "chunk_ids",
             "process_codes",
             "sources",
             "domains",
             "document_types",
+            "text_contains",
             "should_refuse",
         }
         _reject_unknown(payload, allowed, "expected")
@@ -63,12 +69,12 @@ class BenchmarkExpectation:
         if not isinstance(should_refuse, bool):
             raise BenchmarkValidationError("expected.should_refuse must be a boolean")
         return cls(
+            chunk_ids=_string_tuple(payload.get("chunk_ids", []), "chunk_ids"),
             process_codes=_string_tuple(payload.get("process_codes", []), "process_codes"),
             sources=_string_tuple(payload.get("sources", []), "sources"),
             domains=_string_tuple(payload.get("domains", []), "domains"),
-            document_types=_string_tuple(
-                payload.get("document_types", []), "document_types"
-            ),
+            document_types=_string_tuple(payload.get("document_types", []), "document_types"),
+            text_contains=_string_tuple(payload.get("text_contains", []), "text_contains"),
             should_refuse=should_refuse,
         )
 
@@ -92,8 +98,7 @@ class BenchmarkCase:
         query = _required_string(payload, "query")
         filters = payload.get("filters", {})
         if not isinstance(filters, dict) or any(
-            not isinstance(key, str)
-            or not isinstance(value, str | int | float | bool)
+            not isinstance(key, str) or not isinstance(value, str | int | float | bool)
             for key, value in filters.items()
         ):
             raise BenchmarkValidationError("filters must contain scalar values")
@@ -223,6 +228,4 @@ def _required_string(payload: dict[str, Any], name: str) -> str:
 def _reject_unknown(payload: dict[str, Any], allowed: set[str], label: str) -> None:
     unknown = set(payload) - allowed
     if unknown:
-        raise BenchmarkValidationError(
-            f"Unknown {label} fields: {', '.join(sorted(unknown))}"
-        )
+        raise BenchmarkValidationError(f"Unknown {label} fields: {', '.join(sorted(unknown))}")

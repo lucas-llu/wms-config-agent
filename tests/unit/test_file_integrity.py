@@ -19,6 +19,18 @@ def test_sha256_is_deterministic_and_success_is_skipped(tmp_path: Path) -> None:
     assert checker.should_skip(first_hash)
 
 
+def test_processing_signature_must_match_for_incremental_skip(tmp_path: Path) -> None:
+    checker = SQLiteIntegrityChecker(tmp_path / "history.db")
+    checker.mark_success(
+        "same-file",
+        "manual.pdf",
+        processing_signature="transform-v1",
+    )
+
+    assert checker.should_skip("same-file", processing_signature="transform-v1")
+    assert not checker.should_skip("same-file", processing_signature="transform-v2")
+
+
 def test_failed_record_is_not_skipped(tmp_path: Path) -> None:
     checker = SQLiteIntegrityChecker(tmp_path / "history.db")
 

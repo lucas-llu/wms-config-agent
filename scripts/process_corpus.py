@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 from pathlib import Path
 
 from core.settings import SplitterSettings, load_settings
 from ingestion import CorpusManifestBuilder, CorpusProcessor
 from ingestion.storage import ImageStorage
 from ingestion.transform import ChunkRefiner, ImageCaptioner, MetadataEnricher
+from libs.llm import LLMFactory
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,14 +61,17 @@ def main() -> None:
     builder = CorpusManifestBuilder()
     entries = builder.scan(args.source)
     builder.write(entries, args.manifest)
-    image_storage = (
-        ImageStorage(
-            settings.ingestion.image_storage.root_path,
-            settings.ingestion.image_storage.database_path,
-        )
-        if settings.ingestion.image_storage.enabled
-        else None
-    )
+    image_storage = None
+    if settings.ingestion.image_storage.enabled:
+        try:
+            image_storage = ImageStorage(
+                settings.ingestion.image_storage.root_path,
+                settings.ingestion.image_storage.database_path,
+            )
+        except (OSError, sqlite3.Error):
+            image_storage = None
+    llm = LLMFactory.create(settings)
+    vision_llm = LLMFactory.create_vision_llm(settings)
     processor = CorpusProcessor(
         source_root=args.source,
         output_root=args.output,
@@ -78,9 +83,9 @@ def main() -> None:
             else args.extract_images
         ),
         transforms=(
-            ChunkRefiner(settings),
-            MetadataEnricher(settings),
-            ImageCaptioner(settings),
+            ChunkRefiner(settings, llm=llm),
+            MetadataEnricher(settings, llm=llm),
+            ImageCaptioner(settings, vision_llm=vision_llm),
         ),
         image_storage=image_storage,
         image_collection=settings.ingestion.image_storage.collection,

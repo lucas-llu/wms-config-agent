@@ -19,13 +19,15 @@ class FileIntegrityChecker(ABC):
         """Return the SHA256 digest for a file."""
 
     @abstractmethod
-    def should_skip(self, file_hash: str) -> bool:
+    def should_skip(
+        self,
+        file_hash: str,
+        processing_signature: str | None = None,
+    ) -> bool:
         """Return whether a file hash has a successful ingestion record."""
 
     @abstractmethod
-    def mark_success(
-        self, file_hash: str, file_path: str | Path, **metadata: Any
-    ) -> None:
+    def mark_success(self, file_hash: str, file_path: str | Path, **metadata: Any) -> None:
         """Persist a successful ingestion result."""
 
     @abstractmethod
@@ -53,16 +55,27 @@ class SQLiteIntegrityChecker(FileIntegrityChecker):
                 digest.update(block)
         return digest.hexdigest()
 
-    def should_skip(self, file_hash: str) -> bool:
+    def should_skip(
+        self,
+        file_hash: str,
+        processing_signature: str | None = None,
+    ) -> bool:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT status FROM ingestion_history WHERE file_hash = ?", (file_hash,)
+                "SELECT status, metadata_json FROM ingestion_history WHERE file_hash = ?",
+                (file_hash,),
             ).fetchone()
-        return row is not None and row[0] == "success"
+        if row is None or row[0] != "success":
+            return False
+        if processing_signature is None:
+            return True
+        try:
+            metadata = json.loads(row[1])
+        except (json.JSONDecodeError, TypeError):
+            return False
+        return metadata.get("processing_signature") == processing_signature
 
-    def mark_success(
-        self, file_hash: str, file_path: str | Path, **metadata: Any
-    ) -> None:
+    def mark_success(self, file_hash: str, file_path: str | Path, **metadata: Any) -> None:
         self._upsert(
             file_hash=file_hash,
             file_path=str(file_path),

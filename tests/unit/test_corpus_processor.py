@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,27 @@ class FakeLoader(BaseLoader):
         return Document(
             id=self.build_document_id(file_hash),
             text="MOCA configuration location and setup instructions. " * 8,
+            metadata=values,
+        )
+
+
+class ImageFakeLoader(BaseLoader):
+    def load(self, path, metadata=None) -> Document:
+        file_path = Path(path)
+        image_path = file_path.with_suffix(".png")
+        image_path.write_bytes(b"image")
+        values = dict(metadata or {})
+        values.update(
+            {
+                "source_path": file_path.as_posix(),
+                "file_hash": self.compute_file_hash(file_path),
+                "images": [{"id": "image-1", "path": str(image_path), "page": 1}],
+                "pages": [{"page": 1, "start_offset": 0, "end_offset": 30}],
+            }
+        )
+        return Document(
+            id="image-doc",
+            text="Diagram\n[IMAGE: image-1]",
             metadata=values,
         )
 
@@ -69,24 +91,35 @@ def test_processor_writes_private_artifacts_and_skips_unchanged(tmp_path: Path) 
         source_root=tmp_path,
         output_root=tmp_path / "processed",
         database_path=tmp_path / "db" / "history.db",
-        splitter_settings=SplitterSettings(
-            provider="recursive", chunk_size=100, chunk_overlap=10
-        ),
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=100, chunk_overlap=10),
         loader_builder=loader_builder,
     )
 
     first = processor.process([entry])
     second = processor.process([entry])
+    changed_processor = CorpusProcessor(
+        source_root=tmp_path,
+        output_root=tmp_path / "processed",
+        database_path=tmp_path / "db" / "history.db",
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=120, chunk_overlap=10),
+        loader_builder=loader_builder,
+    )
+    after_setting_change = changed_processor.process([entry])
 
     assert first.succeeded == 1
     assert first.chunks_written > 1
     assert second.skipped == 1
+    assert after_setting_change.succeeded == 1
     document_path = tmp_path / "processed" / "documents" / f"{entry.document_id}.json"
     chunks_path = tmp_path / "processed" / "chunks" / f"{entry.document_id}.jsonl"
-    assert json.loads(document_path.read_text(encoding="utf-8"))["metadata"][
-        "process_code"
-    ] == "SWL.I.01.01"
-    assert len(chunks_path.read_text(encoding="utf-8").splitlines()) == first.chunks_written
+    assert (
+        json.loads(document_path.read_text(encoding="utf-8"))["metadata"]["process_code"]
+        == "SWL.I.01.01"
+    )
+    assert (
+        len(chunks_path.read_text(encoding="utf-8").splitlines())
+        == after_setting_change.chunks_written
+    )
 
 
 def test_processor_records_failure_without_stopping_batch(tmp_path: Path) -> None:
@@ -101,9 +134,7 @@ def test_processor_records_failure_without_stopping_batch(tmp_path: Path) -> Non
         source_root=tmp_path,
         output_root=tmp_path / "processed",
         database_path=tmp_path / "db" / "history.db",
-        splitter_settings=SplitterSettings(
-            provider="recursive", chunk_size=100, chunk_overlap=10
-        ),
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=100, chunk_overlap=10),
         loader_builder=failing_loader,
     )
 
@@ -131,3 +162,36 @@ def test_atomic_replace_retries_transient_windows_permission_error(
     CorpusProcessor._replace_with_retry(temporary, Path("destination"))
 
     assert temporary.calls == 3
+
+
+def test_optional_image_index_sqlite_failure_does_not_fail_document(tmp_path: Path) -> None:
+    source = tmp_path / "SWL.I.99.01 Image Test.pdf"
+    source.write_bytes(b"fake-pdf")
+    entry = _entry(source)
+
+    class BrokenImageStorage:
+        root_path = tmp_path / "images"
+
+        @staticmethod
+        def store_metadata_images(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+    processor = CorpusProcessor(
+        source_root=tmp_path,
+        output_root=tmp_path / "processed",
+        database_path=tmp_path / "history.db",
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=100, chunk_overlap=10),
+        image_storage=BrokenImageStorage(),
+        loader_builder=lambda *args, **kwargs: ImageFakeLoader(),
+    )
+
+    report = processor.process([entry])
+    document = json.loads(
+        (tmp_path / "processed" / "documents" / f"{entry.document_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert report.succeeded == 1
+    assert report.failed == 0
+    assert document["metadata"]["image_storage_status"] == "fallback_to_extracted_paths"

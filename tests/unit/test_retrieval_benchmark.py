@@ -13,8 +13,18 @@ from observability.evaluation import (
 class FakeSearch:
     def search_with_details(self, query, top_k=None, filters=None):
         del top_k, filters
-        irrelevant = _result("wrong", "PROCESS-X", "wrong.pdf")
-        relevant = _result("right", "PROCESS-1", "Inbound/putaway.pdf")
+        irrelevant = _result(
+            "wrong",
+            "PROCESS-1",
+            "Inbound/putaway.pdf",
+            "unrelated header from the same document",
+        )
+        relevant = _result(
+            "right",
+            "PROCESS-1",
+            "Inbound/putaway.pdf",
+            "configure the storage location policy",
+        )
         results = () if query == "unsupported" else (irrelevant, relevant)
         processed = ProcessedQuery(
             original_query=query,
@@ -36,11 +46,11 @@ class FakeSearch:
         )
 
 
-def _result(chunk_id: str, code: str, source: str) -> RetrievalResult:
+def _result(chunk_id: str, code: str, source: str, text: str) -> RetrievalResult:
     return RetrievalResult(
         chunk_id=chunk_id,
         score=0.03,
-        text="private text must not appear in the report",
+        text=text,
         metadata={
             "source_path": f"C:/private/{source}",
             "source_relative_path": source,
@@ -70,10 +80,12 @@ def test_runner_calculates_ranking_refusal_and_threshold_metrics() -> None:
                 category="semantic",
                 query="putaway",
                 expected=BenchmarkExpectation(
+                    chunk_ids=("right",),
                     process_codes=("PROCESS-1",),
                     sources=("Inbound/putaway.pdf",),
                     domains=("Inbound",),
                     document_types=("configuration",),
+                    text_contains=("storage location",),
                 ),
             ),
             BenchmarkCase(
@@ -94,4 +106,5 @@ def test_runner_calculates_ranking_refusal_and_threshold_metrics() -> None:
     assert report.passed is True
     assert report.cases[0].first_relevant_rank == 2
     assert "text" not in report.cases[0].top_results[0]
-    assert report.cases[0].top_results[0]["source"] == "wrong.pdf"
+    assert report.cases[0].top_results[0]["chunk_id"] == "wrong"
+    assert report.cases[0].top_results[0]["source"] == "Inbound/putaway.pdf"

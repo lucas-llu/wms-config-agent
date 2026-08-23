@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
+import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
@@ -60,6 +63,7 @@ class CorpusProcessor:
         self.image_storage = image_storage
         self.image_collection = image_collection
         self.loader_builder = loader_builder
+        self.processing_signature = self._processing_signature()
 
     def process(
         self,
@@ -83,7 +87,10 @@ class CorpusProcessor:
             chunks_output = self.chunks_dir / f"{entry.document_id}.jsonl"
             if (
                 not force
-                and self.integrity.should_skip(entry.file_hash)
+                and self.integrity.should_skip(
+                    entry.file_hash,
+                    processing_signature=self.processing_signature,
+                )
                 and document_output.is_file()
                 and chunks_output.is_file()
             ):
@@ -109,6 +116,7 @@ class CorpusProcessor:
                     entry.source_path,
                     document_id=entry.document_id,
                     chunk_count=len(chunks),
+                    processing_signature=self.processing_signature,
                 )
                 succeeded += 1
                 chunks_written += len(chunks)
@@ -154,9 +162,71 @@ class CorpusProcessor:
                     else None
                 ),
             )
-        except (OSError, ValueError):
+        except (OSError, ValueError, sqlite3.Error):
             # Extracted paths remain valid even if the optional image index is unavailable.
             metadata["image_storage_status"] = "fallback_to_extracted_paths"
+
+    def _processing_signature(self) -> str:
+        splitter = self.chunker.splitter
+        payload: dict[str, object] = {
+            "schema_version": 2,
+            "extract_images": self.extract_images,
+            "image_collection": self.image_collection,
+            "splitter": {
+                "class": self._class_name(splitter),
+                "chunk_size": getattr(splitter, "chunk_size", None),
+                "chunk_overlap": getattr(splitter, "chunk_overlap", None),
+                "implementation": self._implementation_hash(splitter),
+            },
+            "transforms": [self._transform_signature(item) for item in self.transforms],
+            "image_storage": (
+                {
+                    "class": self._class_name(self.image_storage),
+                    "root_path": str(self.image_storage.root_path),
+                }
+                if self.image_storage is not None
+                else None
+            ),
+        }
+        serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _transform_signature(cls, transform: BaseTransform) -> dict[str, object]:
+        llm = getattr(transform, "llm", None)
+        vision_llm = getattr(transform, "vision_llm", None)
+        prompt = getattr(transform, "prompt", None)
+        return {
+            "class": cls._class_name(transform),
+            "implementation": cls._implementation_hash(transform),
+            "enabled": getattr(transform, "enabled", None),
+            "use_llm": getattr(transform, "use_llm", None),
+            "append_to_text": getattr(transform, "append_to_text", None),
+            "prompt_hash": (
+                hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+                if isinstance(prompt, str)
+                else None
+            ),
+            "llm_class": cls._class_name(llm) if llm is not None else None,
+            "llm_model": getattr(llm, "model", None) if llm is not None else None,
+            "vision_llm_class": (cls._class_name(vision_llm) if vision_llm is not None else None),
+            "vision_llm_model": (
+                getattr(vision_llm, "model", None) if vision_llm is not None else None
+            ),
+        }
+
+    @staticmethod
+    def _class_name(value: object) -> str:
+        value_type = type(value)
+        return f"{value_type.__module__}.{value_type.__qualname__}"
+
+    @staticmethod
+    def _implementation_hash(value: object) -> str | None:
+        try:
+            source = inspect.getsource(type(value))
+        except (OSError, TypeError):
+            return None
+        return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _domain_metadata(entry: CorpusManifestEntry) -> dict[str, object]:
@@ -188,8 +258,7 @@ class CorpusProcessor:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(path.suffix + ".tmp")
         content = "".join(
-            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
-            for payload in payloads
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n" for payload in payloads
         )
         temporary.write_text(content, encoding="utf-8")
         CorpusProcessor._replace_with_retry(temporary, path)

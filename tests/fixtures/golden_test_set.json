@@ -17,7 +17,8 @@
       "expected": {
         "process_codes": ["SWL.I.11.04"],
         "domains": ["Inbound"],
-        "document_types": ["configuration"]
+        "document_types": ["configuration"],
+        "text_contains": ["putaway"]
       }
     },
     {
@@ -27,7 +28,8 @@
       "expected": {
         "process_codes": ["SWL.I.01.01"],
         "domains": ["Inbound"],
-        "document_types": ["configuration"]
+        "document_types": ["configuration"],
+        "text_contains": ["appointment"]
       }
     },
     {
@@ -37,7 +39,8 @@
       "expected": {
         "process_codes": ["SWL.O.07.03"],
         "domains": ["Outbound"],
-        "document_types": ["configuration"]
+        "document_types": ["configuration"],
+        "text_contains": ["replenishment"]
       }
     },
     {
@@ -47,7 +50,8 @@
       "expected": {
         "process_codes": ["SWL.S.01.02"],
         "domains": ["Stock Management"],
-        "document_types": ["configuration"]
+        "document_types": ["configuration"],
+        "text_contains": ["inventory move"]
       }
     }
   ]

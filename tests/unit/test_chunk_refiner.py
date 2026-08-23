@@ -9,6 +9,7 @@ from core.settings import TransformSettings
 from core.trace import TraceContext
 from core.types import Chunk
 from ingestion.transform import BaseTransform, ChunkRefiner
+from libs.llm import ChatResponse
 
 
 def _chunk(text: str = "MOCA   configuration") -> Chunk:
@@ -80,9 +81,9 @@ def test_llm_success_marks_metadata_and_formats_prompt() -> None:
     class FakeLLM:
         prompt = ""
 
-        def generate(self, prompt: str) -> str:
-            self.prompt = prompt
-            return "Refined MOCA configuration"
+        def chat(self, messages, trace=None) -> ChatResponse:
+            self.prompt = messages[0]["content"]
+            return ChatResponse("Refined MOCA configuration")
 
     llm = FakeLLM()
     output = ChunkRefiner(_settings(use_llm=True), llm=llm).transform([_chunk()])[0]
@@ -95,16 +96,14 @@ def test_llm_success_marks_metadata_and_formats_prompt() -> None:
 def test_llm_failure_falls_back_without_raising() -> None:
     class BrokenLLM:
         @staticmethod
-        def generate(prompt: str) -> str:
+        def chat(messages, trace=None) -> ChatResponse:
             raise ConnectionError("offline")
 
-    output = ChunkRefiner(_settings(use_llm=True), llm=BrokenLLM()).transform(
-        [_chunk()]
-    )[0]
+    output = ChunkRefiner(_settings(use_llm=True), llm=BrokenLLM()).transform([_chunk()])[0]
 
     assert output.text == "MOCA configuration"
     assert output.metadata["refined_by"] == "rule"
-    assert output.metadata["refinement_fallback_reason"] == "ConnectionError"
+    assert output.metadata["refinement_fallback_reason"] == "llm_failed_or_empty"
 
 
 def test_missing_llm_falls_back_and_trace_records_counts() -> None:
@@ -123,5 +122,101 @@ def test_prompt_without_placeholder_gets_safe_fallback_placeholder(tmp_path: Pat
     prompt.write_text("Clean this fragment", encoding="utf-8")
 
     refiner = ChunkRefiner(_settings(), prompt_path=prompt)
+
+    assert "{text}" in refiner.prompt
+
+
+def test_nested_markdown_list_indentation_is_preserved() -> None:
+    text = "- parent\n  - child\n    - grandchild"
+
+    assert ChunkRefiner._rule_based_refine(text) == text
+
+
+def test_indented_markdown_code_block_is_preserved() -> None:
+    text = "    select *\n      from policy"
+
+    assert ChunkRefiner._rule_based_refine(text) == text
+
+
+def test_markdown_hard_line_break_is_preserved() -> None:
+    text = "First line  \nSecond line"
+
+    assert ChunkRefiner._rule_based_refine(text) == text
+
+
+def test_noise_only_chunk_falls_back_to_original_evidence() -> None:
+    original = _chunk("Page 1 of 1\n====")
+
+    output = ChunkRefiner(_settings()).transform([original])[0]
+
+    assert output.text == original.text
+    assert output.metadata["refined_by"] == "original"
+    assert output.metadata["refinement_fallback_reason"] == "empty_rule_result"
+
+
+def test_blank_chunk_remains_blank_without_error() -> None:
+    output = ChunkRefiner(_settings()).transform([_chunk("   ")])[0]
+
+    assert output.text == ""
+    assert output.metadata["refined_by"] == "rule"
+
+
+def test_unmatched_fenced_code_keeps_internal_spacing() -> None:
+    text = "```moca\npublish data\n  where x = 1"
+
+    assert ChunkRefiner._rule_based_refine(text) == text
+
+
+def test_empty_llm_response_falls_back_to_rule_result() -> None:
+    class EmptyLLM:
+        @staticmethod
+        def chat(messages, trace=None) -> ChatResponse:
+            return ChatResponse("   ")
+
+    output = ChunkRefiner(_settings(use_llm=True), llm=EmptyLLM()).transform([_chunk()])[0]
+
+    assert output.text == "MOCA configuration"
+    assert output.metadata["refinement_fallback_reason"] == "llm_failed_or_empty"
+
+
+def test_rule_mode_never_calls_injected_llm() -> None:
+    class ExplodingLLM:
+        @staticmethod
+        def chat(messages, trace=None) -> ChatResponse:
+            raise AssertionError("LLM should not be called")
+
+    output = ChunkRefiner(_settings(), llm=ExplodingLLM()).transform([_chunk()])[0]
+
+    assert output.metadata["refined_by"] == "rule"
+
+
+def test_llm_refine_contract_returns_string_or_none() -> None:
+    class FakeLLM:
+        @staticmethod
+        def chat(messages, trace=None) -> ChatResponse:
+            return ChatResponse("refined")
+
+    assert ChunkRefiner(_settings(), llm=FakeLLM())._llm_refine("text") == "refined"
+    assert ChunkRefiner(_settings())._llm_refine("text") is None
+
+
+def test_one_chunk_exception_does_not_block_the_batch(monkeypatch) -> None:
+    original_refine = ChunkRefiner._rule_based_refine
+
+    def selective_refine(text: str) -> str:
+        if text == "bad chunk":
+            raise ValueError("malformed")
+        return original_refine(text)
+
+    monkeypatch.setattr(ChunkRefiner, "_rule_based_refine", staticmethod(selective_refine))
+    outputs = ChunkRefiner(_settings()).transform([_chunk("bad chunk"), _chunk("MOCA   setup")])
+
+    assert outputs[0].text == "bad chunk"
+    assert outputs[0].metadata["refined_by"] == "original"
+    assert outputs[1].text == "MOCA setup"
+
+
+def test_missing_prompt_file_uses_default_template(tmp_path: Path) -> None:
+    refiner = ChunkRefiner(_settings(), prompt_path=tmp_path / "missing.txt")
 
     assert "{text}" in refiner.prompt

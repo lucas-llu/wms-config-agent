@@ -51,8 +51,14 @@ Outputs:
 Use `--force` after intentionally changing preprocessing, transform, or chunk settings. Image
 extraction is controlled by `ingestion.extract_images` and is enabled for this local corpus.
 Use `--no-extract-images` for a temporary text-only run. The transform chain performs
-deterministic cleanup and title/summary/tag enrichment locally; image captioning remains disabled
-until a Vision LLM is explicitly configured, and unprocessed image references remain traceable.
+deterministic cleanup and title/summary/tag enrichment locally. Text and Vision providers use the
+documented `BaseLLM`/`BaseVisionLLM` factory contracts; generation remains disabled until a
+concrete provider is registered and configured, and unprocessed image references remain traceable.
+
+The preprocessing history includes a signature of splitter settings, transform implementations,
+prompts, provider classes, and image options. A changed signature automatically reprocesses the
+affected source even when its PDF hash is unchanged; `--force` remains available for an explicit
+full rebuild.
 
 ## Build the retrieval indexes
 

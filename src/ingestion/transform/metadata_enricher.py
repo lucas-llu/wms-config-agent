@@ -11,6 +11,7 @@ from typing import Any
 from core.settings import Settings, TransformSettings
 from core.types import Chunk
 from ingestion.transform.base_transform import BaseTransform
+from libs.llm import BaseLLM
 
 _IDENTIFIER = re.compile(r"\b[A-Z][A-Z0-9_-]*(?:\.[A-Z0-9_-]+)+\b")
 _TECH_TERMS = re.compile(
@@ -34,13 +35,11 @@ class MetadataEnricher(BaseTransform):
     def __init__(
         self,
         settings: Settings | TransformSettings,
-        llm: Any | None = None,
+        llm: BaseLLM | None = None,
         prompt_path: str | Path | None = None,
     ) -> None:
         config = (
-            settings.ingestion.metadata_enricher
-            if isinstance(settings, Settings)
-            else settings
+            settings.ingestion.metadata_enricher if isinstance(settings, Settings) else settings
         )
         self.enabled = config.enabled
         self.use_llm = config.use_llm
@@ -164,15 +163,9 @@ class MetadataEnricher(BaseTransform):
         if self.llm is None:
             return None, "llm_unavailable"
         try:
-            response = self.llm.generate(self.prompt.format(text=text))
-            raw = response if isinstance(response, str) else getattr(response, "content", "")
-            if isinstance(response, dict):
-                raw = response.get("text") or response.get("content") or response
-            if isinstance(raw, dict):
-                payload = raw
-            else:
-                cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", str(raw).strip())
-                payload = json.loads(cleaned)
+            response = self.llm.chat([{"role": "user", "content": self.prompt.format(text=text)}])
+            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.content.strip())
+            payload = json.loads(cleaned)
             if not self._valid_llm_payload(payload):
                 return None, "invalid_llm_response"
             return payload, None
@@ -198,9 +191,7 @@ class MetadataEnricher(BaseTransform):
         existing_metadata: dict[str, Any],
     ) -> dict[str, Any]:
         title = (
-            rule_values["title"]
-            if existing_metadata.get("title")
-            else llm_values["title"].strip()
+            rule_values["title"] if existing_metadata.get("title") else llm_values["title"].strip()
         )
         combined_tags: list[str] = []
         seen: set[str] = set()

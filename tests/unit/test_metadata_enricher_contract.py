@@ -5,6 +5,7 @@ import json
 from core.settings import TransformSettings
 from core.types import Chunk
 from ingestion.transform import MetadataEnricher
+from libs.llm import ChatResponse
 
 
 def _chunk(text: str, metadata: dict | None = None) -> Chunk:
@@ -60,14 +61,16 @@ def test_rule_enrichment_is_idempotent_and_does_not_mutate_input() -> None:
 def test_llm_json_enrichment_uses_summary_and_combines_tags() -> None:
     class FakeLLM:
         @staticmethod
-        def generate(prompt: str) -> str:
-            assert "MOCA" in prompt
-            return json.dumps(
-                {
-                    "title": "Generated title",
-                    "summary": "Configure the receiving policy.",
-                    "tags": ["policy", "receiving"],
-                }
+        def chat(messages, trace=None) -> ChatResponse:
+            assert "MOCA" in messages[0]["content"]
+            return ChatResponse(
+                json.dumps(
+                    {
+                        "title": "Generated title",
+                        "summary": "Configure the receiving policy.",
+                        "tags": ["policy", "receiving"],
+                    }
+                )
             )
 
     output = MetadataEnricher(_settings(use_llm=True), llm=FakeLLM()).transform(
@@ -84,8 +87,8 @@ def test_llm_json_enrichment_uses_summary_and_combines_tags() -> None:
 def test_invalid_llm_response_falls_back_to_rule_metadata() -> None:
     class BadLLM:
         @staticmethod
-        def generate(prompt: str) -> str:
-            return "not json"
+        def chat(messages, trace=None) -> ChatResponse:
+            return ChatResponse("not json")
 
     output = MetadataEnricher(_settings(use_llm=True), llm=BadLLM()).transform(
         [_chunk("WMS putaway setup")]

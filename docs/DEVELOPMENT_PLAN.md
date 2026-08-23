@@ -105,18 +105,22 @@ regression. A sanitized ingest-to-benchmark E2E recall test now enforces the eva
 
 ## Day 7 — Document quality and multimodal enrichment (2026-08-24)
 
-Status: completed on 2026-08-24.
+Status: offline implementation completed on 2026-08-24; live LLM acceptance remains open.
 
 - Add an atomic `BaseTransform` contract and deterministic chunk cleanup that preserves code.
 - Generate rule-based title, summary, and retrieval tags with optional LLM fallback paths.
 - Add optional Vision caption injection while preserving image references when disabled or failed.
 - Store images by content hash and persist image ID mappings in SQLite WAL mode.
 - Reprocess the private corpus, synchronize stale vector IDs, and enforce Benchmark V1 gates.
+- Add the documented text/Vision provider contracts and an opt-in live-provider acceptance test.
+- Add a real PDF-to-query E2E and an automated 80% coverage gate for public CI.
 - Exit criteria: 191 PDFs process successfully, Chroma and BM25 counts match the enhanced Chunk
   count, all automated tests pass, and neither private nor public benchmarks regress.
 
 Delivered: 1,593 enhanced chunks from all 191 PDFs, including 1,115 chunks with image references.
 The image index tracks 3,316 logical IDs backed by 1,883 deduplicated local files. Chroma and BM25
 both contain exactly 1,593 records after 1,024 stale vector IDs were removed. The 40-case private
-and four-case public benchmarks remain at 100% with no regression; caption generation is safely
-disabled until a Vision provider is configured.
+and four-case public benchmarks remain at 100% with no regression. Text and Vision provider
+contracts are wired through the production preprocessing entry point, while live generation stays
+disabled until a concrete provider is implemented and the opt-in acceptance test passes. C5/C6
+therefore remain open in the detailed specification instead of overstating completion.

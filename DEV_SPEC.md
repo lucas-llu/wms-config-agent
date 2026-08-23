@@ -1926,7 +1926,7 @@ dashboard:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| B1 | LLM 抽象接口与工厂 | [ ] | | |
+| B1 | LLM 抽象接口与工厂 | [x] | 2026-08-24 | BaseLLM.chat + ChatResponse；注册式工厂与 disabled fallback |
 | B2 | Embedding 抽象接口与工厂 | [x] | 2026-08-23 | BaseEmbedding、工厂与本地 LSA Provider |
 | B3 | Splitter 抽象接口与工厂 | [x] | 2026-08-23 | BaseSplitter、注册式工厂与配置路由 |
 | B4 | VectorStore 抽象接口与工厂 | [x] | 2026-08-23 | BaseVectorStore、配置工厂与显式向量契约 |
@@ -1940,7 +1940,7 @@ dashboard:
 | B7.6 | ChromaStore 默认实现 | [x] | 2026-08-23 | 持久化 upsert/query、metadata filter 与 roundtrip 测试 |
 | B7.7 | LLM Reranker 实现 | [ ] | | |
 | B7.8 | Cross-Encoder Reranker 实现 | [ ] | | |
-| B8 | Vision LLM 抽象接口与工厂集成 | [ ] | | |
+| B8 | Vision LLM 抽象接口与工厂集成 | [x] | 2026-08-24 | BaseVisionLLM.chat_with_image；工厂路由与 Transform 注入 |
 | B9 | Azure Vision LLM 实现 | [ ] | | |
 
 #### 阶段 C：Ingestion Pipeline MVP
@@ -1951,8 +1951,8 @@ dashboard:
 | C2 | 文件完整性检查（SHA256） | [x] | 2026-08-23 | SQLite WAL、幂等状态与并发写入测试 |
 | C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-08-23 | PDF/Markdown/TXT；PDF 文本、页码与图片降级提取 |
 | C4 | Splitter 集成（调用 Libs） | [x] | 2026-08-23 | 稳定 Chunk ID、来源偏移、页码与图片引用分发 |
-| C5 | Transform 基类 + ChunkRefiner | [x] | 2026-08-24 | 原子化规则去噪、代码块保护、可选 LLM 与逐 Chunk 降级 |
-| C6 | MetadataEnricher | [x] | 2026-08-24 | 规则生成 title/summary/tags；可选结构化 LLM 与降级 |
+| C5 | Transform 基类 + ChunkRefiner | [ ] | | 规则/Mock/27 单测完成；等待真实 LLM Provider 验收后关闭 |
+| C6 | MetadataEnricher | [ ] | | 规则/结构化 Mock 完成；等待真实 LLM Provider 验收后关闭 |
 | C7 | ImageCaptioner | [x] | 2026-08-24 | Mock 可验证 Vision 接口、幂等描述注入、禁用/异常不阻塞 |
 | C8 | DenseEncoder | [x] | 2026-08-23 | 正文与 WMS 业务元数据上下文编码、模型签名与内容哈希 |
 | C9 | SparseEncoder | [x] | 2026-08-23 | 确定性中英文/标识符分词与词频统计 |
@@ -2034,8 +2034,8 @@ dashboard:
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
-| 阶段 B | 16 | 7 | 44% |
-| 阶段 C | 15 | 15 | 100% |
+| 阶段 B | 16 | 9 | 56% |
+| 阶段 C | 15 | 13 | 87% |
 | 阶段 D | 7 | 7 | 100% |
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
