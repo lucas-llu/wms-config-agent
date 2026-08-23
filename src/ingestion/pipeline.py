@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from core.types import Chunk
 from ingestion.embedding import BatchProcessor, DenseEncoder, SparseEncoder
@@ -84,12 +86,20 @@ class IndexingPipeline:
         *,
         force: bool = False,
         on_progress: IndexingProgressCallback | None = None,
+        trace: Any | None = None,
     ) -> IndexingReport:
         if not chunks:
             raise ValueError("chunks must not be empty")
         ordered_chunks = sorted(chunks, key=lambda chunk: chunk.id)
+        started = time.perf_counter()
         model_trained = self.embedding.fit(
             [DenseEncoder.embedding_text(chunk) for chunk in ordered_chunks], force=force
+        )
+        self._record_stage(
+            trace,
+            "embedding_fit",
+            started,
+            {"chunk_count": len(ordered_chunks), "model_trained": model_trained},
         )
         signature = self.embedding.signature
         if on_progress:
@@ -100,6 +110,7 @@ class IndexingPipeline:
             if force or model_trained
             else self._changed_or_missing_chunks(ordered_chunks, signature)
         )
+        started = time.perf_counter()
         records = BatchProcessor(
             DenseEncoder(self.embedding), batch_size=self.batch_size
         ).encode(
@@ -110,12 +121,23 @@ class IndexingPipeline:
                 else None
             ),
         )
+        self._record_stage(
+            trace, "dense_encode", started, {"record_count": len(records)}
+        )
+        started = time.perf_counter()
         VectorUpserter(self.vector_store).upsert(records)
+        self._record_stage(
+            trace, "vector_upsert", started, {"record_count": len(records)}
+        )
         if on_progress:
             on_progress("vector_upsert", len(records), len(pending))
 
+        started = time.perf_counter()
         sparse_encodings = SparseEncoder().encode(ordered_chunks)
         self.bm25_indexer.build(sparse_encodings)
+        self._record_stage(
+            trace, "bm25_build", started, {"record_count": len(sparse_encodings)}
+        )
         if on_progress:
             on_progress("bm25_build", len(ordered_chunks), len(ordered_chunks))
         return IndexingReport(
@@ -127,6 +149,16 @@ class IndexingPipeline:
             bm25_count=self.bm25_indexer.count(),
             embedding_signature=signature,
         )
+
+    @staticmethod
+    def _record_stage(
+        trace: Any | None,
+        name: str,
+        started: float,
+        details: dict[str, Any],
+    ) -> None:
+        if trace is not None and hasattr(trace, "record_stage"):
+            trace.record_stage(name, (time.perf_counter() - started) * 1000, details=details)
 
     def _changed_or_missing_chunks(
         self, chunks: list[Chunk], signature: str

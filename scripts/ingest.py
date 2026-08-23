@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from core.settings import load_settings
+from core.trace import TraceCollector
 from ingestion import IndexingPipeline, load_preprocessed_chunks
 from ingestion.storage import BM25Indexer
 from libs.embedding import EmbeddingFactory
@@ -38,14 +39,29 @@ def main() -> None:
         bm25_indexer=BM25Indexer(args.bm25_path),
         batch_size=settings.embedding.batch_size,
     )
+
     def show_progress(stage: str, current: int, total: int) -> None:
         print(f"[{stage}] {current}/{total}", file=sys.stderr)
 
-    report = pipeline.index(
-        chunks,
-        force=args.force,
-        on_progress=None if args.quiet else show_progress,
+    collector = TraceCollector(
+        settings.observability.trace_file, enabled=settings.observability.enabled
     )
+    trace = collector.start("ingestion", {"chunk_count": len(chunks), "force": args.force})
+    try:
+        report = pipeline.index(
+            chunks,
+            force=args.force,
+            on_progress=None if args.quiet else show_progress,
+            trace=trace,
+        )
+        if trace:
+            trace.finish()
+    except Exception as exc:
+        if trace:
+            trace.finish(status="error", error=type(exc).__name__)
+        raise
+    finally:
+        collector.collect(trace)
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
 
 

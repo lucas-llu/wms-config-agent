@@ -20,6 +20,7 @@ dev = [
 
 [project.scripts]
 wms-config-agent = "main:main"
+wms-config-mcp = "mcp_server.server:main"
 
 [build-system]
 requires = ["setuptools>=69"]

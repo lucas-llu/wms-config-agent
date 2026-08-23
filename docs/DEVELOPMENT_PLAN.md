@@ -56,8 +56,16 @@ reached Hit@3 100% on 88 configuration documents, 12 bilingual semantic question
 
 ## Day 5 — MCP delivery and end-to-end acceptance (2026-08-27)
 
+Status: completed early on 2026-08-24.
+
 - Expose query, collection listing, and document-summary MCP tools over stdio.
 - Add trace records for ingestion and querying without polluting protocol stdout.
 - Add an end-to-end client test and a small golden retrieval set.
 - Document local setup and known MVP limits, then tag the sprint checkpoint.
 - Exit criteria: a local MCP client can ingest/query the sample corpus and verify citations.
+
+Delivered: a newline-delimited JSON-RPC stdio server with legacy initialize and modern
+stateless MCP compatibility; three read-only WMS tools; safe text/image content assembly;
+query and ingestion JSONL timing traces; a sanitized golden retrieval set; local host setup
+documentation; and a subprocess E2E test covering handshake, discovery, cited retrieval,
+trace persistence, and protocol stdout isolation.

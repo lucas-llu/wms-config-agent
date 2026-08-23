@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
@@ -70,7 +71,14 @@ class HybridSearch:
         final_count = self.settings.top_k_final if top_k is None else top_k
         if final_count <= 0:
             raise ValueError("top_k must be greater than 0")
+        started = time.perf_counter()
         processed = self.query_processor.process(query, filters)
+        self._record_stage(
+            trace,
+            "query_processing",
+            started,
+            {"keyword_count": len(processed.keywords), "filters": processed.filters},
+        )
         store_filters = build_store_filters(processed.filters)
 
         failures: dict[str, str] = {}
@@ -79,18 +87,22 @@ class HybridSearch:
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="retrieval") as pool:
             futures = {
                 "dense": pool.submit(
+                    self._retrieve_with_trace,
+                    "dense_retrieval",
                     self.dense_retriever.retrieve,
+                    trace,
                     processed.retrieval_query,
                     self.settings.top_k_dense,
                     store_filters,
-                    trace,
                 ),
                 "sparse": pool.submit(
+                    self._retrieve_with_trace,
+                    "sparse_retrieval",
                     self.sparse_retriever.retrieve,
+                    trace,
                     processed.keywords,
                     self.settings.top_k_sparse,
                     processed.filters,
-                    trace,
                 ),
             }
             for source, future in futures.items():
@@ -102,9 +114,20 @@ class HybridSearch:
                 except Exception as exc:
                     failures[source] = f"{type(exc).__name__}: {exc}"
 
+        started = time.perf_counter()
         fused = self.fusion.fuse({"dense": dense, "sparse": sparse})
         filtered = self._apply_metadata_filters(fused, processed.filters)
         diversified = self._diversify(filtered, final_count)
+        self._record_stage(
+            trace,
+            "fusion",
+            started,
+            {
+                "dense_count": len(dense),
+                "sparse_count": len(sparse),
+                "result_count": len(diversified),
+            },
+        )
         evidence_sufficient = (
             bool(diversified)
             and self._has_query_evidence(processed, diversified)
@@ -122,6 +145,44 @@ class HybridSearch:
             failures=failures,
             evidence_sufficient=evidence_sufficient,
         )
+
+    @staticmethod
+    def _retrieve_with_trace(
+        stage_name: str,
+        retrieve: Any,
+        trace: Any | None,
+        query: Any,
+        top_k: int,
+        filters: dict[str, Any] | None,
+    ) -> list[RetrievalResult]:
+        started = time.perf_counter()
+        try:
+            results = retrieve(query, top_k, filters, trace)
+        except Exception as exc:
+            HybridSearch._record_stage(
+                trace,
+                stage_name,
+                started,
+                {"status": "error", "error_type": type(exc).__name__},
+            )
+            raise
+        HybridSearch._record_stage(
+            trace,
+            stage_name,
+            started,
+            {"status": "ok", "result_count": len(results)},
+        )
+        return results
+
+    @staticmethod
+    def _record_stage(
+        trace: Any | None,
+        name: str,
+        started: float,
+        details: dict[str, Any],
+    ) -> None:
+        if trace is not None and hasattr(trace, "record_stage"):
+            trace.record_stage(name, (time.perf_counter() - started) * 1000, details=details)
 
     @staticmethod
     def _apply_metadata_filters(

@@ -1979,22 +1979,22 @@ dashboard:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| E1 | MCP Server 入口与 Stdio 约束 | [ ] | | |
-| E2 | Protocol Handler 协议解析与能力协商 | [ ] | | |
-| E3 | query_knowledge_hub Tool | [ ] | | |
-| E4 | list_collections Tool | [ ] | | |
-| E5 | get_document_summary Tool | [ ] | | |
-| E6 | 多模态返回组装（Text + Image） | [ ] | | |
+| E1 | MCP Server 入口与 Stdio 约束 | [x] | 2026-08-24 | UTF-8 单行 JSON-RPC；日志仅写 stderr |
+| E2 | Protocol Handler 协议解析与能力协商 | [x] | 2026-08-24 | 兼容 2025 initialize 与 2026-07-28 stateless discovery |
+| E3 | query_knowledge_hub Tool | [x] | 2026-08-24 | 混合检索、重排降级、引用与结构化输出 |
+| E4 | list_collections Tool | [x] | 2026-08-24 | 本地集合、文档、Chunk 与业务域统计 |
+| E5 | get_document_summary Tool | [x] | 2026-08-24 | 按文档 ID、来源或流程编码返回抽取式摘要 |
+| E6 | 多模态返回组装（Text + Image） | [x] | 2026-08-24 | 图片目录白名单、大小/MIME 限制与去重 |
 
 #### 阶段 F：Trace 基础设施与打点
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| F1 | TraceContext 增强（finish + 耗时统计 + trace_type） | [ ] | | |
-| F2 | 结构化日志 logger（JSON Lines） | [ ] | | |
-| F3 | 在 Query 链路打点 | [ ] | | |
-| F4 | 在 Ingestion 链路打点 | [ ] | | |
-| F5 | Pipeline 进度回调 (on_progress) | [ ] | | |
+| F1 | TraceContext 增强（finish + 耗时统计 + trace_type） | [x] | 2026-08-24 | 线程安全 trace_id、阶段与总耗时 |
+| F2 | 结构化日志 logger（JSON Lines） | [x] | 2026-08-24 | TraceCollector 追加写本地 JSONL |
+| F3 | 在 Query 链路打点 | [x] | 2026-08-24 | 预处理、Dense/Sparse、融合、重排与错误状态 |
+| F4 | 在 Ingestion 链路打点 | [x] | 2026-08-24 | fit、Dense 编码、Chroma upsert 与 BM25 构建 |
+| F5 | Pipeline 进度回调 (on_progress) | [x] | 2026-08-24 | 保留各索引阶段回调并通过现有测试 |
 
 #### 阶段 G：可视化管理平台 Dashboard
 
@@ -2021,7 +2021,7 @@ dashboard:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| I1 | E2E：MCP Client 侧调用模拟 | [ ] | | |
+| I1 | E2E：MCP Client 侧调用模拟 | [x] | 2026-08-24 | 子进程完成握手、tools/list、tools/call 与引用校验 |
 | I2 | E2E：Dashboard 冒烟测试 | [ ] | | |
 | I3 | 完善 README（运行说明 + MCP + Dashboard） | [ ] | | |
 | I4 | 清理接口一致性（契约测试补齐） | [ ] | | |
@@ -2037,12 +2037,12 @@ dashboard:
 | 阶段 B | 16 | 6 | 38% |
 | 阶段 C | 15 | 11 | 73% |
 | 阶段 D | 7 | 7 | 100% |
-| 阶段 E | 6 | 0 | 0% |
-| 阶段 F | 5 | 0 | 0% |
+| 阶段 E | 6 | 6 | 100% |
+| 阶段 F | 5 | 5 | 100% |
 | 阶段 G | 6 | 0 | 0% |
 | 阶段 H | 5 | 0 | 0% |
-| 阶段 I | 5 | 0 | 0% |
-| **总计** | **68** | **27** | **39.7%** |
+| 阶段 I | 5 | 1 | 20% |
+| **总计** | **68** | **39** | **57.4%** |
 
 
 ---

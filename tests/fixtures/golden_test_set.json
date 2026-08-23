@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "description": "Sanitized process-code retrieval checks for the local WMS corpus.",
+  "test_cases": [
+    {
+      "query": "SWL.I.11.04 sorted putaway configuration",
+      "expected_process_code": "SWL.I.11.04"
+    },
+    {
+      "query": "SWL.I.01.01 appointment creation configuration",
+      "expected_process_code": "SWL.I.01.01"
+    },
+    {
+      "query": "SWL.O.07.03 replenishment tour configuration",
+      "expected_process_code": "SWL.O.07.03"
+    },
+    {
+      "query": "SWL.S.01.02 inventory move configuration",
+      "expected_process_code": "SWL.S.01.02"
+    }
+  ]
+}
