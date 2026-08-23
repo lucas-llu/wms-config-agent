@@ -30,6 +30,15 @@ class ProviderSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class EmbeddingSettings:
+    provider: str
+    model: str
+    dimensions: int
+    batch_size: int
+    cache_dir: Path
+
+
+@dataclass(frozen=True, slots=True)
 class SplitterSettings:
     provider: str
     chunk_size: int
@@ -40,6 +49,7 @@ class SplitterSettings:
 class VectorStoreSettings:
     backend: str
     persist_path: Path
+    collection_name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +86,7 @@ class Settings:
 
     project: ProjectSettings
     llm: ProviderSettings
-    embedding: ProviderSettings
+    embedding: EmbeddingSettings
     splitter: SplitterSettings
     vector_store: VectorStoreSettings
     retrieval: RetrievalSettings
@@ -112,6 +122,7 @@ def validate_settings(settings: Settings) -> None:
         "project.environment": settings.project.environment,
         "llm.provider": settings.llm.provider,
         "embedding.provider": settings.embedding.provider,
+        "embedding.model": settings.embedding.model,
         "splitter.provider": settings.splitter.provider,
         "vector_store.backend": settings.vector_store.backend,
         "retrieval.sparse_backend": settings.retrieval.sparse_backend,
@@ -123,6 +134,8 @@ def validate_settings(settings: Settings) -> None:
             raise SettingsError(f"Missing required setting: {field_path}")
 
     positive_values = {
+        "embedding.batch_size": settings.embedding.batch_size,
+        "embedding.dimensions": settings.embedding.dimensions,
         "splitter.chunk_size": settings.splitter.chunk_size,
         "retrieval.top_k_dense": settings.retrieval.top_k_dense,
         "retrieval.top_k_sparse": settings.retrieval.top_k_sparse,
@@ -174,9 +187,12 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
             provider=_required_str(llm, "provider", "llm.provider"),
             model=_optional_str(llm.get("model"), "llm.model"),
         ),
-        embedding=ProviderSettings(
+        embedding=EmbeddingSettings(
             provider=_required_str(embedding, "provider", "embedding.provider"),
-            model=_optional_str(embedding.get("model"), "embedding.model"),
+            model=_required_str(embedding, "model", "embedding.model"),
+            dimensions=_required_int(embedding, "dimensions", "embedding.dimensions"),
+            batch_size=_required_int(embedding, "batch_size", "embedding.batch_size"),
+            cache_dir=Path(_required_str(embedding, "cache_dir", "embedding.cache_dir")),
         ),
         splitter=SplitterSettings(
             provider=_required_str(splitter, "provider", "splitter.provider"),
@@ -189,6 +205,9 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
             backend=_required_str(vector_store, "backend", "vector_store.backend"),
             persist_path=Path(
                 _required_str(vector_store, "persist_path", "vector_store.persist_path")
+            ),
+            collection_name=_required_str(
+                vector_store, "collection_name", "vector_store.collection_name"
             ),
         ),
         retrieval=RetrievalSettings(

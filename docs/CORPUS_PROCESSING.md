@@ -49,15 +49,48 @@ Use `--force` after intentionally changing preprocessing or chunk settings. Imag
 off by default for the initial text pass; use `--extract-images` only for a targeted corpus run
 until repeated logos, icons, and screenshots can be classified and deduplicated.
 
-## Boundary with Day 3 indexing
+## Build the retrieval indexes
 
-These JSON artifacts are auditable staging data, not the retrieval index. Day 3 continues with:
+The JSON artifacts are auditable staging data, not the retrieval index. Build both retrieval
+indexes with:
 
-1. dense embedding generation;
-2. Chroma vector persistence;
-3. BM25 sparse index persistence;
-4. a complete `ingest` pipeline and CLI;
-5. index-aware incremental status in `data/db/ingestion_history.db`.
+```powershell
+.\.venv\Scripts\python.exe scripts\ingest.py
+```
 
-Keeping preprocessing and indexing history in separate SQLite files prevents a text-only run
-from being mistaken for a fully indexed document.
+The current offline baseline trains a corpus-specific TF-IDF + truncated-SVD (LSA) model. It
+produces normalized 256-dimensional dense vectors without sending proprietary text to an API.
+The embedding provider and vector store are selected through `config/settings.yaml`, so this
+baseline can later be replaced by a multilingual Sentence Transformer or hosted embedding
+model without changing the indexing pipeline.
+
+Private outputs:
+
+- `data/models/local_lsa/tfidf-svd-256.joblib`: fitted embedding model;
+- `data/db/chroma/`: persistent Chroma collection `wms_config_chunks`;
+- `data/db/bm25/index.json`: persistent Okapi BM25 index.
+
+Verified baseline on 2026-08-23:
+
+- dense vectors in Chroma: 1,274;
+- documents in BM25: 1,274;
+- first indexing run: 1,274 upserted;
+- unchanged second run: 1,274 skipped, 0 upserted.
+
+Use `--force` after intentionally changing embedding behavior. Index freshness is determined by
+the embedding-model signature and each chunk's SHA256 content hash. Metadata stored with each
+vector includes its process code, domain, document type, source path, and page range.
+
+## Diagnostic vector query
+
+```powershell
+.\.venv\Scripts\python.exe scripts\query_vector.py `
+  "How does directed putaway choose a storage location?" `
+  --process-code SWL.I.11.01 `
+  --top-k 3
+```
+
+The diagnostic command queries Chroma directly and supports `--domain`, `--document-type`, and
+`--process-code` filters. It is not the final question-answering path. Day 4 combines dense and
+BM25 candidates with RRF so exact WMS identifiers and natural-language similarity complement
+each other.

@@ -6,6 +6,7 @@ from ingestion.corpus_manifest import (
     CorpusManifestSummary,
 )
 from ingestion.corpus_processor import CorpusProcessingReport, CorpusProcessor
+from ingestion.pipeline import IndexingPipeline, IndexingReport, load_preprocessed_chunks
 
 __all__ = [
     "CorpusManifestBuilder",
@@ -13,4 +14,7 @@ __all__ = [
     "CorpusManifestSummary",
     "CorpusProcessingReport",
     "CorpusProcessor",
+    "IndexingPipeline",
+    "IndexingReport",
+    "load_preprocessed_chunks",
 ]

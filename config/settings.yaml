@@ -7,8 +7,11 @@ llm:
   model: null
 
 embedding:
-  provider: disabled
-  model: null
+  provider: local_lsa
+  model: tfidf-svd
+  dimensions: 256
+  batch_size: 32
+  cache_dir: data/models/local_lsa
 
 splitter:
   provider: recursive
@@ -16,8 +19,9 @@ splitter:
   chunk_overlap: 150
 
 vector_store:
-  backend: memory
-  persist_path: data/db/vector_store
+  backend: chroma
+  persist_path: data/db/chroma
+  collection_name: wms_config_chunks
 
 retrieval:
   sparse_backend: bm25

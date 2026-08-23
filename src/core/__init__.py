@@ -1,6 +1,7 @@
 """Core WMS configuration knowledge domain."""
 
 from core.settings import (
+    EmbeddingSettings,
     Settings,
     SettingsError,
     SplitterSettings,
@@ -13,6 +14,7 @@ __all__ = [
     "Chunk",
     "ChunkRecord",
     "Document",
+    "EmbeddingSettings",
     "Settings",
     "SettingsError",
     "SplitterSettings",

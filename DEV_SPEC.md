@@ -190,7 +190,7 @@
 	> |---------|-----------|------|---------------|
 	> | **文件完整性检查** | `data/db/ingestion_history.db` | 记录已处理文件的 SHA256 哈希，实现增量摄取 | `file_hash`, `status`, `processed_at` |
 	> | **图片索引映射** | `data/db/image_index.db` | 记录 image_id → 文件路径映射，支持图片检索与引用 | `image_id`, `file_path`, `collection` |
-	> | **BM25 索引元数据** | `data/db/bm25/` | 存储倒排索引和 IDF 统计信息（未来可扩展用 SQLite） | 当前使用 pickle，可迁移至 SQLite |
+	> | **BM25 索引元数据** | `data/db/bm25/` | 存储倒排索引和 IDF 统计信息（未来可扩展用 SQLite） | 当前使用 JSON，可迁移至 SQLite |
 	> 
 	> **设计优势**：
 	> - **零依赖部署**：无需安装 MySQL/PostgreSQL 等数据库服务，`pip install` 即可运行
@@ -1538,7 +1538,7 @@ smart-knowledge-hub/
 │       ├── chroma/                      # Chroma 向量库目录
 │       │                                # 存储 Dense Vector、Sparse Vector 与 Chunk Metadata
 │       └── bm25/                        # BM25 索引目录
-│                                        # 存储倒排索引与 IDF 统计信息（当前使用 pickle）
+│                                        # 存储倒排索引与 IDF 统计信息（当前使用 JSON）
 │
 ├── cache/                               # 缓存目录
 │   ├── embeddings/                      # Embedding 缓存 (按内容哈希)
@@ -1927,9 +1927,9 @@ dashboard:
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
 | B1 | LLM 抽象接口与工厂 | [ ] | | |
-| B2 | Embedding 抽象接口与工厂 | [ ] | | |
+| B2 | Embedding 抽象接口与工厂 | [x] | 2026-08-23 | BaseEmbedding、工厂与本地 LSA Provider |
 | B3 | Splitter 抽象接口与工厂 | [x] | 2026-08-23 | BaseSplitter、注册式工厂与配置路由 |
-| B4 | VectorStore 抽象接口与工厂 | [ ] | | |
+| B4 | VectorStore 抽象接口与工厂 | [x] | 2026-08-23 | BaseVectorStore、配置工厂与显式向量契约 |
 | B5 | Reranker 抽象接口与工厂（含 None 回退） | [ ] | | |
 | B6 | Evaluator 抽象接口与工厂 | [ ] | | |
 | B7.1 | OpenAI-Compatible LLM 实现 | [ ] | | |
@@ -1937,7 +1937,7 @@ dashboard:
 | B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | |
 | B7.4 | Ollama Embedding 实现 | [ ] | | |
 | B7.5 | Recursive Splitter 默认实现 | [x] | 2026-08-23 | 确定性重叠切片并保持 Markdown 代码块完整 |
-| B7.6 | ChromaStore 默认实现 | [ ] | | |
+| B7.6 | ChromaStore 默认实现 | [x] | 2026-08-23 | 持久化 upsert/query、metadata filter 与 roundtrip 测试 |
 | B7.7 | LLM Reranker 实现 | [ ] | | |
 | B7.8 | Cross-Encoder Reranker 实现 | [ ] | | |
 | B8 | Vision LLM 抽象接口与工厂集成 | [ ] | | |
@@ -1954,14 +1954,14 @@ dashboard:
 | C5 | Transform 基类 + ChunkRefiner | [ ] | | |
 | C6 | MetadataEnricher | [ ] | | |
 | C7 | ImageCaptioner | [ ] | | |
-| C8 | DenseEncoder | [ ] | | |
-| C9 | SparseEncoder | [ ] | | |
-| C10 | BatchProcessor | [ ] | | |
-| C11 | BM25Indexer（倒排索引+IDF计算） | [ ] | | |
-| C12 | VectorUpserter（幂等upsert） | [ ] | | |
+| C8 | DenseEncoder | [x] | 2026-08-23 | 正文与 WMS 业务元数据上下文编码、模型签名与内容哈希 |
+| C9 | SparseEncoder | [x] | 2026-08-23 | 确定性中英文/标识符分词与词频统计 |
+| C10 | BatchProcessor | [x] | 2026-08-23 | 稳定批处理与进度回调 |
+| C11 | BM25Indexer（倒排索引+IDF计算） | [x] | 2026-08-23 | Okapi BM25 倒排索引、持久化、加载与查询 |
+| C12 | VectorUpserter（幂等upsert） | [x] | 2026-08-23 | 分批 Chroma upsert；稳定 ID 保证幂等 |
 | C13 | ImageStorage（图片存储+SQLite索引） | [ ] | | |
-| C14 | Pipeline 编排（MVP 串起来） | [~] | 2026-08-23 | 真实语料 manifest/load/split 已串联；encode/store 待第三天完成 |
-| C15 | 脚本入口 ingest.py | [~] | 2026-08-23 | corpus manifest/process CLI 已可用；完整索引 CLI 待第三天完成 |
+| C14 | Pipeline 编排（MVP 串起来） | [x] | 2026-08-23 | 预处理产物→fit→dense/sparse encode→Chroma/BM25 已串联 |
+| C15 | 脚本入口 ingest.py | [x] | 2026-08-23 | 真实 1,274 Chunk 入库；二次运行全部增量跳过 |
 
 #### 阶段 D：Retrieval MVP
 
@@ -2034,15 +2034,15 @@ dashboard:
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
-| 阶段 B | 16 | 2 | 13% |
-| 阶段 C | 15 | 4 | 27% |
+| 阶段 B | 16 | 5 | 31% |
+| 阶段 C | 15 | 11 | 73% |
 | 阶段 D | 7 | 0 | 0% |
 | 阶段 E | 6 | 0 | 0% |
 | 阶段 F | 5 | 0 | 0% |
 | 阶段 G | 6 | 0 | 0% |
 | 阶段 H | 5 | 0 | 0% |
 | 阶段 I | 5 | 0 | 0% |
-| **总计** | **68** | **9** | **13.2%** |
+| **总计** | **68** | **19** | **27.9%** |
 
 
 ---
