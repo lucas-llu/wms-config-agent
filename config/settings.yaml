@@ -4,25 +4,33 @@ project:
 
 llm:
   provider: disabled
+  model: null
 
 embedding:
   provider: disabled
+  model: null
 
 vector_store:
-  provider: chroma
-  persist_directory: data/db/chroma
+  backend: memory
+  persist_path: data/db/vector_store
 
 retrieval:
-  mode: hybrid
-  top_k: 5
+  sparse_backend: bm25
+  fusion_algorithm: rrf
+  top_k_dense: 20
+  top_k_sparse: 20
+  top_k_final: 5
 
 rerank:
-  provider: none
+  backend: none
+  model: null
+  top_m: 30
 
 evaluation:
-  provider: custom
+  backends:
+    - custom
+  golden_test_set: tests/fixtures/golden_test_set.json
 
 observability:
   enabled: true
   trace_file: logs/traces.jsonl
-
