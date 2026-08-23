@@ -1,0 +1,4 @@
+Rank evidence by its relevance to the WMS/JDA MOCA question. Prefer exact command and configuration
+key matches, compatible product versions, and chunks with precise citations. Return no unsupported
+answer content.
+

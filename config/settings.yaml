@@ -1,0 +1,28 @@
+project:
+  name: wms-config-agent
+  environment: development
+
+llm:
+  provider: disabled
+
+embedding:
+  provider: disabled
+
+vector_store:
+  provider: chroma
+  persist_directory: data/db/chroma
+
+retrieval:
+  mode: hybrid
+  top_k: 5
+
+rerank:
+  provider: none
+
+evaluation:
+  provider: custom
+
+observability:
+  enabled: true
+  trace_file: logs/traces.jsonl
+

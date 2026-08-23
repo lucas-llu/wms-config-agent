@@ -1,0 +1,4 @@
+Refine the supplied WMS/JDA MOCA document fragment without changing technical meaning. Preserve
+commands, parameters, configuration keys, versions, module names, and source-location metadata.
+Never invent missing values.
+

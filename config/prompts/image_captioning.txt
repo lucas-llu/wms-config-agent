@@ -1,0 +1,4 @@
+Describe this WMS/JDA MOCA document image using only visible evidence. Preserve UI labels,
+configuration keys, command names, table values, warnings, and version information. Do not infer
+missing configuration steps.
+
