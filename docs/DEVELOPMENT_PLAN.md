@@ -69,3 +69,18 @@ stateless MCP compatibility; three read-only WMS tools; safe text/image content 
 query and ingestion JSONL timing traces; a sanitized golden retrieval set; local host setup
 documentation; and a subprocess E2E test covering handshake, discovery, cited retrieval,
 trace persistence, and protocol stdout isolation.
+
+## Day 5.5 — Retrieval Benchmark V1 (2026-08-24)
+
+Status: completed on 2026-08-24.
+
+- Define a strict benchmark schema and human-labeling policy.
+- Separate a committed sanitized smoke set from the ignored private real-corpus benchmark.
+- Measure Hit@1/3/5, MRR@5, refusal/evidence accuracy, and P50/P95 latency.
+- Freeze the current retrieval baseline and enforce regression floors from a CLI.
+- Exit criteria: the 40-case private set and four-case public set run reproducibly, produce
+  sanitized reports, and pass their declared regression gates.
+
+Delivered: 40 private cases across exact-code, bilingual semantic, document-type, and refusal
+categories; a SHA-256 fingerprinted baseline report; four preserved bad cases for Day 6;
+schema/metric unit tests; and `scripts/run_benchmark.py` for repeatable local evaluation.

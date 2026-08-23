@@ -2013,7 +2013,7 @@ dashboard:
 |---------|---------|------|---------|------|
 | H1 | RagasEvaluator 实现 | [ ] | | |
 | H2 | CompositeEvaluator 实现 | [ ] | | |
-| H3 | EvalRunner + Golden Test Set | [ ] | | |
+| H3 | EvalRunner + Golden Test Set | [~] | 2026-08-24 | Day 5.5 已完成 Benchmark V1、检索指标与回归门槛；待接入组合 Evaluator |
 | H4 | 评估面板页面 | [ ] | | |
 | H5 | Recall 回归测试（E2E） | [ ] | | |
 
