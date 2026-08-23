@@ -59,6 +59,9 @@ class RetrievalSettings:
     top_k_dense: int
     top_k_sparse: int
     top_k_final: int
+    rrf_k: int
+    max_chunks_per_document: int
+    min_fused_score: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +143,10 @@ def validate_settings(settings: Settings) -> None:
         "retrieval.top_k_dense": settings.retrieval.top_k_dense,
         "retrieval.top_k_sparse": settings.retrieval.top_k_sparse,
         "retrieval.top_k_final": settings.retrieval.top_k_final,
+        "retrieval.rrf_k": settings.retrieval.rrf_k,
+        "retrieval.max_chunks_per_document": (
+            settings.retrieval.max_chunks_per_document
+        ),
         "rerank.top_m": settings.rerank.top_m,
     }
     for field_path, value in positive_values.items():
@@ -159,6 +166,8 @@ def validate_settings(settings: Settings) -> None:
         raise SettingsError(
             "Setting retrieval.top_k_final cannot exceed the total retrieval candidate count"
         )
+    if settings.retrieval.min_fused_score < 0:
+        raise SettingsError("Setting retrieval.min_fused_score must be non-negative")
     if not settings.evaluation.backends:
         raise SettingsError("Missing required setting: evaluation.backends")
 
@@ -222,6 +231,15 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
                 retrieval, "top_k_sparse", "retrieval.top_k_sparse"
             ),
             top_k_final=_required_int(retrieval, "top_k_final", "retrieval.top_k_final"),
+            rrf_k=_required_int(retrieval, "rrf_k", "retrieval.rrf_k"),
+            max_chunks_per_document=_required_int(
+                retrieval,
+                "max_chunks_per_document",
+                "retrieval.max_chunks_per_document",
+            ),
+            min_fused_score=_required_number(
+                retrieval, "min_fused_score", "retrieval.min_fused_score"
+            ),
         ),
         rerank=RerankSettings(
             backend=_required_str(rerank, "backend", "rerank.backend"),
@@ -277,6 +295,13 @@ def _required_bool(section: dict[str, Any], key: str, field_path: str) -> bool:
     if not isinstance(value, bool):
         raise SettingsError(f"Setting {field_path} must be a boolean")
     return value
+
+
+def _required_number(section: dict[str, Any], key: str, field_path: str) -> float:
+    value = _required(section, key, field_path)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise SettingsError(f"Setting {field_path} must be a number")
+    return float(value)
 
 
 def _optional_str(value: Any, field_path: str) -> str | None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,10 @@ class ChromaStore(BaseVectorStore):
         del trace
         if not vector:
             raise ValueError("query vector must not be empty")
+        if not all(math.isfinite(value) for value in vector):
+            raise ValueError("query vector must contain only finite values")
+        if math.sqrt(sum(value * value for value in vector)) <= 1e-12:
+            return []
         if top_k <= 0:
             raise ValueError("top_k must be greater than 0")
         if self.count() == 0:

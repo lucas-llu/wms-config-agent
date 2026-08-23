@@ -29,6 +29,9 @@ retrieval:
   top_k_dense: 20
   top_k_sparse: 20
   top_k_final: 5
+  rrf_k: 60
+  max_chunks_per_document: 2
+  min_fused_score: 0.02
 
 rerank:
   backend: none

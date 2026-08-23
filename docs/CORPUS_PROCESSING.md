@@ -91,6 +91,6 @@ vector includes its process code, domain, document type, source path, and page r
 ```
 
 The diagnostic command queries Chroma directly and supports `--domain`, `--document-type`, and
-`--process-code` filters. It is not the final question-answering path. Day 4 combines dense and
-BM25 candidates with RRF so exact WMS identifiers and natural-language similarity complement
-each other.
+`--process-code` filters. For normal use, run the hybrid query command documented in
+`docs/QUERYING.md`; it combines dense and BM25 candidates with RRF so exact WMS identifiers and
+natural-language similarity complement each other.

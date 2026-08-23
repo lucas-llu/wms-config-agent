@@ -8,7 +8,7 @@ from core.settings import (
     load_settings,
     validate_settings,
 )
-from core.types import Chunk, ChunkRecord, Document
+from core.types import Chunk, ChunkRecord, Document, RetrievalResult
 
 __all__ = [
     "Chunk",
@@ -18,6 +18,7 @@ __all__ = [
     "Settings",
     "SettingsError",
     "SplitterSettings",
+    "RetrievalResult",
     "load_settings",
     "validate_settings",
 ]

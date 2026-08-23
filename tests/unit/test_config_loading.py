@@ -16,6 +16,8 @@ def test_load_project_settings() -> None:
     assert settings.vector_store.backend == "chroma"
     assert settings.vector_store.collection_name == "wms_config_chunks"
     assert settings.retrieval.top_k_final == 5
+    assert settings.retrieval.rrf_k == 60
+    assert settings.retrieval.max_chunks_per_document == 2
 
 
 def test_missing_required_field_has_readable_path(tmp_path: Path) -> None:
@@ -29,7 +31,8 @@ embedding:
 splitter: {provider: recursive, chunk_size: 1000, chunk_overlap: 100}
 vector_store: {backend: memory, persist_path: data/db, collection_name: test}
 retrieval:
-  {sparse_backend: bm25, fusion_algorithm: rrf, top_k_dense: 2, top_k_sparse: 2, top_k_final: 2}
+  {sparse_backend: bm25, fusion_algorithm: rrf, top_k_dense: 2, top_k_sparse: 2,
+   top_k_final: 2, rrf_k: 60, max_chunks_per_document: 2, min_fused_score: 0.02}
 rerank: {backend: none, model: null, top_m: 2}
 evaluation: {backends: [custom], golden_test_set: tests/fixtures/golden_test_set.json}
 observability: {enabled: true, trace_file: logs/traces.jsonl}

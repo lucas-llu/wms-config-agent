@@ -40,11 +40,19 @@ skipped all 1,274 dense records, and diagnostic vector queries returned source/p
 
 ## Day 4 — Hybrid retrieval and citation-first answers (2026-08-26)
 
+Status: completed early on 2026-08-24.
+
 - Implement query normalization and structured WMS filters.
 - Implement dense/sparse retrieval, reciprocal-rank fusion, and rerank fallback.
 - Build answers from retrieved evidence with source, page/section, and version metadata.
 - Refuse unsupported answers when evidence is insufficient.
 - Exit criteria: representative configuration questions return deterministic cited evidence.
+
+Delivered: concurrent dense/BM25 retrieval, rule-based Chinese WMS query expansion, inferred
+configuration/process filters, RRF fusion, document diversity, safe reranker fallback, cited
+extractive responses, and explicit refusal for unsupported queries. Real-corpus regression
+reached Hit@3 100% on 88 configuration documents, 12 bilingual semantic questions, and Hit@1
+100% on all 103 process-code lookups.
 
 ## Day 5 — MCP delivery and end-to-end acceptance (2026-08-27)
 

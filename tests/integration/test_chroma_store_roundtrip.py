@@ -36,6 +36,7 @@ def test_chroma_upsert_query_filter_and_get(tmp_path) -> None:
 
     assert store.count() == 3
     assert store.query([1.0, 0.0, 0.0], top_k=1)[0]["id"] == "putaway"
+    assert store.query([0.0, 0.0, 0.0], top_k=3) == []
     filtered = store.query(
         [0.0, 1.0, 0.0], top_k=3, filters={"domain": "Inbound"}
     )

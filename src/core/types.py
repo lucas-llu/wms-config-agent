@@ -66,6 +66,23 @@ class ChunkRecord(SerializableContract):
         _validate_metadata(self.metadata)
 
 
+@dataclass(slots=True)
+class RetrievalResult(SerializableContract):
+    """A normalized retrieval hit independent of its source backend."""
+
+    chunk_id: str
+    score: float
+    text: str
+    metadata: Metadata
+    retrieval_sources: tuple[str, ...] = ()
+    source_scores: dict[str, float] = field(default_factory=dict)
+    source_ranks: dict[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _validate_identity(self.chunk_id, "RetrievalResult.chunk_id")
+        _validate_metadata(self.metadata)
+
+
 def _validate_identity(value: str, field_path: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ContractError(f"{field_path} must be a non-empty string")
