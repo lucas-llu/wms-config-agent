@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from core.query_engine.dense_retriever import DenseRetriever
@@ -116,7 +116,8 @@ class HybridSearch:
 
         started = time.perf_counter()
         fused = self.fusion.fuse({"dense": dense, "sparse": sparse})
-        filtered = self._apply_metadata_filters(fused, processed.filters)
+        boosted = self._boost_metadata_matches(fused, processed)
+        filtered = self._apply_metadata_filters(boosted, processed.filters)
         diversified = self._diversify(filtered, final_count)
         self._record_stage(
             trace,
@@ -173,6 +174,52 @@ class HybridSearch:
             {"status": "ok", "result_count": len(results)},
         )
         return results
+
+    @staticmethod
+    def _boost_metadata_matches(
+        candidates: list[RetrievalResult], query: ProcessedQuery
+    ) -> list[RetrievalResult]:
+        """Use trusted title metadata to disambiguate closely related WMS documents."""
+        query_terms = {
+            HybridSearch._normalize_metadata_term(term)
+            for term in query.specific_terms
+            if len(term) >= 2 and term.isascii()
+        }
+        query_terms.discard("")
+        if not query_terms:
+            return candidates
+        boosted: list[RetrievalResult] = []
+        for candidate in candidates:
+            title = str(candidate.metadata.get("title", ""))
+            title_terms = {
+                HybridSearch._normalize_metadata_term(term.lower())
+                for term in _SEARCH_TOKEN.findall(title)
+                if len(term) >= 2 and term.isascii()
+            }
+            match_count = len(query_terms.intersection(title_terms))
+            bonus = min(match_count * 0.006, 0.024)
+            if title_terms and title_terms.issubset(query_terms):
+                bonus += 0.008
+            if not bonus:
+                boosted.append(candidate)
+                continue
+            source_scores = dict(candidate.source_scores)
+            source_scores["metadata_boost"] = bonus
+            boosted.append(
+                replace(
+                    candidate,
+                    score=candidate.score + bonus,
+                    source_scores=source_scores,
+                )
+            )
+        return sorted(boosted, key=lambda result: (-result.score, result.chunk_id))
+
+    @staticmethod
+    def _normalize_metadata_term(term: str) -> str:
+        normalized = term.lower()
+        if len(normalized) > 4 and normalized.endswith("s"):
+            return normalized[:-1]
+        return normalized
 
     @staticmethod
     def _record_stage(

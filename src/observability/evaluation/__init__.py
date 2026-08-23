@@ -1,5 +1,10 @@
 """RAG evaluation orchestration."""
 
+from observability.evaluation.baseline_comparator import (
+    BaselineComparator,
+    BaselineComparisonError,
+    BenchmarkComparison,
+)
 from observability.evaluation.benchmark import (
     BenchmarkCase,
     BenchmarkDataset,
@@ -19,5 +24,8 @@ __all__ = [
     "BenchmarkExpectation",
     "BenchmarkReport",
     "BenchmarkValidationError",
+    "BaselineComparator",
+    "BaselineComparisonError",
+    "BenchmarkComparison",
     "RetrievalBenchmarkRunner",
 ]

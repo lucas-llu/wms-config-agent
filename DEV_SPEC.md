@@ -1931,7 +1931,7 @@ dashboard:
 | B3 | Splitter 抽象接口与工厂 | [x] | 2026-08-23 | BaseSplitter、注册式工厂与配置路由 |
 | B4 | VectorStore 抽象接口与工厂 | [x] | 2026-08-23 | BaseVectorStore、配置工厂与显式向量契约 |
 | B5 | Reranker 抽象接口与工厂（含 None 回退） | [x] | 2026-08-24 | BaseReranker、None 后端、工厂与安全回退 |
-| B6 | Evaluator 抽象接口与工厂 | [ ] | | |
+| B6 | Evaluator 抽象接口与工厂 | [x] | 2026-08-24 | BaseEvaluator、Threshold/Composite 实现与配置工厂 |
 | B7.1 | OpenAI-Compatible LLM 实现 | [ ] | | |
 | B7.2 | Ollama LLM 实现 | [ ] | | |
 | B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | |
@@ -1967,11 +1967,11 @@ dashboard:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| D1 | QueryProcessor（关键词提取 + filters） | [x] | 2026-08-24 | 中英文 WMS 扩展、配置/流程编码/业务域过滤推断 |
+| D1 | QueryProcessor（关键词提取 + filters） | [x] | 2026-08-24 | 中英文 WMS 扩展、配置/流程编码/业务域过滤推断；Day 6 补充领域歧义词 |
 | D2 | DenseRetriever（调用 VectorStore.query） | [x] | 2026-08-24 | Chroma 语义召回、统一结果契约与零向量保护 |
 | D3 | SparseRetriever（BM25 查询） | [x] | 2026-08-24 | BM25 查询、Chroma 内容补全与 metadata 后置过滤 |
 | D4 | RRF Fusion | [x] | 2026-08-24 | 可配置 RRF、确定性排序与双路诊断分数 |
-| D5 | HybridSearch 编排 | [x] | 2026-08-24 | 双路并行、单路降级、过滤、文档多样性与证据判定 |
+| D5 | HybridSearch 编排 | [x] | 2026-08-24 | 双路并行、降级、过滤、多样性、证据判定与可信标题 metadata boost |
 | D6 | Reranker（Core 层编排 + Fallback） | [x] | 2026-08-24 | None 默认后端；异常/输出契约失败自动回退 |
 | D7 | 脚本入口 query.py（查询可用） | [x] | 2026-08-24 | 格式化/JSON/verbose 输出与引用优先拒答 |
 
@@ -2012,10 +2012,10 @@ dashboard:
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
 | H1 | RagasEvaluator 实现 | [ ] | | |
-| H2 | CompositeEvaluator 实现 | [ ] | | |
-| H3 | EvalRunner + Golden Test Set | [~] | 2026-08-24 | Day 5.5 已完成 Benchmark V1、检索指标与回归门槛；待接入组合 Evaluator |
+| H2 | CompositeEvaluator 实现 | [x] | 2026-08-24 | 多 Evaluator 并行、结果汇总与单 Provider 故障隔离 |
+| H3 | EvalRunner + Golden Test Set | [x] | 2026-08-24 | Benchmark Runner、分路相关排名、Baseline 对比与 CLI 回归门槛 |
 | H4 | 评估面板页面 | [ ] | | |
-| H5 | Recall 回归测试（E2E） | [ ] | | |
+| H5 | Recall 回归测试（E2E） | [x] | 2026-08-24 | ingest→Dense/BM25→Hybrid→Benchmark 的脱敏端到端阈值测试 |
 
 #### 阶段 I：端到端验收与文档收口
 
@@ -2034,15 +2034,15 @@ dashboard:
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
-| 阶段 B | 16 | 6 | 38% |
+| 阶段 B | 16 | 7 | 44% |
 | 阶段 C | 15 | 11 | 73% |
 | 阶段 D | 7 | 7 | 100% |
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
 | 阶段 G | 6 | 0 | 0% |
-| 阶段 H | 5 | 0 | 0% |
+| 阶段 H | 5 | 3 | 60% |
 | 阶段 I | 5 | 1 | 20% |
-| **总计** | **68** | **39** | **57.4%** |
+| **总计** | **68** | **43** | **63.2%** |
 
 
 ---

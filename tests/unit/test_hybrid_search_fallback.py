@@ -51,3 +51,25 @@ def test_hybrid_search_degrades_to_working_retriever() -> None:
     assert [result.chunk_id for result in outcome.results] == ["putaway"]
     assert outcome.failures == {"dense": "RuntimeError: dense unavailable"}
     assert outcome.evidence_sufficient is True
+
+
+def test_metadata_title_boost_disambiguates_related_documents() -> None:
+    processed = QueryProcessor().process("RF cycle count settings")
+    generic = RetrievalResult(
+        chunk_id="abc-count",
+        score=0.032,
+        text="count settings",
+        metadata={"source_path": "abc.pdf", "title": "RF Based ABC Count"},
+    )
+    exact = RetrievalResult(
+        chunk_id="cycle-count",
+        score=0.020,
+        text="cycle count settings",
+        metadata={"source_path": "cycle.pdf", "title": "RF Based Cycle Count"},
+    )
+
+    boosted = HybridSearch._boost_metadata_matches([generic, exact], processed)
+
+    assert [result.chunk_id for result in boosted] == ["cycle-count", "abc-count"]
+    assert boosted[0].source_scores["metadata_boost"] == 0.032
+    assert exact.score == 0.020

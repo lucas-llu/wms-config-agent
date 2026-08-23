@@ -9,7 +9,7 @@ from typing import Any
 _TOKEN = re.compile(r"[A-Za-z0-9_.$-]{2,}|[\u4e00-\u9fff]")
 _PROCESS_CODE = re.compile(r"\bSWL\.[IOSV]\.\d{2}\.\d{2}\b", re.IGNORECASE)
 _CONFIG_INTENT = re.compile(
-    r"\b(configure|configuration|settings?|setup)\b|配置|设置",
+    r"\b(configur(?:e|ed|ing|ation)|settings?|setup)\b|配置|设置",
     re.IGNORECASE,
 )
 
@@ -18,13 +18,19 @@ _EXPANSIONS: tuple[tuple[str, str], ...] = (
     ("卡车", "truck transport equipment"),
     ("月台", "dock door"),
     ("上架", "putaway"),
+    ("定向", "directed"),
+    ("整托", "full pallet"),
     ("库位", "storage location"),
     ("收货", "receiving inbound"),
     ("波次", "wave"),
+    ("补货", "replenishment"),
+    ("巡回", "tour"),
+    ("移动区域", "movement zone"),
     ("分配", "allocation allocate"),
     ("订单", "order"),
     ("移动库存", "inventory move"),
     ("库存移动", "inventory move"),
+    ("库存调整", "inventory adjustment"),
     ("浏览器", "Web UI"),
     ("循环盘点", "cycle count"),
     ("盘点", "count inventory"),
@@ -37,10 +43,15 @@ _EXPANSIONS: tuple[tuple[str, str], ...] = (
     ("暂存区", "staging lane"),
     ("装载", "load"),
     ("工作单", "work order"),
+    ("工作单创建", "work order creation"),
+    ("增值服务", "value added service VAS"),
     ("配置", "configuration settings"),
     ("browser", "Web UI"),
     ("without storage", "direct cross dock"),
     ("storage location", "putaway location"),
+    ("cycle count", "RF Based Cycle Count"),
+    ("inventory adjustment", "RF Inventory Adjustment"),
+    ("replenishment", "RF replenishment tour"),
 )
 
 _FILTER_ALIASES = {

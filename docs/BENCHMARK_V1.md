@@ -97,3 +97,36 @@ Run the committed smoke set:
 The command exits with status 1 only when `--enforce-thresholds` is supplied and at least one
 configured gate fails. Each report records its dataset SHA-256 fingerprint, Git revision,
 retrieval providers, aggregate/category metrics, failed cases, and sanitized ranked results.
+
+## Compare a candidate with Baseline V1
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_benchmark.py `
+  --dataset data\evaluation\benchmark_v1.private.json `
+  --baseline data\evaluation\baseline_v1.json `
+  --output data\evaluation\candidate.json `
+  --enforce-thresholds `
+  --fail-on-regression
+```
+
+Comparison is rejected when dataset fingerprints or case IDs differ. Quality regression is
+reported separately from per-case fixes and failures. Dense, BM25, raw fusion, and final
+relevant ranks are retained for diagnosing whether a miss came from recall or final ranking.
+
+## Day 6 candidate result
+
+After bilingual domain expansion, broader configuration-intent detection, and deterministic
+trusted-title metadata boosting, the same 40-case dataset produced:
+
+| Metric | Baseline V1 | Day 6 candidate | Delta |
+|---|---:|---:|---:|
+| Hit@1 | 72.22% | 100% | +27.78 pp |
+| Hit@3 | 86.11% | 100% | +13.89 pp |
+| Hit@5 | 88.89% | 100% | +11.11 pp |
+| MRR@5 | 78.94% | 100% | +21.06 pp |
+| Refusal accuracy | 100% | 100% | 0 pp |
+| Evidence accuracy | 90% | 100% | +10 pp |
+
+All four known failures were fixed and no new failed case was introduced. These numbers
+describe this frozen dataset only; new human-reviewed holdout cases must be added as WMS
+coverage expands to reduce overfitting risk.

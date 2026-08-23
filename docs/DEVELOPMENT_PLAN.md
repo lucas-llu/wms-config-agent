@@ -84,3 +84,21 @@ Status: completed on 2026-08-24.
 Delivered: 40 private cases across exact-code, bilingual semantic, document-type, and refusal
 categories; a SHA-256 fingerprinted baseline report; four preserved bad cases for Day 6;
 schema/metric unit tests; and `scripts/run_benchmark.py` for repeatable local evaluation.
+
+## Day 6 — Evaluation loop and retrieval optimization (2026-08-24)
+
+Status: completed on 2026-08-24.
+
+- Add provider-neutral evaluator contracts, a configuration factory, local threshold checks,
+  and parallel composite evaluation with provider failure isolation.
+- Compare candidates with a fingerprint-matched frozen baseline and report metric deltas,
+  fixed cases, new failures, persistent failures, and rank changes.
+- Record relevant ranks separately for Dense, BM25, raw RRF fusion, and final results.
+- Use Benchmark V1 failures to improve bilingual WMS expansion, configuration intent
+  detection, and trusted document-title metadata ranking.
+- Exit criteria: all four known failures are fixed, no new benchmark failure is introduced,
+  refusal accuracy remains 100%, and the full automated suite passes.
+
+Delivered: all 40 private benchmark cases now pass. Hit@1/3/5 and MRR@5 reached 100%,
+refusal and evidence accuracy remained 100%, and the candidate comparison reports no quality
+regression. A sanitized ingest-to-benchmark E2E recall test now enforces the evaluation path.

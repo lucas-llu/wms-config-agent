@@ -10,6 +10,7 @@ from typing import Any
 
 from core.query_engine import HybridSearch, SafeReranker
 from core.types import RetrievalResult
+from libs.evaluator import BaseEvaluator, EvaluationRequest, ThresholdEvaluator
 from observability.evaluation.benchmark import BenchmarkCase, BenchmarkDataset
 
 
@@ -24,6 +25,9 @@ class BenchmarkCaseResult:
     elapsed_ms: float
     passed: bool
     top_results: tuple[dict[str, Any], ...]
+    relevant_ranks: dict[str, int | None]
+    retrieval_counts: dict[str, int]
+    retrieval_failures: dict[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +41,7 @@ class BenchmarkReport:
     category_metrics: dict[str, dict[str, float | int | None]]
     thresholds: dict[str, float]
     threshold_results: dict[str, bool]
+    evaluation: dict[str, Any]
     passed: bool
     cases: tuple[BenchmarkCaseResult, ...]
 
@@ -51,12 +56,14 @@ class RetrievalBenchmarkRunner:
         reranker: SafeReranker | None = None,
         *,
         top_k: int = 5,
+        evaluator: BaseEvaluator | None = None,
     ) -> None:
         if top_k < 5:
             raise ValueError("Benchmark top_k must be at least 5")
         self.hybrid_search = hybrid_search
         self.reranker = reranker
         self.top_k = top_k
+        self.evaluator = evaluator or ThresholdEvaluator()
 
     def run(self, dataset: BenchmarkDataset) -> BenchmarkReport:
         results = tuple(self._run_case(case) for case in dataset.test_cases)
@@ -68,7 +75,16 @@ class RetrievalBenchmarkRunner:
             )
             for category in categories
         }
-        threshold_results = self._check_thresholds(metrics, dataset.thresholds)
+        evaluation = self.evaluator.evaluate(
+            EvaluationRequest(
+                metrics=metrics,
+                thresholds=dataset.thresholds,
+                context={
+                    "dataset_name": dataset.name,
+                    "dataset_fingerprint": dataset.fingerprint,
+                },
+            )
+        )
         return BenchmarkReport(
             dataset_name=dataset.name,
             dataset_fingerprint=dataset.fingerprint,
@@ -78,8 +94,9 @@ class RetrievalBenchmarkRunner:
             metrics=metrics,
             category_metrics=category_metrics,
             thresholds=dataset.thresholds,
-            threshold_results=threshold_results,
-            passed=all(threshold_results.values()),
+            threshold_results=evaluation.checks,
+            evaluation=evaluation.to_dict(),
+            passed=evaluation.passed,
             cases=results,
         )
 
@@ -94,14 +111,13 @@ class RetrievalBenchmarkRunner:
             )
             outcome = replace(outcome, results=reranked.results)
         elapsed_ms = (time.perf_counter() - started) * 1000
-        rank = next(
-            (
-                index
-                for index, result in enumerate(outcome.results, start=1)
-                if self._is_relevant(case, result)
-            ),
-            None,
-        )
+        relevant_ranks = {
+            "dense": self._first_relevant_rank(case, outcome.dense_results),
+            "sparse": self._first_relevant_rank(case, outcome.sparse_results),
+            "fused": self._first_relevant_rank(case, outcome.fused_results),
+            "final": self._first_relevant_rank(case, outcome.results),
+        }
+        rank = relevant_ranks["final"]
         passed = (
             not outcome.evidence_sufficient
             if case.expected.should_refuse
@@ -117,6 +133,29 @@ class RetrievalBenchmarkRunner:
             elapsed_ms=round(elapsed_ms, 3),
             passed=passed,
             top_results=tuple(self._safe_result(result) for result in outcome.results),
+            relevant_ranks=relevant_ranks,
+            retrieval_counts={
+                "dense": len(outcome.dense_results),
+                "sparse": len(outcome.sparse_results),
+                "fused": len(outcome.fused_results),
+                "final": len(outcome.results),
+            },
+            retrieval_failures=dict(outcome.failures),
+        )
+
+    @classmethod
+    def _first_relevant_rank(
+        cls,
+        case: BenchmarkCase,
+        results: tuple[RetrievalResult, ...],
+    ) -> int | None:
+        return next(
+            (
+                index
+                for index, result in enumerate(results, start=1)
+                if cls._is_relevant(case, result)
+            ),
+            None,
         )
 
     @staticmethod
@@ -206,23 +245,6 @@ class RetrievalBenchmarkRunner:
             "p50_latency_ms": round(_percentile(elapsed, 0.50), 3) if elapsed else None,
             "p95_latency_ms": round(_percentile(elapsed, 0.95), 3) if elapsed else None,
         }
-
-    @staticmethod
-    def _check_thresholds(
-        metrics: dict[str, float | int | None], thresholds: dict[str, float]
-    ) -> dict[str, bool]:
-        results: dict[str, bool] = {}
-        for name, threshold in thresholds.items():
-            if name.endswith("_min"):
-                metric_name = name.removesuffix("_min")
-                value = metrics.get(metric_name)
-                results[name] = value is not None and float(value) >= threshold
-            elif name.endswith("_max"):
-                metric_name = name.removesuffix("_max")
-                value = metrics.get(metric_name)
-                results[name] = value is not None and float(value) <= threshold
-        return results
-
 
 def _percentile(values: list[float], percentile: float) -> float:
     if not values:
