@@ -30,6 +30,13 @@ class ProviderSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class SplitterSettings:
+    provider: str
+    chunk_size: int
+    chunk_overlap: int
+
+
+@dataclass(frozen=True, slots=True)
 class VectorStoreSettings:
     backend: str
     persist_path: Path
@@ -70,6 +77,7 @@ class Settings:
     project: ProjectSettings
     llm: ProviderSettings
     embedding: ProviderSettings
+    splitter: SplitterSettings
     vector_store: VectorStoreSettings
     retrieval: RetrievalSettings
     rerank: RerankSettings
@@ -104,6 +112,7 @@ def validate_settings(settings: Settings) -> None:
         "project.environment": settings.project.environment,
         "llm.provider": settings.llm.provider,
         "embedding.provider": settings.embedding.provider,
+        "splitter.provider": settings.splitter.provider,
         "vector_store.backend": settings.vector_store.backend,
         "retrieval.sparse_backend": settings.retrieval.sparse_backend,
         "retrieval.fusion_algorithm": settings.retrieval.fusion_algorithm,
@@ -114,6 +123,7 @@ def validate_settings(settings: Settings) -> None:
             raise SettingsError(f"Missing required setting: {field_path}")
 
     positive_values = {
+        "splitter.chunk_size": settings.splitter.chunk_size,
         "retrieval.top_k_dense": settings.retrieval.top_k_dense,
         "retrieval.top_k_sparse": settings.retrieval.top_k_sparse,
         "retrieval.top_k_final": settings.retrieval.top_k_final,
@@ -122,6 +132,13 @@ def validate_settings(settings: Settings) -> None:
     for field_path, value in positive_values.items():
         if value <= 0:
             raise SettingsError(f"Setting {field_path} must be greater than 0")
+
+    if settings.splitter.chunk_overlap < 0:
+        raise SettingsError("Setting splitter.chunk_overlap must be greater than or equal to 0")
+    if settings.splitter.chunk_overlap >= settings.splitter.chunk_size:
+        raise SettingsError(
+            "Setting splitter.chunk_overlap must be smaller than splitter.chunk_size"
+        )
 
     if settings.retrieval.top_k_final > (
         settings.retrieval.top_k_dense + settings.retrieval.top_k_sparse
@@ -137,6 +154,7 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
     project = _section(raw, "project")
     llm = _section(raw, "llm")
     embedding = _section(raw, "embedding")
+    splitter = _section(raw, "splitter")
     vector_store = _section(raw, "vector_store")
     retrieval = _section(raw, "retrieval")
     rerank = _section(raw, "rerank")
@@ -159,6 +177,13 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
         embedding=ProviderSettings(
             provider=_required_str(embedding, "provider", "embedding.provider"),
             model=_optional_str(embedding.get("model"), "embedding.model"),
+        ),
+        splitter=SplitterSettings(
+            provider=_required_str(splitter, "provider", "splitter.provider"),
+            chunk_size=_required_int(splitter, "chunk_size", "splitter.chunk_size"),
+            chunk_overlap=_required_int(
+                splitter, "chunk_overlap", "splitter.chunk_overlap"
+            ),
         ),
         vector_store=VectorStoreSettings(
             backend=_required_str(vector_store, "backend", "vector_store.backend"),

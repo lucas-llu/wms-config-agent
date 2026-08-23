@@ -1928,7 +1928,7 @@ dashboard:
 |---------|---------|------|---------|------|
 | B1 | LLM 抽象接口与工厂 | [ ] | | |
 | B2 | Embedding 抽象接口与工厂 | [ ] | | |
-| B3 | Splitter 抽象接口与工厂 | [ ] | | |
+| B3 | Splitter 抽象接口与工厂 | [x] | 2026-08-23 | BaseSplitter、注册式工厂与配置路由 |
 | B4 | VectorStore 抽象接口与工厂 | [ ] | | |
 | B5 | Reranker 抽象接口与工厂（含 None 回退） | [ ] | | |
 | B6 | Evaluator 抽象接口与工厂 | [ ] | | |
@@ -1936,7 +1936,7 @@ dashboard:
 | B7.2 | Ollama LLM 实现 | [ ] | | |
 | B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | |
 | B7.4 | Ollama Embedding 实现 | [ ] | | |
-| B7.5 | Recursive Splitter 默认实现 | [ ] | | |
+| B7.5 | Recursive Splitter 默认实现 | [x] | 2026-08-23 | 确定性重叠切片并保持 Markdown 代码块完整 |
 | B7.6 | ChromaStore 默认实现 | [ ] | | |
 | B7.7 | LLM Reranker 实现 | [ ] | | |
 | B7.8 | Cross-Encoder Reranker 实现 | [ ] | | |
@@ -1949,8 +1949,8 @@ dashboard:
 |---------|---------|------|---------|------|
 | C1 | 定义核心数据类型/契约（Document/Chunk/ChunkRecord） | [x] | 2026-08-23 | 可序列化契约与 source_path 校验 |
 | C2 | 文件完整性检查（SHA256） | [x] | 2026-08-23 | SQLite WAL、幂等状态与并发写入测试 |
-| C3 | Loader 抽象基类与 PDF Loader | [ ] | | |
-| C4 | Splitter 集成（调用 Libs） | [ ] | | |
+| C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-08-23 | PDF/Markdown/TXT；PDF 文本、页码与图片降级提取 |
+| C4 | Splitter 集成（调用 Libs） | [x] | 2026-08-23 | 稳定 Chunk ID、来源偏移、页码与图片引用分发 |
 | C5 | Transform 基类 + ChunkRefiner | [ ] | | |
 | C6 | MetadataEnricher | [ ] | | |
 | C7 | ImageCaptioner | [ ] | | |
@@ -2034,15 +2034,15 @@ dashboard:
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
-| 阶段 B | 16 | 0 | 0% |
-| 阶段 C | 15 | 2 | 13% |
+| 阶段 B | 16 | 2 | 13% |
+| 阶段 C | 15 | 4 | 27% |
 | 阶段 D | 7 | 0 | 0% |
 | 阶段 E | 6 | 0 | 0% |
 | 阶段 F | 5 | 0 | 0% |
 | 阶段 G | 6 | 0 | 0% |
 | 阶段 H | 5 | 0 | 0% |
 | 阶段 I | 5 | 0 | 0% |
-| **总计** | **68** | **5** | **7.4%** |
+| **总计** | **68** | **9** | **13.2%** |
 
 
 ---

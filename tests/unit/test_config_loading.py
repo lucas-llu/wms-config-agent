@@ -10,6 +10,7 @@ def test_load_project_settings() -> None:
 
     assert settings.project.name == "wms-config-agent"
     assert settings.embedding.provider == "disabled"
+    assert settings.splitter.chunk_size == 1000
     assert settings.vector_store.backend == "memory"
     assert settings.retrieval.top_k_final == 5
 
@@ -21,6 +22,7 @@ def test_missing_required_field_has_readable_path(tmp_path: Path) -> None:
 project: {name: test, environment: test}
 llm: {provider: disabled}
 embedding: {}
+splitter: {provider: recursive, chunk_size: 1000, chunk_overlap: 100}
 vector_store: {backend: memory, persist_path: data/db}
 retrieval:
   {sparse_backend: bm25, fusion_algorithm: rrf, top_k_dense: 2, top_k_sparse: 2, top_k_final: 2}

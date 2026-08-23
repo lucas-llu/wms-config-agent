@@ -5,6 +5,7 @@ description = "Citation-first WMS and JDA MOCA configuration knowledge agent"
 requires-python = ">=3.12"
 dependencies = [
     "PyYAML>=6.0.2,<7",
+    "pypdf[image]>=6.6,<7",
 ]
 
 [project.optional-dependencies]

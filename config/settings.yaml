@@ -10,6 +10,11 @@ embedding:
   provider: disabled
   model: null
 
+splitter:
+  provider: recursive
+  chunk_size: 1000
+  chunk_overlap: 150
+
 vector_store:
   backend: memory
   persist_path: data/db/vector_store

@@ -6,6 +6,8 @@ undocumented data. All document fixtures must be authorized and sanitized.
 
 ## Day 1 — Foundation and stable contracts (2026-08-23)
 
+Status: completed on 2026-08-23.
+
 - Add the pytest and linting baseline.
 - Load and validate typed YAML settings with readable field-level errors.
 - Define shared `Document`, `Chunk`, and `ChunkRecord` contracts.
@@ -13,6 +15,8 @@ undocumented data. All document fixtures must be authorized and sanitized.
 - Exit criteria: A2, A3, C1, and C2 tests pass without external services.
 
 ## Day 2 — Local document loading and chunking (2026-08-24)
+
+Status: completed early on 2026-08-23.
 
 - Define loader and splitter extension contracts.
 - Implement authorized PDF/Markdown/TXT loading with WMS source metadata.
