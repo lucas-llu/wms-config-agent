@@ -1960,8 +1960,8 @@ dashboard:
 | C11 | BM25Indexer（倒排索引+IDF计算） | [ ] | | |
 | C12 | VectorUpserter（幂等upsert） | [ ] | | |
 | C13 | ImageStorage（图片存储+SQLite索引） | [ ] | | |
-| C14 | Pipeline 编排（MVP 串起来） | [ ] | | |
-| C15 | 脚本入口 ingest.py | [ ] | | |
+| C14 | Pipeline 编排（MVP 串起来） | [~] | 2026-08-23 | 真实语料 manifest/load/split 已串联；encode/store 待第三天完成 |
+| C15 | 脚本入口 ingest.py | [~] | 2026-08-23 | corpus manifest/process CLI 已可用；完整索引 CLI 待第三天完成 |
 
 #### 阶段 D：Retrieval MVP
 

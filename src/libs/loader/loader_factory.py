@@ -14,11 +14,17 @@ class LoaderFactory:
 
     @staticmethod
     def create(
-        path: str | Path, *, image_output_dir: str | Path = "data/images"
+        path: str | Path,
+        *,
+        image_output_dir: str | Path = "data/images",
+        extract_images: bool = True,
     ) -> BaseLoader:
         suffix = Path(path).suffix.lower()
         if suffix == ".pdf":
-            return PdfLoader(image_output_dir=image_output_dir)
+            return PdfLoader(
+                image_output_dir=image_output_dir,
+                extract_images=extract_images,
+            )
         if suffix in TextLoader.allowed_extensions:
             return TextLoader()
         supported = ", ".join(sorted({".pdf", *TextLoader.allowed_extensions}))

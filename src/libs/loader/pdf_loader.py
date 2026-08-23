@@ -31,8 +31,14 @@ class PdfLoader(BaseLoader):
 
     allowed_extensions = {".pdf"}
 
-    def __init__(self, image_output_dir: str | Path = "data/images") -> None:
+    def __init__(
+        self,
+        image_output_dir: str | Path = "data/images",
+        *,
+        extract_images: bool = True,
+    ) -> None:
         self.image_output_dir = Path(image_output_dir)
+        self.extract_images = extract_images
 
     def load(self, path: str | Path, metadata: DomainMetadata | None = None) -> Document:
         file_path = self.validate_path(path, self.allowed_extensions)
@@ -45,11 +51,14 @@ class PdfLoader(BaseLoader):
 
         for page_number, page in enumerate(reader.pages, start=1):
             page_text = page.extract_text() or ""
-            placeholders, page_images = self._extract_page_images(
-                page=page,
-                page_number=page_number,
-                file_hash=file_hash,
-            )
+            placeholders: list[str] = []
+            page_images: list[dict[str, Any]] = []
+            if self.extract_images:
+                placeholders, page_images = self._extract_page_images(
+                    page=page,
+                    page_number=page_number,
+                    file_hash=file_hash,
+                )
             page_content = page_text.strip()
             if placeholders:
                 page_content = "\n".join(part for part in (page_content, *placeholders) if part)

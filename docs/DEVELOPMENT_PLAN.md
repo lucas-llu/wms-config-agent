@@ -26,6 +26,8 @@ Status: completed early on 2026-08-23.
 
 ## Day 3 — Offline indexing and ingestion pipeline (2026-08-25)
 
+Status: in progress; private corpus manifest and preprocessing completed on 2026-08-23.
+
 - Implement a local embedding provider and pluggable provider factories.
 - Implement persistent vector records and a BM25 index.
 - Compose load, split, encode, and upsert stages with progress callbacks.

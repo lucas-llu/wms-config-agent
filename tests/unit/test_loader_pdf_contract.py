@@ -87,3 +87,32 @@ def test_pdf_loader_extracts_images_and_degrades_per_image(
     assert Path(image["path"]).read_bytes() == b"image-bytes"
     assert image["page"] == 1
     assert image["text_offset"] == document.text.index("[IMAGE:")
+
+
+def test_pdf_loader_can_skip_images_for_initial_text_pass(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "text-only.pdf"
+    source.write_bytes(b"fake-pdf-for-mocked-reader")
+
+    class ExplodingImages:
+        @staticmethod
+        def keys():
+            raise AssertionError("images should not be inspected")
+
+    class FakePage:
+        images = ExplodingImages()
+
+        @staticmethod
+        def extract_text():
+            return "Text-only preprocessing"
+
+    class FakeReader:
+        pages = [FakePage()]
+
+    monkeypatch.setattr(pdf_loader_module, "PdfReader", lambda _: FakeReader())
+
+    document = PdfLoader(
+        image_output_dir=tmp_path / "images", extract_images=False
+    ).load(source)
+
+    assert document.text == "Text-only preprocessing"
+    assert document.metadata["images"] == []
