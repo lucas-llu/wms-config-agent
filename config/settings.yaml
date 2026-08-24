@@ -3,8 +3,15 @@ project:
   environment: development
 
 llm:
-  provider: disabled
-  model: null
+  provider: openai_compatible
+  model: ox-alpha-free
+  base_url: https://opencode.ai/zen/go/v1/chat/completions
+  api_key_env: WMS_LLM_API_KEY
+  timeout_seconds: 60
+  max_tokens: 1024
+  temperature: 0
+  max_retries: 2
+  retry_backoff_seconds: 0.5
 
 vision_llm:
   provider: disabled

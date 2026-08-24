@@ -195,3 +195,34 @@ def test_optional_image_index_sqlite_failure_does_not_fail_document(tmp_path: Pa
     assert report.succeeded == 1
     assert report.failed == 0
     assert document["metadata"]["image_storage_status"] == "fallback_to_extracted_paths"
+
+
+def test_inactive_generation_provider_does_not_change_processing_signature() -> None:
+    class FirstProvider:
+        model = "first"
+
+    class SecondProvider:
+        model = "second"
+
+    class Transform:
+        enabled = True
+        use_llm = False
+        append_to_text = None
+        prompt = "prompt"
+        vision_llm = None
+
+        def __init__(self, llm) -> None:
+            self.llm = llm
+
+    first = Transform(FirstProvider())
+    second = Transform(SecondProvider())
+
+    assert CorpusProcessor._transform_signature(first) == CorpusProcessor._transform_signature(
+        second
+    )
+
+    first.use_llm = True
+    second.use_llm = True
+    assert CorpusProcessor._transform_signature(first) != CorpusProcessor._transform_signature(
+        second
+    )

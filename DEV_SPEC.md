@@ -450,12 +450,11 @@ MCP 协议的 Tool 返回格式支持多种内容类型（`content` 数组），
 | **Ollama / vLLM (本地)** | 完全离线、隐私敏感、无 API 成本 | `provider: ollama`, `base_url`, `model` |
 
 - **技术选型建议**：
-	- 本项目采用自研的 `BaseLLM` / `BaseEmbedding` 抽象基类，配合工厂模式（`llm_factory.py` / `embedding_factory.py`）实现统一调用接口。已内置 Azure OpenAI、OpenAI、Ollama、DeepSeek 四种 Provider 适配。
-	- 对于其他 Provider，可通过 **OpenAI-Compatible 模式**接入（设置自定义 `api_base`），或实现 `BaseLLM` 接口并在工厂中注册。
+	- 本项目采用自研的 `BaseLLM` / `BaseEmbedding` 抽象基类，配合工厂模式（`llm_factory.py` / `embedding_factory.py`）实现统一调用接口。当前内置通用 OpenAI Chat Completions Compatible 文本 Provider，并使用 OpenCode Go 完成真实验收；Azure、Ollama 与独立 DeepSeek 适配仍属于后续扩展。
+	- 其他兼容 Provider 可通过 `base_url`、`model` 与 `api_key_env` 接入；不兼容的 Provider 需要实现 `BaseLLM` 并在工厂中注册。
 
-	- 对于企业级需求，可在其基础上增加统一的 **重试、限流、日志** 中间层，提升生产可靠性，但本项目暂不实现，这里仅提供思路。
-	- **Vision LLM 扩展**：针对图像描述生成（Image Captioning）需求，系统扩展了 `BaseVisionLLM` 接口，支持文本+图片的多模态输入。当前实现：
-		- **Azure OpenAI Vision**（GPT-4o/GPT-4-Vision）：企业级合规部署，支持复杂图表解析，与 Azure 生态深度集成。
+	- 文本 Provider 已实现超时、响应校验、脱敏错误以及针对 429/可恢复 5xx/网络异常的有限指数退避；更完整的集中限流仍属于生产化扩展。
+	- **Vision LLM 扩展**：针对图像描述生成（Image Captioning）需求，系统已提供 `BaseVisionLLM` 接口和工厂路由；具体 Azure Vision Provider 尚未实现。
 
 #### 3.3.3 检索策略抽象
 
@@ -562,9 +561,10 @@ MCP 协议的 Tool 返回格式支持多种内容类型（`content` 数组），
 - **配置文件结构示例** (`config/settings.yaml`)：
 	```yaml
 	llm:
-	  provider: azure  # azure | openai | ollama | deepseek
-	  model: gpt-4o
-	  # provider-specific configs...
+	  provider: openai_compatible
+	  model: ox-alpha-free
+	  base_url: https://opencode.ai/zen/go/v1/chat/completions
+	  api_key_env: WMS_LLM_API_KEY
 	
 	embedding:
 	  provider: openai
@@ -1932,7 +1932,7 @@ dashboard:
 | B4 | VectorStore 抽象接口与工厂 | [x] | 2026-08-23 | BaseVectorStore、配置工厂与显式向量契约 |
 | B5 | Reranker 抽象接口与工厂（含 None 回退） | [x] | 2026-08-24 | BaseReranker、None 后端、工厂与安全回退 |
 | B6 | Evaluator 抽象接口与工厂 | [x] | 2026-08-24 | BaseEvaluator、Threshold/Composite 实现与配置工厂 |
-| B7.1 | OpenAI-Compatible LLM 实现 | [ ] | | |
+| B7.1 | OpenAI-Compatible LLM 实现 | [x] | 2026-08-24 | OpenCode Go/ox-alpha-free 真实调用通过；超时、重试、脱敏错误与 Trace 完成 |
 | B7.2 | Ollama LLM 实现 | [ ] | | |
 | B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | |
 | B7.4 | Ollama Embedding 实现 | [ ] | | |
@@ -1951,8 +1951,8 @@ dashboard:
 | C2 | 文件完整性检查（SHA256） | [x] | 2026-08-23 | SQLite WAL、幂等状态与并发写入测试 |
 | C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-08-23 | PDF/Markdown/TXT；PDF 文本、页码与图片降级提取 |
 | C4 | Splitter 集成（调用 Libs） | [x] | 2026-08-23 | 稳定 Chunk ID、来源偏移、页码与图片引用分发 |
-| C5 | Transform 基类 + ChunkRefiner | [ ] | | 规则/Mock/27 单测完成；等待真实 LLM Provider 验收后关闭 |
-| C6 | MetadataEnricher | [ ] | | 规则/结构化 Mock 完成；等待真实 LLM Provider 验收后关闭 |
+| C5 | Transform 基类 + ChunkRefiner | [x] | 2026-08-24 | 规则/Mock/27 单测与 OpenCode Go 真实 LLM 验收通过 |
+| C6 | MetadataEnricher | [x] | 2026-08-24 | 规则/结构化 Mock 与 OpenCode Go 真实 JSON 生成验收通过 |
 | C7 | ImageCaptioner | [x] | 2026-08-24 | Mock 可验证 Vision 接口、幂等描述注入、禁用/异常不阻塞 |
 | C8 | DenseEncoder | [x] | 2026-08-23 | 正文与 WMS 业务元数据上下文编码、模型签名与内容哈希 |
 | C9 | SparseEncoder | [x] | 2026-08-23 | 确定性中英文/标识符分词与词频统计 |
@@ -2034,15 +2034,15 @@ dashboard:
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
-| 阶段 B | 16 | 9 | 56% |
-| 阶段 C | 15 | 13 | 87% |
+| 阶段 B | 16 | 10 | 63% |
+| 阶段 C | 15 | 15 | 100% |
 | 阶段 D | 7 | 7 | 100% |
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
 | 阶段 G | 6 | 0 | 0% |
 | 阶段 H | 5 | 3 | 60% |
 | 阶段 I | 5 | 1 | 20% |
-| **总计** | **68** | **47** | **69.1%** |
+| **总计** | **68** | **50** | **73.5%** |
 
 
 ---
@@ -2181,16 +2181,15 @@ dashboard:
 > 说明：B7 只补齐与端到端主链路强相关的默认实现（LLM/Embedding/Splitter/VectorStore/Reranker）。其余可选扩展（例如额外 splitter 策略、更多 vector store 后端、更多 evaluator 后端等）保持原排期不提前。
 
 ### B7.1：OpenAI-Compatible LLM（OpenAI/Azure/DeepSeek）
-- **目标**：补齐 OpenAI-compatible 的 LLM 实现，确保通过 `LLMFactory` 可创建并可被 mock 测试。
+- **目标**：补齐 OpenAI Chat Completions Compatible 的通用 LLM 实现，确保通过 `LLMFactory` 创建并可被 mock 测试。
 - **修改文件**：
-  - `src/libs/llm/openai_llm.py`
-  - `src/libs/llm/azure_llm.py`
-  - `src/libs/llm/deepseek_llm.py`
-  - `tests/unit/test_llm_providers_smoke.py`（mock HTTP，不走真实网络）
+  - `src/libs/llm/openai_compatible_llm.py`
+  - `tests/unit/test_openai_compatible_llm.py`（mock HTTP，不走真实网络）
+  - `tests/integration/test_chunk_refiner_llm.py`（显式开启的真实 Provider 验收）
 - **验收标准**：
   - 配置不同 `provider` 时工厂路由正确。
   - `chat(messages)` 对输入 shape 校验清晰，异常信息可读（包含 provider 与错误类型）。
-- **测试方法**：`pytest -q tests/unit/test_llm_providers_smoke.py`。
+- **测试方法**：`pytest -q tests/unit/test_openai_compatible_llm.py`；配置 `WMS_LLM_INTEGRATION=1` 后运行真实验收。
 
 ### B7.2：Ollama LLM（本地后端）
 - **目标**：补齐 `ollama_llm.py`，支持本地 HTTP endpoint（默认 `base_url` + `model`），并可被 mock 测试。

@@ -52,8 +52,10 @@ Use `--force` after intentionally changing preprocessing, transform, or chunk se
 extraction is controlled by `ingestion.extract_images` and is enabled for this local corpus.
 Use `--no-extract-images` for a temporary text-only run. The transform chain performs
 deterministic cleanup and title/summary/tag enrichment locally. Text and Vision providers use the
-documented `BaseLLM`/`BaseVisionLLM` factory contracts; generation remains disabled until a
-concrete provider is registered and configured, and unprocessed image references remain traceable.
+documented `BaseLLM`/`BaseVisionLLM` factory contracts. The configured OpenAI-compatible text
+provider has passed live OpenCode Go acceptance, but both text transforms keep `use_llm: false` by
+default to avoid accidental bulk API usage. See `docs/LLM_PROVIDER.md` before enabling either
+transform. Vision generation remains disabled, and unprocessed image references remain traceable.
 
 The preprocessing history includes a signature of splitter settings, transform implementations,
 prompts, provider classes, and image options. A changed signature automatically reprocesses the

@@ -195,6 +195,8 @@ class CorpusProcessor:
     def _transform_signature(cls, transform: BaseTransform) -> dict[str, object]:
         llm = getattr(transform, "llm", None)
         vision_llm = getattr(transform, "vision_llm", None)
+        llm_active = bool(getattr(transform, "use_llm", False))
+        vision_llm_active = bool(getattr(transform, "enabled", False))
         prompt = getattr(transform, "prompt", None)
         return {
             "class": cls._class_name(transform),
@@ -207,11 +209,17 @@ class CorpusProcessor:
                 if isinstance(prompt, str)
                 else None
             ),
-            "llm_class": cls._class_name(llm) if llm is not None else None,
-            "llm_model": getattr(llm, "model", None) if llm is not None else None,
-            "vision_llm_class": (cls._class_name(vision_llm) if vision_llm is not None else None),
+            "llm_class": cls._class_name(llm) if llm_active and llm is not None else None,
+            "llm_model": getattr(llm, "model", None) if llm_active and llm is not None else None,
+            "vision_llm_class": (
+                cls._class_name(vision_llm)
+                if vision_llm_active and vision_llm is not None
+                else None
+            ),
             "vision_llm_model": (
-                getattr(vision_llm, "model", None) if vision_llm is not None else None
+                getattr(vision_llm, "model", None)
+                if vision_llm_active and vision_llm is not None
+                else None
             ),
         }
 

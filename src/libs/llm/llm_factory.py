@@ -9,6 +9,7 @@ from typing import Any
 from core.settings import ProviderSettings, Settings
 from libs.llm.base_llm import BaseLLM, ChatMessage, ChatResponse
 from libs.llm.base_vision_llm import BaseVisionLLM
+from libs.llm.openai_compatible_llm import OpenAICompatibleLLM
 
 TextLLMBuilder = Callable[[ProviderSettings], BaseLLM]
 VisionLLMBuilder = Callable[[ProviderSettings], BaseVisionLLM]
@@ -44,6 +45,7 @@ class LLMFactory:
 
     _text_providers: dict[str, TextLLMBuilder] = {
         "disabled": lambda settings: DisabledLLM(),
+        "openai_compatible": OpenAICompatibleLLM,
     }
     _vision_providers: dict[str, VisionLLMBuilder] = {
         "disabled": lambda settings: DisabledVisionLLM(),
@@ -75,12 +77,8 @@ class LLMFactory:
         return cls._create(cls._text_providers, provider_settings, "text")
 
     @classmethod
-    def create_vision_llm(
-        cls, settings: Settings | ProviderSettings
-    ) -> BaseVisionLLM:
-        provider_settings = (
-            settings.vision_llm if isinstance(settings, Settings) else settings
-        )
+    def create_vision_llm(cls, settings: Settings | ProviderSettings) -> BaseVisionLLM:
+        provider_settings = settings.vision_llm if isinstance(settings, Settings) else settings
         return cls._create(cls._vision_providers, provider_settings, "vision")
 
     @staticmethod
@@ -110,7 +108,6 @@ class LLMFactory:
         except KeyError as exc:
             supported = ", ".join(sorted(providers))
             raise ValueError(
-                f"Unknown {provider_type} LLM provider '{name}'; "
-                f"supported providers: {supported}"
+                f"Unknown {provider_type} LLM provider '{name}'; supported providers: {supported}"
             ) from exc
         return builder(settings)

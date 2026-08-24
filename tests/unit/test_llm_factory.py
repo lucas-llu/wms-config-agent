@@ -12,6 +12,7 @@ from libs.llm import (
     DisabledLLM,
     DisabledVisionLLM,
     LLMFactory,
+    OpenAICompatibleLLM,
 )
 
 
@@ -40,14 +41,24 @@ def test_registered_text_provider_uses_base_llm_contract() -> None:
     assert llm.chat([{"role": "user", "content": "hello"}]).content == "hello"
 
 
+def test_builtin_openai_compatible_provider_is_registered() -> None:
+    llm = LLMFactory.create(
+        ProviderSettings(
+            provider="OPENAI_COMPATIBLE",
+            model="test-model",
+            base_url="https://provider.example/v1",
+        )
+    )
+
+    assert isinstance(llm, OpenAICompatibleLLM)
+
+
 def test_registered_vision_provider_uses_documented_contract(tmp_path: Path) -> None:
     LLMFactory.register_vision("unit-fake-vision", lambda settings: FakeVisionLLM())
     image = tmp_path / "diagram.png"
     image.write_bytes(b"image")
 
-    vision = LLMFactory.create_vision_llm(
-        ProviderSettings(provider="unit-fake-vision")
-    )
+    vision = LLMFactory.create_vision_llm(ProviderSettings(provider="unit-fake-vision"))
 
     assert vision.chat_with_image("describe", image).content == "describe:diagram.png"
 

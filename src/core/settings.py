@@ -27,6 +27,13 @@ class ProjectSettings:
 class ProviderSettings:
     provider: str
     model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
+    timeout_seconds: float = 60.0
+    max_tokens: int = 1024
+    temperature: float = 0.0
+    max_retries: int = 2
+    retry_backoff_seconds: float = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +211,36 @@ def validate_settings(settings: Settings) -> None:
     if not settings.evaluation.backends:
         raise SettingsError("Missing required setting: evaluation.backends")
 
+    for field_path, provider in (
+        ("llm", settings.llm),
+        ("vision_llm", settings.vision_llm),
+    ):
+        if provider.timeout_seconds <= 0:
+            raise SettingsError(f"Setting {field_path}.timeout_seconds must be greater than 0")
+        if provider.max_tokens <= 0:
+            raise SettingsError(f"Setting {field_path}.max_tokens must be greater than 0")
+        if provider.max_retries < 0:
+            raise SettingsError(
+                f"Setting {field_path}.max_retries must be greater than or equal to 0"
+            )
+        if provider.retry_backoff_seconds < 0:
+            raise SettingsError(
+                f"Setting {field_path}.retry_backoff_seconds must be greater than or equal to 0"
+            )
+        if not 0 <= provider.temperature <= 2:
+            raise SettingsError(f"Setting {field_path}.temperature must be between 0 and 2")
+        if provider.api_key_env is not None and not re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]*", provider.api_key_env
+        ):
+            raise SettingsError(
+                f"Setting {field_path}.api_key_env must be an environment variable name"
+            )
+        if provider.provider.strip().lower() == "openai_compatible":
+            if not provider.model or not provider.model.strip():
+                raise SettingsError(f"Missing required setting: {field_path}.model")
+            if not provider.base_url or not provider.base_url.strip():
+                raise SettingsError(f"Missing required setting: {field_path}.base_url")
+
 
 def _build_settings(raw: dict[str, Any]) -> Settings:
     project = _section(raw, "project")
@@ -234,6 +271,19 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
         llm=ProviderSettings(
             provider=_required_str(llm, "provider", "llm.provider"),
             model=_optional_str(llm.get("model"), "llm.model"),
+            base_url=_optional_str(llm.get("base_url"), "llm.base_url"),
+            api_key_env=_optional_str(llm.get("api_key_env"), "llm.api_key_env"),
+            timeout_seconds=_optional_number(
+                llm.get("timeout_seconds"), "llm.timeout_seconds", default=60.0
+            ),
+            max_tokens=_optional_int(llm.get("max_tokens"), "llm.max_tokens", default=1024),
+            temperature=_optional_number(llm.get("temperature"), "llm.temperature", default=0.0),
+            max_retries=_optional_int(llm.get("max_retries"), "llm.max_retries", default=2),
+            retry_backoff_seconds=_optional_number(
+                llm.get("retry_backoff_seconds"),
+                "llm.retry_backoff_seconds",
+                default=0.5,
+            ),
         ),
         vision_llm=ProviderSettings(
             provider=_optional_non_empty_str(
@@ -242,6 +292,29 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
                 default="disabled",
             ),
             model=_optional_str(vision_llm.get("model"), "vision_llm.model"),
+            base_url=_optional_str(vision_llm.get("base_url"), "vision_llm.base_url"),
+            api_key_env=_optional_str(vision_llm.get("api_key_env"), "vision_llm.api_key_env"),
+            timeout_seconds=_optional_number(
+                vision_llm.get("timeout_seconds"),
+                "vision_llm.timeout_seconds",
+                default=60.0,
+            ),
+            max_tokens=_optional_int(
+                vision_llm.get("max_tokens"), "vision_llm.max_tokens", default=1024
+            ),
+            temperature=_optional_number(
+                vision_llm.get("temperature"),
+                "vision_llm.temperature",
+                default=0.0,
+            ),
+            max_retries=_optional_int(
+                vision_llm.get("max_retries"), "vision_llm.max_retries", default=2
+            ),
+            retry_backoff_seconds=_optional_number(
+                vision_llm.get("retry_backoff_seconds"),
+                "vision_llm.retry_backoff_seconds",
+                default=0.5,
+            ),
         ),
         embedding=EmbeddingSettings(
             provider=_required_str(embedding, "provider", "embedding.provider"),
@@ -454,6 +527,22 @@ def _optional_bool(value: Any, field_path: str, *, default: bool) -> bool:
     if not isinstance(value, bool):
         raise SettingsError(f"Setting {field_path} must be a boolean")
     return value
+
+
+def _optional_int(value: Any, field_path: str, *, default: int) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SettingsError(f"Setting {field_path} must be an integer")
+    return value
+
+
+def _optional_number(value: Any, field_path: str, *, default: float) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise SettingsError(f"Setting {field_path} must be a number")
+    return float(value)
 
 
 def _optional_path(value: Any, field_path: str) -> Path | None:

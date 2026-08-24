@@ -3,6 +3,11 @@
 from libs.llm.base_llm import BaseLLM, ChatMessage, ChatResponse
 from libs.llm.base_vision_llm import BaseVisionLLM
 from libs.llm.llm_factory import DisabledLLM, DisabledVisionLLM, LLMFactory
+from libs.llm.openai_compatible_llm import (
+    LLMConfigurationError,
+    LLMProviderError,
+    OpenAICompatibleLLM,
+)
 
 __all__ = [
     "BaseLLM",
@@ -12,4 +17,7 @@ __all__ = [
     "DisabledLLM",
     "DisabledVisionLLM",
     "LLMFactory",
+    "LLMConfigurationError",
+    "LLMProviderError",
+    "OpenAICompatibleLLM",
 ]

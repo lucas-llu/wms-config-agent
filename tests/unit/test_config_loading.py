@@ -9,7 +9,15 @@ def test_load_project_settings() -> None:
     settings = load_settings("config/settings.yaml")
 
     assert settings.project.name == "wms-config-agent"
-    assert settings.llm.provider == "disabled"
+    assert settings.llm.provider == "openai_compatible"
+    assert settings.llm.model == "ox-alpha-free"
+    assert settings.llm.base_url == "https://opencode.ai/zen/go/v1/chat/completions"
+    assert settings.llm.api_key_env == "WMS_LLM_API_KEY"
+    assert settings.llm.timeout_seconds == 60
+    assert settings.llm.max_tokens == 1024
+    assert settings.llm.temperature == 0
+    assert settings.llm.max_retries == 2
+    assert settings.llm.retry_backoff_seconds == 0.5
     assert settings.vision_llm.provider == "disabled"
     assert settings.embedding.provider == "local_lsa"
     assert settings.embedding.dimensions == 256
@@ -50,9 +58,21 @@ def test_environment_reference_is_expanded(tmp_path: Path, monkeypatch: pytest.M
     original = Path("config/settings.yaml").read_text(encoding="utf-8")
     config_path = tmp_path / "settings.yaml"
     config_path.write_text(
-        original.replace("provider: disabled", "provider: ${TEST_PROVIDER}", 1),
+        original.replace("provider: openai_compatible", "provider: ${TEST_PROVIDER}", 1),
         encoding="utf-8",
     )
     monkeypatch.setenv("TEST_PROVIDER", "offline")
 
     assert load_settings(config_path).llm.provider == "offline"
+
+
+def test_openai_compatible_provider_requires_model_and_base_url(tmp_path: Path) -> None:
+    original = Path("config/settings.yaml").read_text(encoding="utf-8")
+    config_path = tmp_path / "settings.yaml"
+    config_path.write_text(
+        original.replace("  model: ox-alpha-free\n", "  model: null\n", 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SettingsError, match=r"llm\.model"):
+        load_settings(config_path)

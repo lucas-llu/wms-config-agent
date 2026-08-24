@@ -105,7 +105,7 @@ regression. A sanitized ingest-to-benchmark E2E recall test now enforces the eva
 
 ## Day 7 — Document quality and multimodal enrichment (2026-08-24)
 
-Status: offline implementation completed on 2026-08-24; live LLM acceptance remains open.
+Status: completed on 2026-08-24, including live text-LLM acceptance.
 
 - Add an atomic `BaseTransform` contract and deterministic chunk cleanup that preserves code.
 - Generate rule-based title, summary, and retrieval tags with optional LLM fallback paths.
@@ -121,6 +121,7 @@ Delivered: 1,593 enhanced chunks from all 191 PDFs, including 1,115 chunks with 
 The image index tracks 3,316 logical IDs backed by 1,883 deduplicated local files. Chroma and BM25
 both contain exactly 1,593 records after 1,024 stale vector IDs were removed. The 40-case private
 and four-case public benchmarks remain at 100% with no regression. Text and Vision provider
-contracts are wired through the production preprocessing entry point, while live generation stays
-disabled until a concrete provider is implemented and the opt-in acceptance test passes. C5/C6
-therefore remain open in the detailed specification instead of overstating completion.
+contracts are wired through the production preprocessing entry point. The OpenAI-compatible text
+provider was validated against OpenCode Go with `ox-alpha-free`, including transient 503 retry and
+safe fallback behavior. Live generation remains opt-in (`use_llm: false` by default) to prevent an
+accidental full-corpus API run; C5/C6 are now closed in the detailed specification.
