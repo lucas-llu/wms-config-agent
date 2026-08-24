@@ -137,19 +137,13 @@ class QueryProcessor:
             keywords=keywords,
             filters=resolved_filters,
             expansions=expansions,
-            specific_terms=tuple(
-                token for token in keywords if token not in _GENERIC_TERMS
-            ),
+            specific_terms=tuple(token for token in keywords if token not in _GENERIC_TERMS),
         )
 
     @staticmethod
     def _expand(query: str) -> tuple[str, ...]:
         lowered = query.lower()
-        return tuple(
-            expansion
-            for phrase, expansion in _EXPANSIONS
-            if phrase.lower() in lowered
-        )
+        return tuple(expansion for phrase, expansion in _EXPANSIONS if phrase.lower() in lowered)
 
     @staticmethod
     def _normalize_filters(
@@ -178,16 +172,8 @@ class QueryProcessor:
         if "domain" in filters:
             return
         lowered = query.lower()
-        domains = {
-            "Inbound"
-            for marker in ("inbound", "收货", "入库")
-            if marker in lowered
-        }
-        domains.update(
-            "Outbound"
-            for marker in ("outbound", "发货", "出库")
-            if marker in lowered
-        )
+        domains = {"Inbound" for marker in ("inbound", "收货", "入库") if marker in lowered}
+        domains.update("Outbound" for marker in ("outbound", "发货", "出库") if marker in lowered)
         if len(domains) == 1:
             filters["domain"] = domains.pop()
 

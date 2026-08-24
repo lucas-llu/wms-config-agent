@@ -58,6 +58,4 @@ def test_reranker_factory_builds_none_and_rejects_unknown() -> None:
     )
 
     with pytest.raises(ValueError, match="Unknown reranker backend"):
-        RerankerFactory.create(
-            RerankSettings(backend="missing", model=None, top_m=5)
-        )
+        RerankerFactory.create(RerankSettings(backend="missing", model=None, top_m=5))

@@ -60,9 +60,7 @@ def test_modern_discovery_and_list_include_required_metadata() -> None:
             "id": "l",
             "method": "tools/list",
             "params": {
-                "_meta": {
-                    "io.modelcontextprotocol/protocolVersion": MODERN_PROTOCOL_VERSION
-                }
+                "_meta": {"io.modelcontextprotocol/protocolVersion": MODERN_PROTOCOL_VERSION}
             },
         }
     )
@@ -79,12 +77,8 @@ def test_modern_discovery_and_list_include_required_metadata() -> None:
 def test_protocol_errors_do_not_leak_exception_details() -> None:
     handler = _handler()
 
-    missing = handler.handle(
-        {"jsonrpc": "2.0", "id": 1, "method": "unknown", "params": {}}
-    )
-    invalid = handler.handle(
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": []}
-    )
+    missing = handler.handle({"jsonrpc": "2.0", "id": 1, "method": "unknown", "params": {}})
+    invalid = handler.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": []})
 
     assert missing is not None and missing["error"]["code"] == -32601
     assert invalid is not None and invalid["error"]["code"] == -32602

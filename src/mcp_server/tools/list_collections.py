@@ -21,9 +21,7 @@ class ListCollectionsTool:
             input_schema={"type": "object", "properties": {}, "additionalProperties": False},
             output_schema={
                 "type": "object",
-                "properties": {
-                    "collections": {"type": "array", "items": {"type": "object"}}
-                },
+                "properties": {"collections": {"type": "array", "items": {"type": "object"}}},
                 "required": ["collections"],
             },
             handler=self.call,

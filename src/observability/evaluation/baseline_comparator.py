@@ -62,9 +62,7 @@ class BaselineComparator:
                 "Baseline and candidate dataset fingerprints do not match"
             )
         baseline_metrics = _mapping(baseline.get("metrics"), "baseline.metrics")
-        candidate_metrics = _mapping(
-            candidate_payload.get("metrics"), "candidate.metrics"
-        )
+        candidate_metrics = _mapping(candidate_payload.get("metrics"), "candidate.metrics")
         deltas: dict[str, float] = {}
         regressions: list[str] = []
         improvements: list[str] = []

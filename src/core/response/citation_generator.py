@@ -54,9 +54,7 @@ class CitationGenerator:
                 page_start=self._optional_int(result.metadata.get("page_start")),
                 page_end=self._optional_int(result.metadata.get("page_end")),
                 process_code=self._optional_str(result.metadata.get("process_code")),
-                document_type=self._optional_str(
-                    result.metadata.get("document_type")
-                ),
+                document_type=self._optional_str(result.metadata.get("document_type")),
                 score=result.score,
                 excerpt=self._excerpt(result.text),
                 metadata=dict(result.metadata),

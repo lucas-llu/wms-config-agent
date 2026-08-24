@@ -76,9 +76,7 @@ class ProtocolHandler:
             "error": {"code": -32700, "message": "Parse error"},
         }
 
-    def _dispatch(
-        self, method: str, params: dict[str, Any], *, modern: bool
-    ) -> dict[str, Any]:
+    def _dispatch(self, method: str, params: dict[str, Any], *, modern: bool) -> dict[str, Any]:
         if method == "initialize":
             return self._initialize(params)
         if method == "server/discover":
@@ -136,8 +134,7 @@ class ProtocolHandler:
         if not isinstance(method, str) or not method:
             raise JSONRPCError(-32600, "Invalid Request: method is required")
         if "id" in message and (
-            isinstance(message["id"], bool)
-            or not isinstance(message["id"], str | int | type(None))
+            isinstance(message["id"], bool) or not isinstance(message["id"], str | int | type(None))
         ):
             raise JSONRPCError(-32600, "Invalid Request: id must be string or number")
         params = message.get("params", {})
@@ -158,8 +155,7 @@ class ProtocolHandler:
     def _is_modern(params: dict[str, Any]) -> bool:
         metadata = params.get("_meta", {})
         return isinstance(metadata, dict) and (
-            metadata.get("io.modelcontextprotocol/protocolVersion")
-            == MODERN_PROTOCOL_VERSION
+            metadata.get("io.modelcontextprotocol/protocolVersion") == MODERN_PROTOCOL_VERSION
         )
 
     @staticmethod

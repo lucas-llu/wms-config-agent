@@ -150,8 +150,7 @@ class ImageStorage:
                 """
             )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_image_collection "
-                "ON image_index(collection)"
+                "CREATE INDEX IF NOT EXISTS idx_image_collection ON image_index(collection)"
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_image_doc_hash ON image_index(doc_hash)"

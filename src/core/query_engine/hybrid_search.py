@@ -42,9 +42,7 @@ class HybridSearch:
         sparse_retriever: SparseRetriever,
         fusion: ReciprocalRankFusion,
     ) -> None:
-        self.settings = (
-            settings.retrieval if isinstance(settings, Settings) else settings
-        )
+        self.settings = settings.retrieval if isinstance(settings, Settings) else settings
         self.query_processor = query_processor
         self.dense_retriever = dense_retriever
         self.sparse_retriever = sparse_retriever
@@ -57,9 +55,7 @@ class HybridSearch:
         filters: dict[str, Any] | None = None,
         trace: Any | None = None,
     ) -> list[RetrievalResult]:
-        return list(
-            self.search_with_details(query, top_k, filters, trace=trace).results
-        )
+        return list(self.search_with_details(query, top_k, filters, trace=trace).results)
 
     def search_with_details(
         self,
@@ -132,10 +128,7 @@ class HybridSearch:
         evidence_sufficient = (
             bool(diversified)
             and self._has_query_evidence(processed, diversified)
-            and (
-                diversified[0].score >= self.settings.min_fused_score
-                or bool(failures)
-            )
+            and (diversified[0].score >= self.settings.min_fused_score or bool(failures))
         )
         return SearchOutcome(
             processed_query=processed,
@@ -243,9 +236,7 @@ class HybridSearch:
             if all(candidate.metadata.get(key) == value for key, value in filters.items())
         ]
 
-    def _diversify(
-        self, candidates: list[RetrievalResult], top_k: int
-    ) -> list[RetrievalResult]:
+    def _diversify(self, candidates: list[RetrievalResult], top_k: int) -> list[RetrievalResult]:
         counts: dict[str, int] = {}
         results: list[RetrievalResult] = []
         for candidate in candidates:
@@ -264,9 +255,7 @@ class HybridSearch:
         return results
 
     @staticmethod
-    def _has_query_evidence(
-        query: ProcessedQuery, candidates: list[RetrievalResult]
-    ) -> bool:
+    def _has_query_evidence(query: ProcessedQuery, candidates: list[RetrievalResult]) -> bool:
         if not query.specific_terms:
             return False
         candidate_terms: set[str] = set()
@@ -280,9 +269,7 @@ class HybridSearch:
                     str(candidate.metadata.get("domain", "")),
                 ]
             )
-            candidate_terms.update(
-                token.lower() for token in _SEARCH_TOKEN.findall(searchable)
-            )
+            candidate_terms.update(token.lower() for token in _SEARCH_TOKEN.findall(searchable))
         matched_terms = candidate_terms.intersection(query.specific_terms)
         required_matches = min(2, len(query.specific_terms))
         return len(matched_terms) >= required_matches

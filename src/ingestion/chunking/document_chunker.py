@@ -104,8 +104,7 @@ class DocumentChunker:
         matched_pages = [
             int(page["page"])
             for page in pages
-            if start_offset < int(page["end_offset"])
-            and end_offset > int(page["start_offset"])
+            if start_offset < int(page["end_offset"]) and end_offset > int(page["start_offset"])
         ]
         if matched_pages:
             metadata["page_start"] = min(matched_pages)

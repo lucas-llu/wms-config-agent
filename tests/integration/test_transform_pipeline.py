@@ -54,9 +54,7 @@ def test_corpus_processor_runs_transform_chain_and_indexes_images(tmp_path: Path
         modified_at=datetime.now(UTC).isoformat(),
         version="test",
     )
-    image_storage = ImageStorage(
-        tmp_path / "data" / "images", tmp_path / "data" / "image_index.db"
-    )
+    image_storage = ImageStorage(tmp_path / "data" / "images", tmp_path / "data" / "image_index.db")
     rule_settings = TransformSettings(enabled=True, use_llm=False)
     caption_settings = ImageCaptionerSettings(
         enabled=False,
@@ -67,9 +65,7 @@ def test_corpus_processor_runs_transform_chain_and_indexes_images(tmp_path: Path
         source_root=tmp_path,
         output_root=tmp_path / "processed",
         database_path=tmp_path / "history.db",
-        splitter_settings=SplitterSettings(
-            provider="recursive", chunk_size=500, chunk_overlap=50
-        ),
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=500, chunk_overlap=50),
         extract_images=True,
         transforms=(
             ChunkRefiner(rule_settings),
@@ -85,9 +81,7 @@ def test_corpus_processor_runs_transform_chain_and_indexes_images(tmp_path: Path
 
     assert report.succeeded == 1
     payload = json.loads(
-        (tmp_path / "processed" / "chunks" / "doc-1.jsonl").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "processed" / "chunks" / "doc-1.jsonl").read_text(encoding="utf-8")
     )
     assert "Page 1 of 1" not in payload["text"]
     assert "MOCA receiving configuration" in payload["text"]

@@ -39,12 +39,8 @@ def _report(
 
 
 def test_comparator_reports_fixed_cases_and_metric_improvements() -> None:
-    baseline = _report(
-        hit_at_3=0.5, first_passed=False, second_passed=True, first_rank=3
-    )
-    candidate = _report(
-        hit_at_3=1.0, first_passed=True, second_passed=True, first_rank=1
-    )
+    baseline = _report(hit_at_3=0.5, first_passed=False, second_passed=True, first_rank=3)
+    candidate = _report(hit_at_3=1.0, first_passed=True, second_passed=True, first_rank=1)
 
     comparison = BaselineComparator().compare(baseline, candidate)
 

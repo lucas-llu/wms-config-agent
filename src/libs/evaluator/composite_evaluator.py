@@ -60,9 +60,7 @@ class CompositeEvaluator(BaseEvaluator):
             metrics=dict(request.metrics),
             checks=checks,
             details={
-                "evaluators": {
-                    name: result.to_dict() for name, result in sorted(results.items())
-                }
+                "evaluators": {name: result.to_dict() for name, result in sorted(results.items())}
             },
             errors=tuple(errors),
         )

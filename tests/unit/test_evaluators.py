@@ -69,9 +69,7 @@ def test_threshold_evaluator_reports_unknown_threshold_and_missing_metric() -> N
 
 
 def test_composite_evaluator_isolates_provider_failure() -> None:
-    evaluator = CompositeEvaluator(
-        [StaticEvaluator("healthy"), BrokenEvaluator("broken")]
-    )
+    evaluator = CompositeEvaluator([StaticEvaluator("healthy"), BrokenEvaluator("broken")])
 
     result = evaluator.evaluate(EvaluationRequest(metrics={"score": 1.0}))
 
@@ -81,16 +79,12 @@ def test_composite_evaluator_isolates_provider_failure() -> None:
 
 
 def test_evaluator_factory_creates_custom_and_rejects_unknown() -> None:
-    settings = EvaluationSettings(
-        backends=("custom",), golden_test_set=Path("golden")
-    )
+    settings = EvaluationSettings(backends=("custom",), golden_test_set=Path("golden"))
 
     assert isinstance(EvaluatorFactory.create(settings), ThresholdEvaluator)
     with pytest.raises(ValueError, match="Unknown evaluator provider"):
         EvaluatorFactory.create(
-            EvaluationSettings(
-                backends=("missing",), golden_test_set=settings.golden_test_set
-            )
+            EvaluationSettings(backends=("missing",), golden_test_set=settings.golden_test_set)
         )
     with pytest.raises(ValueError, match="At least one evaluator"):
         EvaluatorFactory.create(
@@ -103,9 +97,7 @@ def test_evaluator_factory_registers_and_composes_providers() -> None:
     EvaluatorFactory.register(provider, lambda settings: StaticEvaluator(provider))
 
     evaluator = EvaluatorFactory.create(
-        EvaluationSettings(
-            backends=("custom", provider), golden_test_set=Path("golden")
-        )
+        EvaluationSettings(backends=("custom", provider), golden_test_set=Path("golden"))
     )
     result = evaluator.evaluate(
         EvaluationRequest(metrics={"hit_at_3": 1.0}, thresholds={"hit_at_3_min": 1.0})

@@ -13,15 +13,11 @@ EvaluatorBuilder = Callable[[EvaluationSettings], BaseEvaluator]
 
 
 class EvaluatorFactory:
-    _providers: dict[str, EvaluatorBuilder] = {
-        "custom": lambda settings: ThresholdEvaluator()
-    }
+    _providers: dict[str, EvaluatorBuilder] = {"custom": lambda settings: ThresholdEvaluator()}
 
     @classmethod
     def create(cls, settings: Settings | EvaluationSettings) -> BaseEvaluator:
-        evaluation_settings = (
-            settings.evaluation if isinstance(settings, Settings) else settings
-        )
+        evaluation_settings = settings.evaluation if isinstance(settings, Settings) else settings
         if not evaluation_settings.backends:
             raise ValueError("At least one evaluator backend must be configured")
         evaluators: list[BaseEvaluator] = []
@@ -31,8 +27,7 @@ class EvaluatorFactory:
             except KeyError as exc:
                 supported = ", ".join(sorted(cls._providers))
                 raise ValueError(
-                    f"Unknown evaluator provider '{provider}'; "
-                    f"supported providers: {supported}"
+                    f"Unknown evaluator provider '{provider}'; supported providers: {supported}"
                 ) from exc
             evaluators.append(builder(evaluation_settings))
         if len(evaluators) == 1:

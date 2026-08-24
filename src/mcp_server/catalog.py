@@ -84,9 +84,7 @@ class CorpusCatalog:
         grouped: dict[str, list[Chunk]] = defaultdict(list)
         for chunk in self._load_chunks():
             document_id = str(
-                chunk.source_ref
-                or chunk.metadata.get("file_hash")
-                or chunk.metadata["source_path"]
+                chunk.source_ref or chunk.metadata.get("file_hash") or chunk.metadata["source_path"]
             )
             grouped[document_id].append(chunk)
 
@@ -99,9 +97,7 @@ class CorpusCatalog:
                 DocumentSummary(
                     document_id=document_id,
                     title=str(metadata.get("title") or metadata.get("source_name") or document_id),
-                    source=str(
-                        metadata.get("source_relative_path") or metadata["source_path"]
-                    ),
+                    source=str(metadata.get("source_relative_path") or metadata["source_path"]),
                     collection=str(metadata.get("collection", "default")),
                     domain=self._optional_str(metadata.get("domain")),
                     process_code=self._optional_str(metadata.get("process_code")),

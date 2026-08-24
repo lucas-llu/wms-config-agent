@@ -110,14 +110,8 @@ def test_hybrid_search_handles_chinese_expansion_filter_and_diversity(tmp_path) 
     assert outcome.evidence_sufficient is True
     assert outcome.processed_query.filters["document_type"] == "configuration"
     assert outcome.results[0].metadata["process_code"] == "SWL.I.11.01"
-    assert all(
-        result.metadata["document_type"] == "configuration"
-        for result in outcome.results
-    )
-    assert sum(
-        result.metadata["process_code"] == "SWL.I.11.01"
-        for result in outcome.results
-    ) <= 2
+    assert all(result.metadata["document_type"] == "configuration" for result in outcome.results)
+    assert sum(result.metadata["process_code"] == "SWL.I.11.01" for result in outcome.results) <= 2
 
     unsupported = search.search_with_details("quantum inventory portal configuration")
     assert unsupported.results

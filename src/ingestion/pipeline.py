@@ -52,9 +52,7 @@ def load_preprocessed_chunks(path: str | Path) -> list[Chunk]:
                 payload = json.loads(line)
                 chunk = Chunk(**payload)
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"Invalid chunk at {jsonl_path}:{line_number}: {exc}"
-                ) from exc
+                raise ValueError(f"Invalid chunk at {jsonl_path}:{line_number}: {exc}") from exc
             if chunk.id in seen_ids:
                 raise ValueError(f"Duplicate chunk id in preprocessed corpus: {chunk.id}")
             seen_ids.add(chunk.id)
@@ -113,9 +111,7 @@ class IndexingPipeline:
             else self._changed_or_missing_chunks(ordered_chunks, signature)
         )
         started = time.perf_counter()
-        records = BatchProcessor(
-            DenseEncoder(self.embedding), batch_size=self.batch_size
-        ).encode(
+        records = BatchProcessor(DenseEncoder(self.embedding), batch_size=self.batch_size).encode(
             pending,
             on_progress=(
                 (lambda current, total: on_progress("dense_encode", current, total))
@@ -123,14 +119,10 @@ class IndexingPipeline:
                 else None
             ),
         )
-        self._record_stage(
-            trace, "dense_encode", started, {"record_count": len(records)}
-        )
+        self._record_stage(trace, "dense_encode", started, {"record_count": len(records)})
         started = time.perf_counter()
         VectorUpserter(self.vector_store).upsert(records)
-        self._record_stage(
-            trace, "vector_upsert", started, {"record_count": len(records)}
-        )
+        self._record_stage(trace, "vector_upsert", started, {"record_count": len(records)})
         if on_progress:
             on_progress("vector_upsert", len(records), len(pending))
         if force:
@@ -139,9 +131,7 @@ class IndexingPipeline:
         started = time.perf_counter()
         sparse_encodings = SparseEncoder().encode(ordered_chunks)
         self.bm25_indexer.build(sparse_encodings)
-        self._record_stage(
-            trace, "bm25_build", started, {"record_count": len(sparse_encodings)}
-        )
+        self._record_stage(trace, "bm25_build", started, {"record_count": len(sparse_encodings)})
         if on_progress:
             on_progress("bm25_build", len(ordered_chunks), len(ordered_chunks))
         return IndexingReport(
@@ -165,15 +155,11 @@ class IndexingPipeline:
         if trace is not None and hasattr(trace, "record_stage"):
             trace.record_stage(name, (time.perf_counter() - started) * 1000, details=details)
 
-    def _changed_or_missing_chunks(
-        self, chunks: list[Chunk], signature: str
-    ) -> list[Chunk]:
+    def _changed_or_missing_chunks(self, chunks: list[Chunk], signature: str) -> list[Chunk]:
         existing: dict[str, dict[str, object]] = {}
         for start in range(0, len(chunks), 500):
             ids = [chunk.id for chunk in chunks[start : start + 500]]
-            existing.update(
-                {record["id"]: record for record in self.vector_store.get_by_ids(ids)}
-            )
+            existing.update({record["id"]: record for record in self.vector_store.get_by_ids(ids)})
 
         pending: list[Chunk] = []
         for chunk in chunks:

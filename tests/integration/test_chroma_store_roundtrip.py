@@ -8,9 +8,7 @@ from libs.vector_store import ChromaStore
 pytestmark = pytest.mark.integration
 
 
-def _record(
-    chunk_id: str, vector: list[float], *, domain: str = "Inbound"
-) -> ChunkRecord:
+def _record(chunk_id: str, vector: list[float], *, domain: str = "Inbound") -> ChunkRecord:
     return ChunkRecord(
         id=chunk_id,
         text=f"Text for {chunk_id}",
@@ -37,9 +35,7 @@ def test_chroma_upsert_query_filter_and_get(tmp_path) -> None:
     assert store.count() == 3
     assert store.query([1.0, 0.0, 0.0], top_k=1)[0]["id"] == "putaway"
     assert store.query([0.0, 0.0, 0.0], top_k=3) == []
-    filtered = store.query(
-        [0.0, 1.0, 0.0], top_k=3, filters={"domain": "Inbound"}
-    )
+    filtered = store.query([0.0, 1.0, 0.0], top_k=3, filters={"domain": "Inbound"})
     assert {item["id"] for item in filtered} == {"putaway", "appointment"}
     restored = store.get_by_ids(["outbound", "missing"])
     assert restored[0]["metadata"]["pages"] == [1, 2]

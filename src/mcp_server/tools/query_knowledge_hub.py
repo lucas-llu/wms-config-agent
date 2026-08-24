@@ -79,9 +79,7 @@ class QueryKnowledgeHubTool:
             else None
         )
         try:
-            outcome = self.hybrid_search.search_with_details(
-                query, top_k, filters, trace=trace
-            )
+            outcome = self.hybrid_search.search_with_details(query, top_k, filters, trace=trace)
             reranked = self.reranker.rerank(
                 outcome.processed_query.retrieval_query,
                 list(outcome.results),

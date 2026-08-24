@@ -62,16 +62,12 @@ class BM25Indexer:
                 continue
             document_frequency = len(term_postings)
             idf = math.log(
-                1.0
-                + (document_count - document_frequency + 0.5)
-                / (document_frequency + 0.5)
+                1.0 + (document_count - document_frequency + 0.5) / (document_frequency + 0.5)
             )
             for chunk_id, frequency in term_postings.items():
                 document_length = int(self.documents[chunk_id]["length"])
                 denominator = frequency + self.k1 * (
-                    1.0
-                    - self.b
-                    + self.b * document_length / max(self.average_document_length, 1.0)
+                    1.0 - self.b + self.b * document_length / max(self.average_document_length, 1.0)
                 )
                 score = idf * (frequency * (self.k1 + 1.0)) / denominator
                 scores[chunk_id] = scores.get(chunk_id, 0.0) + score

@@ -37,9 +37,7 @@ def test_indexing_pipeline_is_incremental(tmp_path) -> None:
     progress: list[tuple[str, int, int]] = []
     pipeline = IndexingPipeline(
         embedding=LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path / "models"),
-        vector_store=ChromaStore(
-            persist_path=tmp_path / "chroma", collection_name="chunks"
-        ),
+        vector_store=ChromaStore(persist_path=tmp_path / "chroma", collection_name="chunks"),
         bm25_indexer=BM25Indexer(tmp_path / "bm25"),
         batch_size=2,
     )
@@ -62,9 +60,7 @@ def test_force_rebuild_removes_vector_records_not_in_current_corpus(tmp_path) ->
     chunks = _chunks()
     pipeline = IndexingPipeline(
         embedding=LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path / "models"),
-        vector_store=ChromaStore(
-            persist_path=tmp_path / "chroma", collection_name="chunks"
-        ),
+        vector_store=ChromaStore(persist_path=tmp_path / "chroma", collection_name="chunks"),
         bm25_indexer=BM25Indexer(tmp_path / "bm25"),
         batch_size=2,
     )
@@ -87,12 +83,8 @@ def test_load_preprocessed_chunks_is_deterministic(tmp_path) -> None:
     chunks_dir = tmp_path / "chunks"
     chunks_dir.mkdir()
     chunks = _chunks()[:2]
-    (chunks_dir / "b.jsonl").write_text(
-        json.dumps(chunks[0].to_dict()) + "\n", encoding="utf-8"
-    )
-    (chunks_dir / "a.jsonl").write_text(
-        json.dumps(chunks[1].to_dict()) + "\n", encoding="utf-8"
-    )
+    (chunks_dir / "b.jsonl").write_text(json.dumps(chunks[0].to_dict()) + "\n", encoding="utf-8")
+    (chunks_dir / "a.jsonl").write_text(json.dumps(chunks[1].to_dict()) + "\n", encoding="utf-8")
 
     loaded = load_preprocessed_chunks(chunks_dir)
 

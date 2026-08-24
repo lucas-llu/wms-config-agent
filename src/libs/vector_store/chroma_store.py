@@ -141,9 +141,7 @@ class ChromaStore(BaseVectorStore):
         if isinstance(serialized, str):
             restored = json.loads(serialized)
         else:
-            restored = {
-                key: value for key, value in metadata.items() if key != _FULL_METADATA_KEY
-            }
+            restored = {key: value for key, value in metadata.items() if key != _FULL_METADATA_KEY}
         for key in ("embedding_signature", "content_hash"):
             if key in metadata:
                 restored[key] = metadata[key]

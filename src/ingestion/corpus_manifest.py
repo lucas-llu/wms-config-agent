@@ -104,9 +104,7 @@ class CorpusManifestBuilder:
             replace(
                 entry,
                 related_document_paths=tuple(
-                    path
-                    for path in paths_by_code[entry.process_code]
-                    if path != entry.source_path
+                    path for path in paths_by_code[entry.process_code] if path != entry.source_path
                 ),
             )
             for entry in entries

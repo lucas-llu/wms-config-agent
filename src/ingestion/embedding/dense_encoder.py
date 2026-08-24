@@ -26,9 +26,7 @@ class DenseEncoder:
         for chunk, vector in zip(chunks, vectors, strict=True):
             metadata = dict(chunk.metadata)
             metadata["embedding_signature"] = self.embedding.signature
-            metadata["content_hash"] = hashlib.sha256(
-                chunk.text.encode("utf-8")
-            ).hexdigest()
+            metadata["content_hash"] = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
             records.append(
                 ChunkRecord(
                     id=chunk.id,
@@ -53,7 +51,5 @@ class DenseEncoder:
             ("Domain", chunk.metadata.get("domain")),
             ("Document type", chunk.metadata.get("document_type")),
         )
-        context = "\n".join(
-            f"{label}: {value}" for label, value in context_fields if value
-        )
+        context = "\n".join(f"{label}: {value}" for label, value in context_fields if value)
         return f"{context}\n\n{chunk.text}" if context else chunk.text

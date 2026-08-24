@@ -68,9 +68,7 @@ class PdfLoader(BaseLoader):
             page_start = len(document_text)
             document_text += page_content
             page_end = len(document_text)
-            pages.append(
-                {"page": page_number, "start_offset": page_start, "end_offset": page_end}
-            )
+            pages.append({"page": page_number, "start_offset": page_start, "end_offset": page_end})
 
             for image, placeholder in zip(page_images, placeholders, strict=True):
                 local_offset = page_content.find(placeholder)

@@ -48,9 +48,7 @@ def test_store_metadata_images_updates_paths_without_mutating_input(tmp_path: Pa
     storage = ImageStorage(tmp_path / "stored", tmp_path / "index.db")
     images = [{"id": "img-1", "path": str(source), "page": 1}]
 
-    output = storage.store_metadata_images(
-        images, collection="manuals", doc_hash="abc"
-    )
+    output = storage.store_metadata_images(images, collection="manuals", doc_hash="abc")
 
     assert output[0]["path"] != images[0]["path"]
     assert Path(output[0]["path"]).read_bytes() == b"image-data"

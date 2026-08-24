@@ -34,9 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", type=Path)
     parser.add_argument("--settings", type=Path, default=Path("config/settings.yaml"))
     parser.add_argument("--bm25-path", type=Path, default=Path("data/db/bm25"))
-    parser.add_argument(
-        "--output", type=Path, default=Path("data/evaluation/latest_report.json")
-    )
+    parser.add_argument("--output", type=Path, default=Path("data/evaluation/latest_report.json"))
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--enforce-thresholds", action="store_true")
@@ -72,9 +70,7 @@ def main() -> None:
     payload = report.to_dict()
     comparison = None
     if args.baseline:
-        comparison = BaselineComparator().compare(
-            BaselineComparator.load(args.baseline), report
-        )
+        comparison = BaselineComparator().compare(BaselineComparator.load(args.baseline), report)
         payload["comparison"] = comparison.to_dict()
     payload["run_metadata"] = {
         "git_revision": _git_revision(),

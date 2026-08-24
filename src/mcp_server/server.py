@@ -42,9 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--settings", type=Path, default=Path("config/settings.yaml"))
     parser.add_argument("--bm25-path", type=Path, default=Path("data/db/bm25"))
-    parser.add_argument(
-        "--chunks", type=Path, default=Path("data/corpus/processed/chunks")
-    )
+    parser.add_argument("--chunks", type=Path, default=Path("data/corpus/processed/chunks"))
     parser.add_argument("--image-root", action="append", type=Path)
     return parser.parse_args()
 

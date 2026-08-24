@@ -38,9 +38,7 @@ class SparseRetriever:
         if not ranked:
             return []
 
-        records = self.vector_store.get_by_ids(
-            [str(result["chunk_id"]) for result in ranked]
-        )
+        records = self.vector_store.get_by_ids([str(result["chunk_id"]) for result in ranked])
         records_by_id = {str(record["id"]): record for record in records}
         results: list[RetrievalResult] = []
         for rank, hit in enumerate(ranked, start=1):

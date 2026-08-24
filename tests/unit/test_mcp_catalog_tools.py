@@ -53,9 +53,7 @@ def test_catalog_tools_list_and_summarize_documents(tmp_path) -> None:
     )
 
     collections = registry.call("list_wms_collections", {})
-    summary = registry.call(
-        "get_wms_document_summary", {"document_id": "SWL.I.11.01"}
-    )
+    summary = registry.call("get_wms_document_summary", {"document_id": "SWL.I.11.01"})
 
     assert collections["structuredContent"]["collections"][0]["chunk_count"] == 2
     document = summary["structuredContent"]["documents"][0]

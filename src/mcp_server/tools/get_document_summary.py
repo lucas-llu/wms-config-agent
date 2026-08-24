@@ -29,9 +29,7 @@ class GetDocumentSummaryTool:
             },
             output_schema={
                 "type": "object",
-                "properties": {
-                    "documents": {"type": "array", "items": {"type": "object"}}
-                },
+                "properties": {"documents": {"type": "array", "items": {"type": "object"}}},
                 "required": ["documents"],
             },
             handler=self.call,

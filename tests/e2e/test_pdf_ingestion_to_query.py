@@ -33,8 +33,7 @@ pytestmark = pytest.mark.e2e
 
 def _write_text_and_image_pdf(path: Path, text: str) -> None:
     content_stream = (
-        f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET "
-        "q 20 0 0 20 72 650 cm /Im0 Do Q"
+        f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET q 20 0 0 20 72 650 cm /Im0 Do Q"
     ).encode("ascii")
     image_stream = b"FF0000>"
     objects = [
@@ -97,9 +96,7 @@ def test_real_pdf_image_transform_index_and_query(tmp_path: Path) -> None:
         source_root=corpus_root,
         output_root=tmp_path / "processed",
         database_path=tmp_path / "history.db",
-        splitter_settings=SplitterSettings(
-            provider="recursive", chunk_size=500, chunk_overlap=50
-        ),
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=500, chunk_overlap=50),
         extract_images=True,
         transforms=(
             ChunkRefiner(rule_settings),

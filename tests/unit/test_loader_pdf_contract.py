@@ -48,9 +48,7 @@ def test_pdf_loader_extracts_text_and_page_metadata(tmp_path: Path) -> None:
     assert document.metadata["module"] == "policy"
 
 
-def test_pdf_loader_extracts_images_and_degrades_per_image(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_pdf_loader_extracts_images_and_degrades_per_image(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "with-images.pdf"
     source.write_bytes(b"fake-pdf-for-mocked-reader")
 
@@ -110,9 +108,7 @@ def test_pdf_loader_can_skip_images_for_initial_text_pass(tmp_path: Path, monkey
 
     monkeypatch.setattr(pdf_loader_module, "PdfReader", lambda _: FakeReader())
 
-    document = PdfLoader(
-        image_output_dir=tmp_path / "images", extract_images=False
-    ).load(source)
+    document = PdfLoader(image_output_dir=tmp_path / "images", extract_images=False).load(source)
 
     assert document.text == "Text-only preprocessing"
     assert document.metadata["images"] == []

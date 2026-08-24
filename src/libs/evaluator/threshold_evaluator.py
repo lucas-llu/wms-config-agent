@@ -33,9 +33,7 @@ class ThresholdEvaluator(BaseEvaluator):
                 checks[threshold_name] = False
                 continue
             checks[threshold_name] = (
-                float(value) >= threshold
-                if comparison == "min"
-                else float(value) <= threshold
+                float(value) >= threshold if comparison == "min" else float(value) <= threshold
             )
         return EvaluationResult(
             evaluator=self.name,
