@@ -5,13 +5,21 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 from core.settings import SplitterSettings, load_settings
 from ingestion import CorpusManifestBuilder, CorpusProcessor
 from ingestion.storage import ImageStorage
 from ingestion.transform import ChunkRefiner, ImageCaptioner, MetadataEnricher
-from libs.llm import LLMFactory
+from libs.llm import BudgetedLLM, LLMFactory
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be greater than 0")
+    return parsed
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,7 +50,41 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
+    parser.add_argument(
+        "--enable-llm",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Explicitly enable or disable both text LLM transforms for this run",
+    )
+    parser.add_argument(
+        "--max-documents",
+        type=_positive_int,
+        help="Process only the first N deterministic manifest entries",
+    )
+    parser.add_argument(
+        "--max-llm-calls",
+        type=_positive_int,
+        help="Shared logical-call budget across text LLM transforms",
+    )
+    parser.add_argument(
+        "--retry-llm-failures",
+        action="store_true",
+        help="Retry only chunks recorded with an active LLM transform fallback",
+    )
     return parser.parse_args()
+
+
+def _require_bounded_llm_run(
+    *,
+    llm_enabled: bool,
+    max_documents: int | None,
+    max_llm_calls: int | None,
+) -> None:
+    if llm_enabled and (max_documents is None or max_llm_calls is None):
+        raise SystemExit(
+            "LLM ingestion requires both --max-documents and --max-llm-calls; "
+            "start with an authorized small sample"
+        )
 
 
 def main() -> None:
@@ -61,6 +103,7 @@ def main() -> None:
     builder = CorpusManifestBuilder()
     entries = builder.scan(args.source)
     builder.write(entries, args.manifest)
+    selected_entries = entries[: args.max_documents] if args.max_documents else entries
     image_storage = None
     if settings.ingestion.image_storage.enabled:
         try:
@@ -70,7 +113,23 @@ def main() -> None:
             )
         except (OSError, sqlite3.Error):
             image_storage = None
+    refiner_settings = settings.ingestion.chunk_refiner
+    enricher_settings = settings.ingestion.metadata_enricher
+    if args.enable_llm is not None:
+        refiner_settings = replace(refiner_settings, use_llm=args.enable_llm)
+        enricher_settings = replace(enricher_settings, use_llm=args.enable_llm)
+    llm_enabled = bool(
+        (refiner_settings.enabled and refiner_settings.use_llm)
+        or (enricher_settings.enabled and enricher_settings.use_llm)
+    )
+    _require_bounded_llm_run(
+        llm_enabled=llm_enabled,
+        max_documents=args.max_documents,
+        max_llm_calls=args.max_llm_calls,
+    )
     llm = LLMFactory.create(settings)
+    if args.max_llm_calls is not None:
+        llm = BudgetedLLM(llm, args.max_llm_calls)
     vision_llm = LLMFactory.create_vision_llm(settings)
     processor = CorpusProcessor(
         source_root=args.source,
@@ -83,16 +142,27 @@ def main() -> None:
             else args.extract_images
         ),
         transforms=(
-            ChunkRefiner(settings, llm=llm),
-            MetadataEnricher(settings, llm=llm),
+            ChunkRefiner(refiner_settings, llm=llm),
+            MetadataEnricher(enricher_settings, llm=llm),
             ImageCaptioner(settings, vision_llm=vision_llm),
         ),
         image_storage=image_storage,
         image_collection=settings.ingestion.image_storage.collection,
     )
-    report = processor.process(entries, force=args.force, fail_fast=args.fail_fast)
+    report = processor.process(
+        selected_entries,
+        force=args.force,
+        fail_fast=args.fail_fast,
+        retry_llm_failures=args.retry_llm_failures,
+    )
     result = {
         "manifest": builder.summarize(entries).to_dict(),
+        "selection": {
+            "documents": len(selected_entries),
+            "llm_enabled": llm_enabled,
+            "max_llm_calls": args.max_llm_calls,
+            "llm_calls_made": llm.calls_made if isinstance(llm, BudgetedLLM) else None,
+        },
         "processing": report.to_dict(),
     }
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

@@ -124,4 +124,6 @@ and four-case public benchmarks remain at 100% with no regression. Text and Visi
 contracts are wired through the production preprocessing entry point. The OpenAI-compatible text
 provider was validated against OpenCode Go with `ox-alpha-free`, including transient 503 retry and
 safe fallback behavior. Live generation remains opt-in (`use_llm: false` by default) to prevent an
-accidental full-corpus API run; C5/C6 are now closed in the detailed specification.
+accidental full-corpus API run. Day 7.1 hardening adds deterministic output validation, mandatory
+document/call bounds for cloud-enabled preprocessing, an auditable fallback ledger, and per-Chunk
+retry without reloading successful documents; C5/C6 are now closed in the detailed specification.

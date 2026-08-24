@@ -43,6 +43,7 @@ Outputs:
 - `data/corpus/manifest.jsonl`: private source catalog
 - `data/corpus/processed/documents/`: normalized Document JSON
 - `data/corpus/processed/chunks/`: traceable Chunk JSONL grouped by document
+- `data/corpus/processed/llm_failures.jsonl`: retryable per-Chunk generation fallback ledger
 - `data/corpus/processed/processing_report.json`: last-run result
 - `data/db/corpus_preprocessing.db`: preprocessing-only SHA256 status
 - `data/images/wms-system-training/`: content-addressed extracted images
@@ -55,7 +56,9 @@ deterministic cleanup and title/summary/tag enrichment locally. Text and Vision 
 documented `BaseLLM`/`BaseVisionLLM` factory contracts. The configured OpenAI-compatible text
 provider has passed live OpenCode Go acceptance, but both text transforms keep `use_llm: false` by
 default to avoid accidental bulk API usage. See `docs/LLM_PROVIDER.md` before enabling either
-transform. Vision generation remains disabled, and unprocessed image references remain traceable.
+transform. LLM-enabled runs require `--max-documents` and `--max-llm-calls`; use
+`--retry-llm-failures` to rerun only failed Chunks. Vision generation remains disabled, and
+unprocessed image references remain traceable.
 
 The preprocessing history includes a signature of splitter settings, transform implementations,
 prompts, provider classes, and image options. A changed signature automatically reprocesses the

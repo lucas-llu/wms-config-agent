@@ -8,6 +8,7 @@ from core.settings import SplitterSettings
 from core.types import Document
 from ingestion.corpus_manifest import CorpusManifestBuilder
 from ingestion.corpus_processor import CorpusProcessor
+from ingestion.transform.base_transform import BaseTransform
 from libs.loader.base_loader import BaseLoader
 
 
@@ -216,6 +217,8 @@ def test_inactive_generation_provider_does_not_change_processing_signature() -> 
 
     first = Transform(FirstProvider())
     second = Transform(SecondProvider())
+    first.prompt = "first prompt"
+    second.prompt = "second prompt"
 
     assert CorpusProcessor._transform_signature(first) == CorpusProcessor._transform_signature(
         second
@@ -226,3 +229,81 @@ def test_inactive_generation_provider_does_not_change_processing_signature() -> 
     assert CorpusProcessor._transform_signature(first) != CorpusProcessor._transform_signature(
         second
     )
+
+
+def test_processor_retries_only_chunks_with_active_llm_fallbacks(tmp_path: Path) -> None:
+    source = tmp_path / "SWL.I.01.01 Test.pdf"
+    source.write_bytes(b"fake-pdf")
+    entry = _entry(source)
+
+    class FlakyRefiner(BaseTransform):
+        name = "chunk_refiner"
+        enabled = True
+        use_llm = True
+        llm = None
+        vision_llm = None
+        append_to_text = None
+        prompt = "refine {text}"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def transform(self, chunks, trace=None):
+            self.calls += 1
+            result = []
+            for index, chunk in enumerate(chunks):
+                metadata = dict(chunk.metadata)
+                if self.calls == 1 and index == 0:
+                    metadata["refined_by"] = "rule"
+                    metadata["refinement_llm_enabled"] = True
+                    metadata["refinement_fallback_reason"] = "llm_failed_or_empty"
+                else:
+                    metadata["refined_by"] = "llm"
+                    metadata.pop("refinement_fallback_reason", None)
+                result.append(self.clone_chunk(chunk, metadata=metadata))
+            return result
+
+    transform = FlakyRefiner()
+    processor = CorpusProcessor(
+        source_root=tmp_path,
+        output_root=tmp_path / "processed",
+        database_path=tmp_path / "db" / "history.db",
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=100, chunk_overlap=10),
+        transforms=(transform,),
+        loader_builder=lambda *args, **kwargs: FakeLoader(),
+    )
+
+    first = processor.process([entry])
+    skipped = processor.process([entry])
+    retried = processor.process([entry], retry_llm_failures=True)
+
+    assert first.remaining_llm_fallbacks == 1
+    assert skipped.skipped == 1
+    assert retried.succeeded == 1
+    assert retried.retried_documents == 1
+    assert retried.retried_chunks == 1
+    assert retried.remaining_llm_fallbacks == 0
+    assert transform.calls == 2
+    assert (tmp_path / "processed" / "llm_failures.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_retry_rebuilds_corrupt_chunk_artifact_from_source(tmp_path: Path) -> None:
+    source = tmp_path / "SWL.I.01.01 Test.pdf"
+    source.write_bytes(b"fake-pdf")
+    entry = _entry(source)
+    processor = CorpusProcessor(
+        source_root=tmp_path,
+        output_root=tmp_path / "processed",
+        database_path=tmp_path / "history.db",
+        splitter_settings=SplitterSettings(provider="recursive", chunk_size=100, chunk_overlap=10),
+        loader_builder=lambda *args, **kwargs: FakeLoader(),
+    )
+    processor.process([entry])
+    chunks_path = tmp_path / "processed" / "chunks" / f"{entry.document_id}.jsonl"
+    chunks_path.write_text("{invalid-json}\n", encoding="utf-8")
+
+    report = processor.process([entry], retry_llm_failures=True)
+
+    assert report.succeeded == 1
+    assert report.skipped == 0
+    assert json.loads(chunks_path.read_text(encoding="utf-8").splitlines()[0])["id"]

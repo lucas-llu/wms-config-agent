@@ -11,6 +11,7 @@ from typing import Any
 from core.settings import Settings, TransformSettings
 from core.types import Chunk
 from ingestion.transform.base_transform import BaseTransform
+from ingestion.transform.llm_output_guard import LLMOutputGuard
 from libs.llm import BaseLLM
 
 _IDENTIFIER = re.compile(r"\b[A-Z][A-Z0-9_-]*(?:\.[A-Z0-9_-]+)+\b")
@@ -168,6 +169,9 @@ class MetadataEnricher(BaseTransform):
             payload = json.loads(cleaned)
             if not self._valid_llm_payload(payload):
                 return None, "invalid_llm_response"
+            guard = LLMOutputGuard.validate_metadata(text, payload)
+            if not guard.accepted:
+                return None, f"guard_{guard.reason}"
             return payload, None
         except Exception as exc:
             return None, type(exc).__name__

@@ -10,6 +10,7 @@ from typing import Any
 from core.settings import Settings, TransformSettings
 from core.types import Chunk
 from ingestion.transform.base_transform import BaseTransform
+from ingestion.transform.llm_output_guard import LLMOutputGuard
 from libs.llm import BaseLLM
 
 _DEFAULT_PROMPT = """Refine this WMS/JDA MOCA fragment without changing technical meaning.
@@ -72,12 +73,20 @@ class ChunkRefiner(BaseTransform):
                     refined_by = "original"
                     metadata["refinement_fallback_reason"] = "empty_rule_result"
                 if self.use_llm:
+                    metadata["refinement_llm_enabled"] = True
                     llm_result = self._llm_refine(refined, trace)
                     if llm_result is not None:
-                        refined = llm_result
-                        refined_by = "llm"
-                        llm_count += 1
-                        metadata.pop("refinement_fallback_reason", None)
+                        guard = LLMOutputGuard.validate_refinement(refined, llm_result)
+                        if guard.accepted:
+                            refined = llm_result
+                            refined_by = "llm"
+                            llm_count += 1
+                            metadata.pop("refinement_fallback_reason", None)
+                            metadata.pop("refinement_guard", None)
+                        else:
+                            fallback_count += 1
+                            metadata["refinement_fallback_reason"] = f"guard_{guard.reason}"
+                            metadata["refinement_guard"] = guard.to_metadata()
                     else:
                         fallback_count += 1
                         metadata["refinement_fallback_reason"] = (
