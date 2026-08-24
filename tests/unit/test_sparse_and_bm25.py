@@ -44,3 +44,12 @@ def test_sparse_encoder_includes_enriched_summary_and_tags() -> None:
     assert encoding.term_frequencies["controls"] == 1
     assert encoding.term_frequencies["moca"] == 1
     assert encoding.term_frequencies["allocation"] == 2
+
+
+def test_remove_document_rebuilds_and_persists_index(tmp_path) -> None:
+    index = BM25Indexer(tmp_path)
+    index.build(SparseEncoder().encode([_chunk("one", "putaway"), _chunk("two", "outbound")]))
+
+    assert index.remove_document(["one", "missing"]) == 1
+    assert index.query("putaway") == []
+    assert BM25Indexer(tmp_path).count() == 1

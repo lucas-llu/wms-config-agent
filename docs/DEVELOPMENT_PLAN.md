@@ -142,7 +142,7 @@ Status: completed locally on 2026-08-24.
 
 ## Day 8 — Dashboard foundation and read-only data management
 
-Status: planned.
+Status: completed locally on 2026-08-24.
 
 - Complete G1: add the Streamlit application shell, six-page navigation, configuration service,
   overview metrics, and `scripts/start_dashboard.py`.
@@ -156,6 +156,14 @@ Status: planned.
 - Exit criteria: the Dashboard starts from a clean checkout, reads the existing 1,593-record local
   corpus without mutating it, targeted tests pass, the full suite keeps at least 90% coverage, and
   both retrieval benchmarks show no regression.
+
+Delivered: a six-page Streamlit shell, privacy-safe configuration overview, read-only document and
+Chunk browser, allowlisted image previews, and a cross-store `DocumentManager`. Chroma management
+reads use its local SQLite metadata segment to avoid a reproducible Windows native-binding crash
+without rebuilding the private index. The real Dashboard rendered 191 documents, 1,593 aligned
+Dense/BM25 Chunks, and 3,316 image mappings. Ruff checks passed; 179 tests passed with one opt-in
+live LLM test skipped; coverage reached 91.27%; and both the 40-case private and four-case public
+benchmarks stayed at 100% with zero regression.
 
 ## Day 9 — Dashboard ingestion operations and trace observability
 

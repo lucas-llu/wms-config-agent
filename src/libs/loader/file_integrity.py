@@ -6,9 +6,20 @@ import hashlib
 import json
 import sqlite3
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+
+@dataclass(frozen=True, slots=True)
+class IngestionRecord:
+    file_hash: str
+    file_path: str
+    status: str
+    processed_at: str
+    error_msg: str | None
+    metadata: dict[str, Any]
 
 
 class FileIntegrityChecker(ABC):
@@ -94,6 +105,70 @@ class SQLiteIntegrityChecker(FileIntegrityChecker):
             error_msg=error_msg,
             metadata={},
         )
+
+    def list_processed(
+        self,
+        *,
+        status: str | None = "success",
+        collection: str | None = None,
+    ) -> list[IngestionRecord]:
+        """Return ingestion history newest-first, tolerating legacy metadata."""
+        query = (
+            "SELECT file_hash, file_path, status, processed_at, error_msg, metadata_json "
+            "FROM ingestion_history"
+        )
+        parameters: list[str] = []
+        if status is not None:
+            query += " WHERE status = ?"
+            parameters.append(status)
+        query += " ORDER BY processed_at DESC, file_path"
+        with self._connect() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+
+        records: list[IngestionRecord] = []
+        for row in rows:
+            try:
+                metadata = json.loads(row[5])
+            except (json.JSONDecodeError, TypeError):
+                metadata = {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            if collection is not None and metadata.get("collection") != collection:
+                continue
+            records.append(
+                IngestionRecord(
+                    file_hash=str(row[0]),
+                    file_path=str(row[1]),
+                    status=str(row[2]),
+                    processed_at=str(row[3]),
+                    error_msg=str(row[4]) if row[4] is not None else None,
+                    metadata=metadata,
+                )
+            )
+        return records
+
+    def remove_record(
+        self,
+        *,
+        file_hash: str | None = None,
+        file_path: str | Path | None = None,
+    ) -> int:
+        """Remove one or more history records selected by a stable hash or exact path."""
+        if file_hash is None and file_path is None:
+            raise ValueError("file_hash or file_path is required")
+        clauses: list[str] = []
+        parameters: list[str] = []
+        if file_hash is not None:
+            clauses.append("file_hash = ?")
+            parameters.append(file_hash)
+        if file_path is not None:
+            clauses.append("file_path = ?")
+            parameters.append(str(file_path))
+        with self._connect() as connection:
+            cursor = connection.execute(
+                f"DELETE FROM ingestion_history WHERE {' OR '.join(clauses)}", parameters
+            )
+        return max(cursor.rowcount, 0)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path, timeout=30)

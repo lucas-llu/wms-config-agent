@@ -105,6 +105,17 @@ class BM25Indexer:
     def count(self) -> int:
         return len(self.documents)
 
+    def remove_document(self, chunk_ids: list[str]) -> int:
+        """Remove all supplied chunk IDs and persist a rebuilt index."""
+        removed = 0
+        for chunk_id in set(chunk_ids):
+            if self.documents.pop(chunk_id, None) is not None:
+                removed += 1
+        if removed:
+            self._rebuild_postings()
+            self.save()
+        return removed
+
     def _rebuild_postings(self) -> None:
         self.postings = {}
         total_length = 0

@@ -64,3 +64,19 @@ def test_invalid_inputs_are_rejected(tmp_path: Path) -> None:
         assert "image_id" in str(exc)
     else:
         raise AssertionError("empty image ID should fail")
+
+
+def test_list_and_remove_document_preserve_shared_content(tmp_path: Path) -> None:
+    storage = ImageStorage(tmp_path / "images", tmp_path / "index.db")
+    first = storage.save_bytes(
+        "first", b"shared", collection="manuals", extension=".png", doc_hash="doc-1"
+    )
+    storage.save_bytes(
+        "second", b"shared", collection="manuals", extension=".png", doc_hash="doc-2"
+    )
+
+    assert storage.list_images(collection="manuals", doc_hash="doc-1")[0].file_path == first
+    assert storage.remove_document("doc-1", collection="manuals") == 1
+    assert first.is_file()
+    assert storage.remove_document("doc-2", collection="manuals") == 1
+    assert not first.exists()

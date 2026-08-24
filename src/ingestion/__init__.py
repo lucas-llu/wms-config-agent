@@ -6,6 +6,13 @@ from ingestion.corpus_manifest import (
     CorpusManifestSummary,
 )
 from ingestion.corpus_processor import CorpusProcessingReport, CorpusProcessor
+from ingestion.document_manager import (
+    CollectionStats,
+    DeleteResult,
+    DocumentDetail,
+    DocumentInfo,
+    DocumentManager,
+)
 from ingestion.llm_failure_ledger import LLMFailureLedger, LLMFallback, collect_llm_fallbacks
 from ingestion.pipeline import IndexingPipeline, IndexingReport, load_preprocessed_chunks
 
@@ -15,6 +22,11 @@ __all__ = [
     "CorpusManifestSummary",
     "CorpusProcessingReport",
     "CorpusProcessor",
+    "CollectionStats",
+    "DeleteResult",
+    "DocumentDetail",
+    "DocumentInfo",
+    "DocumentManager",
     "IndexingPipeline",
     "IndexingReport",
     "LLMFailureLedger",

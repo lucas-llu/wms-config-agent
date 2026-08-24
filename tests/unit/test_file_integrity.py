@@ -56,3 +56,19 @@ def test_database_uses_wal_and_accepts_concurrent_writes(tmp_path: Path) -> None
     assert database_path.is_file()
     assert journal_mode.lower() == "wal"
     assert count == 12
+
+
+def test_list_processed_filters_and_remove_record(tmp_path: Path) -> None:
+    checker = SQLiteIntegrityChecker(tmp_path / "history.db")
+    checker.mark_success("success", "manual.pdf", collection="manuals", chunk_count=2)
+    checker.mark_failed("failed", "parse error", "broken.pdf")
+
+    successes = checker.list_processed(collection="manuals")
+
+    assert len(successes) == 1
+    assert successes[0].file_hash == "success"
+    assert successes[0].metadata["chunk_count"] == 2
+    assert len(checker.list_processed(status=None)) == 2
+    assert checker.remove_record(file_hash="success") == 1
+    assert checker.remove_record(file_path="missing.pdf") == 0
+    assert [record.file_hash for record in checker.list_processed(status=None)] == ["failed"]

@@ -9,6 +9,7 @@ dependencies = [
     "PyYAML>=6.0.2,<7",
     "pypdf[image]>=6.6,<7",
     "scikit-learn>=1.5,<2",
+    "streamlit>=1.41,<2",
 ]
 
 [project.optional-dependencies]

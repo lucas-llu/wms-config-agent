@@ -39,3 +39,11 @@ def test_chroma_upsert_query_filter_and_get(tmp_path) -> None:
     assert {item["id"] for item in filtered} == {"putaway", "appointment"}
     restored = store.get_by_ids(["outbound", "missing"])
     assert restored[0]["metadata"]["pages"] == [1, 2]
+
+    inbound = store.get_by_metadata({"domain": "Inbound"})
+    assert {item["id"] for item in inbound} == {"putaway", "appointment"}
+    stats = store.get_collection_stats()
+    assert stats["chunk_count"] == 3
+    assert stats["document_count"] == 3
+    assert store.delete_by_metadata({"domain": "Outbound"}) == 1
+    assert store.count() == 2
