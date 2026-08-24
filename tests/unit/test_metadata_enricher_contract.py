@@ -84,6 +84,29 @@ def test_llm_json_enrichment_uses_summary_and_combines_tags() -> None:
     assert output.metadata["metadata_enriched_by"] == "llm"
 
 
+def test_llm_metadata_accepts_case_only_identifier_variation() -> None:
+    class FakeLLM:
+        @staticmethod
+        def chat(messages, trace=None) -> ChatResponse:
+            return ChatResponse(
+                json.dumps(
+                    {
+                        "title": "MOCA SWL.I.99.01 configuration",
+                        "summary": "Configure SWL.I.99.01.",
+                        "tags": ["moca", "swl.i.99.01"],
+                    }
+                )
+            )
+
+    output = MetadataEnricher(_settings(use_llm=True), llm=FakeLLM()).transform(
+        [_chunk("MOCA SWL.I.99.01 configuration")]
+    )[0]
+
+    assert output.metadata["metadata_enriched_by"] == "llm"
+    assert "metadata_enrichment_fallback_reason" not in output.metadata
+    assert "SWL.I.99.01" in output.metadata["tags"]
+
+
 def test_invalid_llm_response_falls_back_to_rule_metadata() -> None:
     class BadLLM:
         @staticmethod

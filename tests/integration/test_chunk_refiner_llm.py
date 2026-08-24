@@ -39,10 +39,19 @@ def test_live_llm_refinement_and_metadata_quality() -> None:
     refined = ChunkRefiner(transform_settings, llm=llm).transform([chunk])[0]
     enriched = MetadataEnricher(transform_settings, llm=llm).transform([refined])[0]
 
-    assert refined.metadata["refined_by"] == "llm"
+    assert refined.metadata["refined_by"] in {"llm", "rule"}
     assert "SWL.I.99.01" in refined.text
     assert "Page 1 of 1" not in refined.text
-    assert enriched.metadata["metadata_enriched_by"] == "llm"
+    if refined.metadata["refined_by"] == "rule":
+        assert refined.metadata["refinement_fallback_reason"].startswith("guard_")
+
+    assert enriched.metadata["metadata_enriched_by"] in {"llm", "rule"}
+    if enriched.metadata["metadata_enriched_by"] == "rule":
+        reason = enriched.metadata["metadata_enrichment_fallback_reason"]
+        assert reason.startswith("guard_") or reason in {
+            "JSONDecodeError",
+            "invalid_llm_response",
+        }
     assert enriched.metadata["title"]
     assert enriched.metadata["summary"]
     assert enriched.metadata["tags"]

@@ -14,7 +14,9 @@ from ingestion.transform.llm_output_guard import LLMOutputGuard
 from libs.llm import BaseLLM
 
 _DEFAULT_PROMPT = """Refine this WMS/JDA MOCA fragment without changing technical meaning.
-Preserve commands, configuration keys, versions, and identifiers. Return only the refined text.
+Preserve commands, configuration keys, versions, and identifiers exactly, including letter case.
+Do not translate, decorate, or add characters to technical identifiers. Return only the refined
+text.
 
 Fragment:
 {text}
@@ -74,7 +76,7 @@ class ChunkRefiner(BaseTransform):
                     metadata["refinement_fallback_reason"] = "empty_rule_result"
                 if self.use_llm:
                     metadata["refinement_llm_enabled"] = True
-                    llm_result = self._llm_refine(refined, trace)
+                    llm_result, llm_failure_reason = self._llm_refine_with_reason(refined, trace)
                     if llm_result is not None:
                         guard = LLMOutputGuard.validate_refinement(refined, llm_result)
                         if guard.accepted:
@@ -89,9 +91,7 @@ class ChunkRefiner(BaseTransform):
                             metadata["refinement_guard"] = guard.to_metadata()
                     else:
                         fallback_count += 1
-                        metadata["refinement_fallback_reason"] = (
-                            "llm_unavailable" if self.llm is None else "llm_failed_or_empty"
-                        )
+                        metadata["refinement_fallback_reason"] = llm_failure_reason
                 metadata["refined_by"] = refined_by
                 metadata["refinement_changed"] = refined != chunk.text
                 result.append(self.clone_chunk(chunk, text=refined, metadata=metadata))
@@ -170,8 +170,16 @@ class ChunkRefiner(BaseTransform):
         return re.sub(r"\n{3,}", "\n\n", cleaned).strip("\n")
 
     def _llm_refine(self, text: str, trace: Any | None = None) -> str | None:
+        result, _ = self._llm_refine_with_reason(text, trace)
+        return result
+
+    def _llm_refine_with_reason(
+        self,
+        text: str,
+        trace: Any | None = None,
+    ) -> tuple[str | None, str]:
         if self.llm is None:
-            return None
+            return None, "llm_unavailable"
         try:
             response = self.llm.chat(
                 [{"role": "user", "content": self.prompt.format(text=text)}],
@@ -179,10 +187,10 @@ class ChunkRefiner(BaseTransform):
             )
             value = response.content
             if not value.strip():
-                return None
-            return value.strip()
-        except Exception:
-            return None
+                return None, "empty_llm_response"
+            return value.strip(), ""
+        except Exception as exc:
+            return None, type(exc).__name__
 
     @staticmethod
     def _load_prompt(prompt_path: str | Path | None) -> str:

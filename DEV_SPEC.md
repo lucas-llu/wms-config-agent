@@ -1932,7 +1932,7 @@ dashboard:
 | B4 | VectorStore 抽象接口与工厂 | [x] | 2026-08-23 | BaseVectorStore、配置工厂与显式向量契约 |
 | B5 | Reranker 抽象接口与工厂（含 None 回退） | [x] | 2026-08-24 | BaseReranker、None 后端、工厂与安全回退 |
 | B6 | Evaluator 抽象接口与工厂 | [x] | 2026-08-24 | BaseEvaluator、Threshold/Composite 实现与配置工厂 |
-| B7.1 | OpenAI-Compatible LLM 实现与 Hardening | [x] | 2026-08-24 | OpenCode Go/ox-alpha-free 真实调用通过；输出守卫、调用预算、失败账本与 Chunk 定向重试完成 |
+| B7.1 | OpenAI-Compatible LLM 实现与 Hardening | [x] | 2026-08-24 | OpenCode Go/ox-alpha-free 真实调用通过；输出守卫、调用预算、失败账本、Chunk 定向重试及 Day 7.2 稳定性修复完成 |
 | B7.2 | Ollama LLM 实现 | [ ] | | |
 | B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | |
 | B7.4 | Ollama Embedding 实现 | [ ] | | |

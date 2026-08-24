@@ -21,7 +21,8 @@ _TECH_TERMS = re.compile(
 )
 _IMAGE_PLACEHOLDER = re.compile(r"\[IMAGE:\s*[^\]]+\]")
 _DEFAULT_PROMPT = """Analyze this WMS/JDA MOCA fragment. Return one JSON object with non-empty
-string fields title and summary, plus a tags array. Do not invent configuration values.
+string fields title and summary, plus a tags array. Do not invent configuration values or product
+names. Reuse technical identifiers exactly as written in the fragment, including letter case.
 
 Fragment:
 {text}
@@ -68,15 +69,20 @@ class MetadataEnricher(BaseTransform):
             values = rule_values
             enriched_by = "rule"
             if self.use_llm:
-                llm_values, reason = self._llm_metadata(chunk.text)
+                llm_values, reason, guard_metadata = self._llm_metadata(chunk.text)
                 if llm_values is not None:
                     values = self._merge_llm_values(rule_values, llm_values, metadata)
                     enriched_by = "llm"
                     llm_count += 1
                     metadata.pop("metadata_enrichment_fallback_reason", None)
+                    metadata.pop("metadata_enrichment_guard", None)
                 else:
                     fallback_count += 1
                     metadata["metadata_enrichment_fallback_reason"] = reason
+                    if guard_metadata is not None:
+                        metadata["metadata_enrichment_guard"] = guard_metadata
+                    else:
+                        metadata.pop("metadata_enrichment_guard", None)
 
             metadata.update(values)
             metadata["metadata_enriched_by"] = enriched_by
@@ -160,21 +166,24 @@ class MetadataEnricher(BaseTransform):
                 break
         return tags
 
-    def _llm_metadata(self, text: str) -> tuple[dict[str, Any] | None, str | None]:
+    def _llm_metadata(
+        self,
+        text: str,
+    ) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]:
         if self.llm is None:
-            return None, "llm_unavailable"
+            return None, "llm_unavailable", None
         try:
             response = self.llm.chat([{"role": "user", "content": self.prompt.format(text=text)}])
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.content.strip())
             payload = json.loads(cleaned)
             if not self._valid_llm_payload(payload):
-                return None, "invalid_llm_response"
+                return None, "invalid_llm_response", None
             guard = LLMOutputGuard.validate_metadata(text, payload)
             if not guard.accepted:
-                return None, f"guard_{guard.reason}"
-            return payload, None
+                return None, f"guard_{guard.reason}", guard.to_metadata()
+            return payload, None, None
         except Exception as exc:
-            return None, type(exc).__name__
+            return None, type(exc).__name__, None
 
     @staticmethod
     def _valid_llm_payload(payload: Any) -> bool:

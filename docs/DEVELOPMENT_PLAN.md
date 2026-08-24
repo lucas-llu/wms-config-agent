@@ -127,3 +127,15 @@ safe fallback behavior. Live generation remains opt-in (`use_llm: false` by defa
 accidental full-corpus API run. Day 7.1 hardening adds deterministic output validation, mandatory
 document/call bounds for cloud-enabled preprocessing, an auditable fallback ledger, and per-Chunk
 retry without reloading successful documents; C5/C6 are now closed in the detailed specification.
+
+### Day 7.2 — Live Provider stability (2026-08-24)
+
+Status: completed locally on 2026-08-24.
+
+- Compare metadata identifiers case-insensitively so a tag such as `swl.i.99.01` is recognized as
+  the same evidence as `SWL.I.99.01`, while authoritative refined text still preserves exact case.
+- Reject Unicode replacement characters instead of persisting visibly corrupted model output.
+- Preserve exact provider/empty-response failure types and record metadata guard details for
+  chunk-level diagnosis and retry.
+- Make live acceptance validate either safe LLM enrichment or an evidence-preserving, explicitly
+  guarded fallback; provider/transport failures still fail the live test.

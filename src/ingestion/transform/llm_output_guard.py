@@ -15,6 +15,7 @@ _TECHNICAL_TOKEN = re.compile(
     r"|\b\d+(?:\.\d+)+\b"
 )
 _FENCED_CODE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+_UNICODE_REPLACEMENT_CHARACTER = "\ufffd"
 _GENERIC_TECHNICAL_TERMS = {
     "API",
     "CSV",
@@ -26,6 +27,7 @@ _GENERIC_TECHNICAL_TERMS = {
     "WMS",
     "XML",
 }
+_GENERIC_TECHNICAL_TERMS_CANONICAL = {term.casefold() for term in _GENERIC_TECHNICAL_TERMS}
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +55,8 @@ class LLMOutputGuard:
     def validate_refinement(cls, source: str, candidate: str) -> GuardResult:
         if not candidate.strip():
             return GuardResult(False, "empty_output")
+        if _UNICODE_REPLACEMENT_CHARACTER in candidate:
+            return GuardResult(False, "invalid_unicode_replacement")
         source_tokens = cls.technical_tokens(source)
         candidate_tokens = cls.technical_tokens(candidate)
         missing = tuple(sorted(source_tokens - candidate_tokens))
@@ -89,9 +93,17 @@ class LLMOutputGuard:
                 " ".join(str(tag) for tag in payload.get("tags", [])),
             ]
         )
-        source_tokens = cls.technical_tokens(source)
-        candidate_tokens = cls.technical_tokens(candidate)
-        added = tuple(sorted(candidate_tokens - source_tokens - _GENERIC_TECHNICAL_TERMS))
+        if _UNICODE_REPLACEMENT_CHARACTER in candidate:
+            return GuardResult(False, "invalid_unicode_replacement")
+        source_tokens = cls._technical_token_map(source)
+        candidate_tokens = cls._technical_token_map(candidate)
+        added = tuple(
+            sorted(
+                candidate_tokens[key]
+                for key in candidate_tokens.keys() - source_tokens.keys()
+                if key not in _GENERIC_TECHNICAL_TERMS_CANONICAL
+            )
+        )
         if added:
             return GuardResult(False, "invented_technical_tokens", added_tokens=added)
         return GuardResult(True)
@@ -99,3 +111,10 @@ class LLMOutputGuard:
     @staticmethod
     def technical_tokens(text: str) -> set[str]:
         return {match.group(0) for match in _TECHNICAL_TOKEN.finditer(text)}
+
+    @classmethod
+    def _technical_token_map(cls, text: str) -> dict[str, str]:
+        canonical: dict[str, str] = {}
+        for token in sorted(cls.technical_tokens(text), key=lambda item: (item.casefold(), item)):
+            canonical.setdefault(token.casefold(), token)
+        return canonical

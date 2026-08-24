@@ -28,6 +28,31 @@ def test_refinement_guard_accepts_cleanup_that_preserves_technical_evidence() ->
     assert LLMOutputGuard.validate_refinement(source, candidate).accepted is True
 
 
+def test_guard_treats_identifier_case_as_semantically_equivalent() -> None:
+    source = "Configure SWL.I.99.01 using MOCA."
+    candidate = {
+        "title": "MOCA configuration",
+        "summary": "Configure SWL.I.99.01.",
+        "tags": ["swl.i.99.01", "moca"],
+    }
+
+    assert LLMOutputGuard.validate_metadata(source, candidate).accepted is True
+
+
+@pytest.mark.parametrize("mode", ["refinement", "metadata"])
+def test_guard_rejects_unicode_replacement_character(mode: str) -> None:
+    if mode == "refinement":
+        result = LLMOutputGuard.validate_refinement("MOCA configuration", "MOCA � configuration")
+    else:
+        result = LLMOutputGuard.validate_metadata(
+            "MOCA configuration",
+            {"title": "MOCA � configuration", "summary": "MOCA", "tags": ["MOCA"]},
+        )
+
+    assert result.accepted is False
+    assert result.reason == "invalid_unicode_replacement"
+
+
 @pytest.mark.parametrize(
     "candidate, reason, token",
     [
@@ -105,4 +130,5 @@ def test_metadata_enricher_rejects_invented_process_code() -> None:
     assert output.metadata["metadata_enrichment_fallback_reason"] == (
         "guard_invented_technical_tokens"
     )
+    assert output.metadata["metadata_enrichment_guard"]["added_tokens"] == ["SWL.I.99.99"]
     assert "SWL.I.99.99" not in output.metadata["tags"]

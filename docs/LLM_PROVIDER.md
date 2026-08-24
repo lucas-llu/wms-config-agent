@@ -34,7 +34,10 @@ Remove-Item Env:WMS_LLM_API_KEY
 ```
 
 The test uses synthetic WMS text only. It validates real ChunkRefiner output and structured
-MetadataEnricher JSON without sending the private PDF corpus.
+MetadataEnricher JSON without sending the private PDF corpus. Because remote generation is
+non-deterministic, acceptance permits a deterministic rule fallback only when the response was
+explicitly rejected by an output/shape guard. Provider, authentication, and transport failures
+still fail the live test.
 
 ## Enabling ingestion-time generation
 
@@ -79,7 +82,10 @@ result remains usable and the Chunk is recorded in
 
 The output guard rejects empty, severely truncated/expanded, code-changing, or technically
 inconsistent refinements. Metadata output is also rejected when it invents strong technical
-identifiers. Rejected output is never persisted as the authoritative Chunk text.
+identifiers. Metadata tags compare identifiers case-insensitively, but authoritative refined text
+must preserve their exact spelling and case. Unicode replacement characters are rejected. Guard
+details and exact sanitized failure types are written to Chunk metadata and the failure ledger;
+rejected output is never persisted as the authoritative Chunk text.
 
 The Provider retries only transient network failures, HTTP 429, and HTTP 500/502/503/504. It does
 not retry authentication, configuration, or malformed-response errors. Traces record provider,

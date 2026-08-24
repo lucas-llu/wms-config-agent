@@ -103,7 +103,7 @@ def test_llm_failure_falls_back_without_raising() -> None:
 
     assert output.text == "MOCA configuration"
     assert output.metadata["refined_by"] == "rule"
-    assert output.metadata["refinement_fallback_reason"] == "llm_failed_or_empty"
+    assert output.metadata["refinement_fallback_reason"] == "ConnectionError"
 
 
 def test_missing_llm_falls_back_and_trace_records_counts() -> None:
@@ -176,7 +176,7 @@ def test_empty_llm_response_falls_back_to_rule_result() -> None:
     output = ChunkRefiner(_settings(use_llm=True), llm=EmptyLLM()).transform([_chunk()])[0]
 
     assert output.text == "MOCA configuration"
-    assert output.metadata["refinement_fallback_reason"] == "llm_failed_or_empty"
+    assert output.metadata["refinement_fallback_reason"] == "empty_llm_response"
 
 
 def test_rule_mode_never_calls_injected_llm() -> None:
