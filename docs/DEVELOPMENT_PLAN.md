@@ -139,3 +139,66 @@ Status: completed locally on 2026-08-24.
   chunk-level diagnosis and retry.
 - Make live acceptance validate either safe LLM enrichment or an evidence-preserving, explicitly
   guarded fallback; provider/transport failures still fail the live test.
+
+## Day 8 — Dashboard foundation and read-only data management
+
+Status: planned.
+
+- Complete G1: add the Streamlit application shell, six-page navigation, configuration service,
+  overview metrics, and `scripts/start_dashboard.py`.
+- Complete G2: implement `DocumentManager` contracts for list, detail, collection statistics, and
+  coordinated deletion across Chroma, BM25, image storage, and ingestion history. Exercise delete
+  behavior only against disposable fixture stores during Day 8.
+- Complete G3: add a read-only data browser for documents, Chunks, metadata, and allowlisted image
+  previews, with collection filters and empty/corrupt-data fallbacks.
+- Add Streamlit `AppTest` coverage for the overview and data-browser paths and add
+  `ruff format --check` to the public quality workflow.
+- Exit criteria: the Dashboard starts from a clean checkout, reads the existing 1,593-record local
+  corpus without mutating it, targeted tests pass, the full suite keeps at least 90% coverage, and
+  both retrieval benchmarks show no regression.
+
+## Day 9 — Dashboard ingestion operations and trace observability
+
+Status: planned.
+
+- Complete G4: add staged PDF upload, explicit collection selection, bounded ingestion progress,
+  and confirmed document deletion through `DocumentManager`.
+- Complete G5: add ingestion trace history and stage-duration views backed by a tolerant
+  `TraceService` JSONL reader.
+- Complete G6: add query trace search, Dense/Sparse diagnostics, rerank/fallback visibility, and
+  latency views without displaying prompts, credentials, or unapproved document text.
+- Expand Dashboard `AppTest` coverage for upload validation, confirmation gates, trace filtering,
+  malformed trace lines, and storage/provider failure fallbacks.
+- Exit criteria: a sanitized fixture PDF can be uploaded, indexed, inspected, traced, queried, and
+  deleted without touching the private corpus; all automated tests and both benchmarks pass.
+
+## Day 10 — Evaluation UI, contracts, and reproducible MVP release
+
+Status: planned.
+
+- Complete H4 using the existing Benchmark Runner and custom evaluator: run a selected sanitized
+  dataset, display Hit@K/MRR/refusal/evidence metrics, and compare privacy-safe historical reports.
+- Complete I2: cover all six Dashboard pages with Streamlit `AppTest` smoke tests.
+- Complete I4: close contract-test gaps for VectorStore deletion/filtering, DocumentManager,
+  Reranker, Evaluator, and failure isolation.
+- Complete I5: run a sanitized full-chain acceptance from PDF ingestion through local indexes,
+  MCP cited query, Dashboard rendering, evaluation, and cleanup.
+- Complete I3: remove the temporary README ignore rule and write the final quick start, settings,
+  MCP, Dashboard, testing, privacy, and troubleshooting documentation.
+- Exit criteria: a new developer can reproduce the sanitized MVP from the README, public CI is
+  green, coverage remains at least 90%, the private 40-case and public four-case benchmarks do not
+  regress, and the repository is ready for a tagged MVP checkpoint.
+
+## Deferred optional provider work after Day 10
+
+- B7.2-B7.4: Ollama LLM plus hosted/local Embedding providers.
+- B7.7-B7.8: LLM and Cross-Encoder rerankers.
+- B9: Azure Vision implementation; the current Vision contract and safe fallback remain valid.
+- H1: Ragas evaluation, pending a separate dependency/privacy/cost decision. Day 10 evaluation
+  continues to use the existing deterministic Benchmark Runner and custom evaluator.
+
+## Daily quality gate for Days 8-10
+
+Each completed increment must pass targeted tests, repository-wide Ruff formatting and linting,
+the full test suite with at least 90% coverage, the sanitized E2E path, private/public Benchmark
+comparison, secret scanning, and a clean local commit before it is eligible to push.
