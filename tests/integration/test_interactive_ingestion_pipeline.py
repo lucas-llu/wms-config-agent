@@ -646,3 +646,31 @@ def test_orphaned_artifacts_from_crashed_run_do_not_corrupt_restart(
     assert len(doc_chunks) > 0
     bm25_count = pipeline.indexing_pipeline.bm25_indexer.count()
     assert bm25_count == len(vector_ids)
+
+
+def test_repeated_force_ingestion_keeps_atomic_persistence_stable(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    source = staging / "SWL.I.11.01 Repeated Atomic Persistence.pdf"
+    pipeline, history_path = _fixture_pipeline(tmp_path, staging)
+    document_ids: set[str] = set()
+
+    for iteration in range(12):
+        _write_pdf(source, f"atomic-repeat-{iteration}")
+        result = pipeline.run(source, collection="dashboard-test", force=True)
+        document_ids.add(result.document_id)
+        assert result.skipped is False
+        assert result.indexing.vector_count == result.indexing.bm25_count
+        assert result.indexing.vector_count >= 4
+        assert pipeline.indexing_pipeline.embedding.model_path.is_file()
+        assert not pipeline.indexing_pipeline.vector_store.swap_journal_path.exists()
+
+    records = SQLiteIntegrityChecker(history_path).list_processed(
+        status="success",
+        collection="dashboard-test",
+    )
+    assert len(document_ids) == 12
+    assert len(records) == 1
+    assert set(pipeline.indexing_pipeline.vector_store.list_ids()) == set(
+        pipeline.indexing_pipeline.bm25_indexer.documents
+    )

@@ -57,7 +57,7 @@
 	> |---------|-----------|------|---------------|
 	> | **文件完整性检查** | `data/db/ingestion_history.db` | 记录已处理文件的 SHA256 哈希，实现增量摄取 | `file_hash`, `status`, `processed_at` |
 	> | **图片索引映射** | `data/db/image_index.db` | 记录 image_id → 文件路径映射，支持图片检索与引用 | `image_id`, `file_path`, `collection` |
-	> | **BM25 索引元数据** | `data/db/bm25/` | 存储倒排索引和 IDF 统计信息（未来可扩展用 SQLite） | 当前使用 pickle，可迁移至 SQLite |
+	> | **BM25 索引元数据** | `data/db/bm25/` | 存储倒排索引和 IDF 统计信息（未来可扩展用 SQLite） | 当前使用 JSON，可迁移至 SQLite |
 	> 
 	> **设计优势**：
 	> - **零依赖部署**：无需安装 MySQL/PostgreSQL 等数据库服务，`pip install` 即可运行
@@ -317,12 +317,11 @@ MCP 协议的 Tool 返回格式支持多种内容类型（`content` 数组），
 | **Ollama / vLLM (本地)** | 完全离线、隐私敏感、无 API 成本 | `provider: ollama`, `base_url`, `model` |
 
 - **技术选型建议**：
-	- 本项目采用自研的 `BaseLLM` / `BaseEmbedding` 抽象基类，配合工厂模式（`llm_factory.py` / `embedding_factory.py`）实现统一调用接口。已内置 Azure OpenAI、OpenAI、Ollama、DeepSeek 四种 Provider 适配。
-	- 对于其他 Provider，可通过 **OpenAI-Compatible 模式**接入（设置自定义 `api_base`），或实现 `BaseLLM` 接口并在工厂中注册。
+	- 本项目采用自研的 `BaseLLM` / `BaseEmbedding` 抽象基类，配合工厂模式（`llm_factory.py` / `embedding_factory.py`）实现统一调用接口。当前内置通用 OpenAI Chat Completions Compatible 文本 Provider，并使用 OpenCode Go 完成真实验收；Azure、Ollama 与独立 DeepSeek 适配仍属于后续扩展。
+	- 其他兼容 Provider 可通过 `base_url`、`model` 与 `api_key_env` 接入；不兼容的 Provider 需要实现 `BaseLLM` 并在工厂中注册。
 
-	- 对于企业级需求，可在其基础上增加统一的 **重试、限流、日志** 中间层，提升生产可靠性，但本项目暂不实现，这里仅提供思路。
-	- **Vision LLM 扩展**：针对图像描述生成（Image Captioning）需求，系统扩展了 `BaseVisionLLM` 接口，支持文本+图片的多模态输入。当前实现：
-		- **Azure OpenAI Vision**（GPT-4o/GPT-4-Vision）：企业级合规部署，支持复杂图表解析，与 Azure 生态深度集成。
+	- 文本 Provider 已实现超时、响应校验、脱敏错误以及针对 429/可恢复 5xx/网络异常的有限指数退避；更完整的集中限流仍属于生产化扩展。
+	- **Vision LLM 扩展**：针对图像描述生成（Image Captioning）需求，系统已提供 `BaseVisionLLM` 接口和工厂路由；具体 Azure Vision Provider 尚未实现。
 
 #### 3.3.3 检索策略抽象
 
@@ -429,9 +428,10 @@ MCP 协议的 Tool 返回格式支持多种内容类型（`content` 数组），
 - **配置文件结构示例** (`config/settings.yaml`)：
 	```yaml
 	llm:
-	  provider: azure  # azure | openai | ollama | deepseek
-	  model: gpt-4o
-	  # provider-specific configs...
+	  provider: openai_compatible
+	  model: ox-alpha-free
+	  base_url: https://opencode.ai/zen/go/v1/chat/completions
+	  api_key_env: WMS_LLM_API_KEY
 	
 	embedding:
 	  provider: openai

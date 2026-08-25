@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from libs.atomic_file import replace_file_atomically
 from libs.sqlite_snapshot import connect_sqlite_snapshot
 
 _SAFE_SUFFIX = re.compile(r"^\.[A-Za-z0-9]{1,8}$")
@@ -77,7 +78,7 @@ class ImageStorage:
                 connection.execute("BEGIN IMMEDIATE")
                 if not destination.is_file():
                     temporary.write_bytes(data)
-                    temporary.replace(destination)
+                    replace_file_atomically(temporary, destination)
                     created = True
                 cleanup_queued = self._upsert(
                     connection,

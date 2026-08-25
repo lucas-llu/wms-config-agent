@@ -192,6 +192,24 @@ longer inherits stale image paths from history; WAL journal recovery after simul
 orphaned artifacts from crashed runs are tolerated during legacy directory scans without
 corrupting restart; and full-corpus lifecycle locking for process_corpus snapshots and writes.
 
+## Day 8.2 — Windows atomic persistence stability
+
+Status: completed on 2026-08-25.
+
+- Replace separate file-swap retry loops with one Windows-aware helper that retries only transient
+  permission and sharing violations using bounded exponential backoff.
+- Apply the shared atomic replacement contract to Local LSA model commit/rollback, Chroma swap
+  journals, BM25 indexes, manifests, processing artifacts, LLM fallback ledgers, and managed images.
+- Add unit coverage for retry, fail-fast, and invalid-policy behavior plus a repeated ingestion test
+  that performs 12 consecutive forced full-corpus swaps.
+- Repeat the complete interactive ingestion recovery suite five times before accepting Day 9
+  readiness.
+
+Delivered: all five stability runs passed (55 test executions), including the new 12-swap stress
+path. The repository-wide suite passed with 260 tests and one opt-in live LLM test skipped;
+coverage reached 90.38%. Ruff lint/format, the public sanitized benchmark, and the real 191-document
+Dashboard read-only verification also passed.
+
 ## Day 9 — Dashboard ingestion operations and trace observability
 
 Status: planned.

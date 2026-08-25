@@ -1445,6 +1445,8 @@ smart-knowledge-hub/
 │   │
 │   ├── libs/                            # Libs 层 (可插拔抽象层)
 │   │   ├── __init__.py
+│   │   ├── atomic_file.py                # Windows-safe 原子文件替换与有界重试
+│   │   ├── sqlite_snapshot.py            # SQLite WAL 一致性只读快照
 │   │   │
 │   │   ├── loader/                      # Loader 抽象 (文档加载)
 │   │   │   ├── __init__.py
@@ -2001,7 +2003,7 @@ dashboard:
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
 | G1 | Dashboard 基础架构与系统总览页 | [x] | 2026-08-24 | 六页面导航、配置摘要、真实索引统计与启动脚本 |
-| G2 | DocumentManager 实现 | [x] | 2026-08-24 | 跨 Chroma、BM25、图片和摄取历史的读取与协调删除 |
+| G2 | DocumentManager 实现 | [x] | 2026-08-24 | 跨 Chroma、BM25、图片和摄取历史的读取与协调删除；Day 8.2 完成 Windows 原子持久化重试与重复稳定性验收 |
 | G3 | 数据浏览器页面 | [x] | 2026-08-24 | 集合筛选、文档/Chunk/metadata 浏览和安全图片预览 |
 | G4 | Ingestion 管理页面 | [ ] | | |
 | G5 | Ingestion 追踪页面 | [ ] | | |
@@ -2039,10 +2041,15 @@ dashboard:
 | 阶段 D | 7 | 7 | 100% |
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
-| 阶段 G | 6 | 0 | 0% |
+| 阶段 G | 6 | 3 | 50% |
 | 阶段 H | 5 | 3 | 60% |
 | 阶段 I | 5 | 1 | 20% |
-| **总计** | **68** | **50** | **73.5%** |
+| **总计** | **68** | **53** | **77.9%** |
+
+> **Day 9 readiness revalidation（2026-08-25）**：共享 `replace_file_atomically` 已覆盖
+> Local LSA、Chroma swap journal、BM25、Manifest、处理产物、LLM failure ledger 与图片文件；
+> 新增单元级重试契约和单用例 12 次强制摄取压力测试。Interactive ingestion recovery suite
+> 连续 5 轮全部通过（55 次测试执行），全量测试 260 passed / 1 opt-in skipped，覆盖率 90.38%。
 
 
 ---

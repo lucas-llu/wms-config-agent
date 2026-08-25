@@ -17,6 +17,7 @@ from typing import Any
 import chromadb
 
 from core.types import ChunkRecord
+from libs.atomic_file import replace_file_atomically
 from libs.vector_store.base_vector_store import BaseVectorStore
 
 _FULL_METADATA_KEY = "_full_metadata_json"
@@ -192,7 +193,7 @@ class ChromaStore(BaseVectorStore):
             json.dumps(values, ensure_ascii=False, sort_keys=True),
             encoding="utf-8",
         )
-        temporary.replace(self.swap_journal_path)
+        replace_file_atomically(temporary, self.swap_journal_path)
 
     def _prune_backup_generations(self) -> None:
         prefix = f"wms-backup-{self.collection_key}-"

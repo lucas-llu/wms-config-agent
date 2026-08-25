@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import time
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
@@ -13,6 +12,7 @@ from typing import Any
 
 from ingestion.embedding import SparseEncoder, SparseEncoding
 from ingestion.storage.lifecycle_lock import LifecycleLock
+from libs.atomic_file import replace_file_atomically
 
 _LOCK_TIMEOUT_SECONDS = 30.0
 
@@ -225,14 +225,7 @@ class BM25Indexer:
                 )
                 destination.flush()
                 os.fsync(destination.fileno())
-            for attempt in range(5):
-                try:
-                    temporary.replace(self.index_path)
-                    break
-                except PermissionError:
-                    if attempt == 4:
-                        raise
-                    time.sleep(0.1 * (attempt + 1))
+            replace_file_atomically(temporary, self.index_path)
         finally:
             temporary.unlink(missing_ok=True)
         self._disk_signature = self._file_signature()

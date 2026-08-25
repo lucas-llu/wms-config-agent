@@ -300,7 +300,9 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
                 default=60.0,
             ),
             max_tokens=_optional_int(
-                vision_llm.get("max_tokens"), "vision_llm.max_tokens", default=1024
+                vision_llm.get("max_tokens"),  # gitleaks:allow
+                "vision_llm.max_tokens",
+                default=1024,
             ),
             temperature=_optional_number(
                 vision_llm.get("temperature"),

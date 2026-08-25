@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from core.types import Chunk
+from libs.atomic_file import replace_file_atomically
 
 _RETRYABLE_IMAGE_STATUSES = frozenset({"failed", "partial", "vision_llm_unavailable"})
 
@@ -112,14 +112,7 @@ class LLMFailureLedger:
             for item in self._entries
         )
         temporary.write_text(content, encoding="utf-8")
-        for attempt in range(6):
-            try:
-                temporary.replace(self.path)
-                return
-            except PermissionError:
-                if attempt == 5:
-                    raise
-                time.sleep(0.05 * (2**attempt))
+        replace_file_atomically(temporary, self.path)
 
     def _load(self) -> list[LLMFallback]:
         if not self.path.is_file():

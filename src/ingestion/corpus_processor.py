@@ -18,6 +18,7 @@ from ingestion.corpus_manifest import CorpusManifestEntry
 from ingestion.llm_failure_ledger import LLMFailureLedger, collect_llm_fallbacks
 from ingestion.storage import ImageStorage
 from ingestion.transform import BaseTransform
+from libs.atomic_file import replace_file_atomically
 from libs.loader import BaseLoader, IngestionRecord, LoaderFactory, SQLiteIntegrityChecker
 
 LoaderBuilder = Callable[..., BaseLoader]
@@ -346,7 +347,7 @@ class CorpusProcessor:
             path.parent.mkdir(parents=True, exist_ok=True)
             temporary = path.with_suffix(path.suffix + ".rollback.tmp")
             temporary.write_bytes(payload)
-            self._replace_with_retry(temporary, path)
+            replace_file_atomically(temporary, path)
         for image_path in current_images - set(backups):
             if self._is_managed_extracted_image(image_path):
                 image_path.unlink(missing_ok=True)
@@ -999,7 +1000,7 @@ class CorpusProcessor:
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
-        CorpusProcessor._replace_with_retry(temporary, path)
+        replace_file_atomically(temporary, path)
 
     @staticmethod
     def _write_jsonl(path: Path, payloads: list[dict[str, object]]) -> None:
@@ -1009,16 +1010,4 @@ class CorpusProcessor:
             json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n" for payload in payloads
         )
         temporary.write_text(content, encoding="utf-8")
-        CorpusProcessor._replace_with_retry(temporary, path)
-
-    @staticmethod
-    def _replace_with_retry(temporary: Path, destination: Path) -> None:
-        """Handle transient Windows readers that briefly lock an existing artifact."""
-        for attempt in range(6):
-            try:
-                temporary.replace(destination)
-                return
-            except PermissionError:
-                if attempt == 5:
-                    raise
-                time.sleep(0.05 * (2**attempt))
+        replace_file_atomically(temporary, path)

@@ -221,6 +221,8 @@ smart-knowledge-hub/
 │   │
 │   ├── libs/                            # Libs 层 (可插拔抽象层)
 │   │   ├── __init__.py
+│   │   ├── atomic_file.py                # Windows-safe 原子文件替换与有界重试
+│   │   ├── sqlite_snapshot.py            # SQLite WAL 一致性只读快照
 │   │   │
 │   │   ├── loader/                      # Loader 抽象 (文档加载)
 │   │   │   ├── __init__.py
@@ -314,7 +316,7 @@ smart-knowledge-hub/
 │       ├── chroma/                      # Chroma 向量库目录
 │       │                                # 存储 Dense Vector、Sparse Vector 与 Chunk Metadata
 │       └── bm25/                        # BM25 索引目录
-│                                        # 存储倒排索引与 IDF 统计信息（当前使用 pickle）
+│                                        # 存储倒排索引与 IDF 统计信息（当前使用 JSON）
 │
 ├── cache/                               # 缓存目录
 │   ├── embeddings/                      # Embedding 缓存 (按内容哈希)

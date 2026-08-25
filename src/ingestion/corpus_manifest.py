@@ -11,6 +11,7 @@ from typing import Any
 
 from pypdf import PdfReader
 
+from libs.atomic_file import replace_file_atomically
 from libs.loader.base_loader import BaseLoader
 
 _PROCESS_CODE = re.compile(r"SWL\.[IOSV]\.\d+\.\d+", re.IGNORECASE)
@@ -184,7 +185,7 @@ class CorpusManifestBuilder:
             for entry in entries
         )
         temporary.write_text(payload, encoding="utf-8")
-        temporary.replace(destination)
+        replace_file_atomically(temporary, destination)
         return destination
 
     @staticmethod

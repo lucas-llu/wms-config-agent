@@ -107,14 +107,14 @@ def apply_no_vision(settings: dict) -> dict:
 def apply_invalid_llm_key(settings: dict) -> dict:
     """Set LLM API key to invalid value."""
     settings["llm"]["api_key"] = "invalid_key_12345"
-    print("   LLM api_key -> invalid_key_12345")
+    print("   LLM api_key -> invalid_key_12345")  # gitleaks:allow
     return settings
 
 
 def apply_invalid_embed_key(settings: dict) -> dict:
     """Set Embedding API key to invalid value."""
     settings["embedding"]["api_key"] = "invalid_key_12345"
-    print("   Embedding api_key -> invalid_key_12345")
+    print("   Embedding api_key -> invalid_key_12345")  # gitleaks:allow
     return settings
 
 

@@ -42,90 +42,90 @@
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
 | A1 | 初始化目录树与最小可运行入口 | [x] | 2026-08-23 | WMS 业务骨架；compileall、顶层包导入与 Prompt 读取通过 |
-| A2 | 引入 pytest 并建立测试目录约定 | [ ] | | |
-| A3 | 配置加载与校验（Settings） | [ ] | | |
+| A2 | 引入 pytest 并建立测试目录约定 | [x] | 2026-08-23 | 10 个基础测试；pytest、coverage、Ruff 配置完成 |
+| A3 | 配置加载与校验（Settings） | [x] | 2026-08-23 | YAML 强类型加载、环境变量展开与字段级错误信息 |
 
 #### 阶段 B：Libs 可插拔层
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| B1 | LLM 抽象接口与工厂 | [ ] | | |
-| B2 | Embedding 抽象接口与工厂 | [ ] | | |
-| B3 | Splitter 抽象接口与工厂 | [ ] | | |
-| B4 | VectorStore 抽象接口与工厂 | [ ] | | |
-| B5 | Reranker 抽象接口与工厂（含 None 回退） | [ ] | | |
-| B6 | Evaluator 抽象接口与工厂 | [ ] | | |
-| B7.1 | OpenAI-Compatible LLM 实现 | [ ] | | |
+| B1 | LLM 抽象接口与工厂 | [x] | 2026-08-24 | BaseLLM.chat + ChatResponse；注册式工厂与 disabled fallback |
+| B2 | Embedding 抽象接口与工厂 | [x] | 2026-08-23 | BaseEmbedding、工厂与本地 LSA Provider |
+| B3 | Splitter 抽象接口与工厂 | [x] | 2026-08-23 | BaseSplitter、注册式工厂与配置路由 |
+| B4 | VectorStore 抽象接口与工厂 | [x] | 2026-08-23 | BaseVectorStore、配置工厂与显式向量契约 |
+| B5 | Reranker 抽象接口与工厂（含 None 回退） | [x] | 2026-08-24 | BaseReranker、None 后端、工厂与安全回退 |
+| B6 | Evaluator 抽象接口与工厂 | [x] | 2026-08-24 | BaseEvaluator、Threshold/Composite 实现与配置工厂 |
+| B7.1 | OpenAI-Compatible LLM 实现与 Hardening | [x] | 2026-08-24 | OpenCode Go/ox-alpha-free 真实调用通过；输出守卫、调用预算、失败账本、Chunk 定向重试及 Day 7.2 稳定性修复完成 |
 | B7.2 | Ollama LLM 实现 | [ ] | | |
 | B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | |
 | B7.4 | Ollama Embedding 实现 | [ ] | | |
-| B7.5 | Recursive Splitter 默认实现 | [ ] | | |
-| B7.6 | ChromaStore 默认实现 | [ ] | | |
+| B7.5 | Recursive Splitter 默认实现 | [x] | 2026-08-23 | 确定性重叠切片并保持 Markdown 代码块完整 |
+| B7.6 | ChromaStore 默认实现 | [x] | 2026-08-23 | 持久化 upsert/query、metadata filter 与 roundtrip 测试 |
 | B7.7 | LLM Reranker 实现 | [ ] | | |
 | B7.8 | Cross-Encoder Reranker 实现 | [ ] | | |
-| B8 | Vision LLM 抽象接口与工厂集成 | [ ] | | |
+| B8 | Vision LLM 抽象接口与工厂集成 | [x] | 2026-08-24 | BaseVisionLLM.chat_with_image；工厂路由与 Transform 注入 |
 | B9 | Azure Vision LLM 实现 | [ ] | | |
 
 #### 阶段 C：Ingestion Pipeline MVP
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| C1 | 定义核心数据类型/契约（Document/Chunk/ChunkRecord） | [ ] | | |
-| C2 | 文件完整性检查（SHA256） | [ ] | | |
-| C3 | Loader 抽象基类与 PDF Loader | [ ] | | |
-| C4 | Splitter 集成（调用 Libs） | [ ] | | |
-| C5 | Transform 基类 + ChunkRefiner | [ ] | | |
-| C6 | MetadataEnricher | [ ] | | |
-| C7 | ImageCaptioner | [ ] | | |
-| C8 | DenseEncoder | [ ] | | |
-| C9 | SparseEncoder | [ ] | | |
-| C10 | BatchProcessor | [ ] | | |
-| C11 | BM25Indexer（倒排索引+IDF计算） | [ ] | | |
-| C12 | VectorUpserter（幂等upsert） | [ ] | | |
-| C13 | ImageStorage（图片存储+SQLite索引） | [ ] | | |
-| C14 | Pipeline 编排（MVP 串起来） | [ ] | | |
-| C15 | 脚本入口 ingest.py | [ ] | | |
+| C1 | 定义核心数据类型/契约（Document/Chunk/ChunkRecord） | [x] | 2026-08-23 | 可序列化契约与 source_path 校验 |
+| C2 | 文件完整性检查（SHA256） | [x] | 2026-08-23 | SQLite WAL、幂等状态与并发写入测试 |
+| C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-08-23 | PDF/Markdown/TXT；PDF 文本、页码与图片降级提取 |
+| C4 | Splitter 集成（调用 Libs） | [x] | 2026-08-23 | 稳定 Chunk ID、来源偏移、页码与图片引用分发 |
+| C5 | Transform 基类 + ChunkRefiner | [x] | 2026-08-24 | 规则/Mock/27 单测与 OpenCode Go 真实 LLM 验收通过 |
+| C6 | MetadataEnricher | [x] | 2026-08-24 | 规则/结构化 Mock 与 OpenCode Go 真实 JSON 生成验收通过 |
+| C7 | ImageCaptioner | [x] | 2026-08-24 | Mock 可验证 Vision 接口、幂等描述注入、禁用/异常不阻塞 |
+| C8 | DenseEncoder | [x] | 2026-08-23 | 正文与 WMS 业务元数据上下文编码、模型签名与内容哈希 |
+| C9 | SparseEncoder | [x] | 2026-08-23 | 确定性中英文/标识符分词与词频统计 |
+| C10 | BatchProcessor | [x] | 2026-08-23 | 稳定批处理与进度回调 |
+| C11 | BM25Indexer（倒排索引+IDF计算） | [x] | 2026-08-23 | Okapi BM25 倒排索引、持久化、加载与查询 |
+| C12 | VectorUpserter（幂等upsert） | [x] | 2026-08-23 | 分批 Chroma upsert；稳定 ID 保证幂等 |
+| C13 | ImageStorage（图片存储+SQLite索引） | [x] | 2026-08-24 | SHA256 文件去重、SQLite WAL 映射、collection/doc 查询字段 |
+| C14 | Pipeline 编排（MVP 串起来） | [x] | 2026-08-24 | 图片入库→split→refine→metadata→caption→dense/sparse→store |
+| C15 | 脚本入口 ingest.py | [x] | 2026-08-24 | 真实 1,593 Chunk 入库；force 重建同步清理 1,024 个陈旧向量 |
 
 #### 阶段 D：Retrieval MVP
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| D1 | QueryProcessor（关键词提取 + filters） | [ ] | | |
-| D2 | DenseRetriever（调用 VectorStore.query） | [ ] | | |
-| D3 | SparseRetriever（BM25 查询） | [ ] | | |
-| D4 | RRF Fusion | [ ] | | |
-| D5 | HybridSearch 编排 | [ ] | | |
-| D6 | Reranker（Core 层编排 + Fallback） | [ ] | | |
-| D7 | 脚本入口 query.py（查询可用） | [ ] | | |
+| D1 | QueryProcessor（关键词提取 + filters） | [x] | 2026-08-24 | 中英文 WMS 扩展、配置/流程编码/业务域过滤推断；Day 6 补充领域歧义词 |
+| D2 | DenseRetriever（调用 VectorStore.query） | [x] | 2026-08-24 | Chroma 语义召回、统一结果契约与零向量保护 |
+| D3 | SparseRetriever（BM25 查询） | [x] | 2026-08-24 | BM25 查询、Chroma 内容补全与 metadata 后置过滤 |
+| D4 | RRF Fusion | [x] | 2026-08-24 | 可配置 RRF、确定性排序与双路诊断分数 |
+| D5 | HybridSearch 编排 | [x] | 2026-08-24 | 双路并行、降级、过滤、多样性、证据判定与可信标题 metadata boost |
+| D6 | Reranker（Core 层编排 + Fallback） | [x] | 2026-08-24 | None 默认后端；异常/输出契约失败自动回退 |
+| D7 | 脚本入口 query.py（查询可用） | [x] | 2026-08-24 | 格式化/JSON/verbose 输出与引用优先拒答 |
 
 #### 阶段 E：MCP Server 层与 Tools
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| E1 | MCP Server 入口与 Stdio 约束 | [ ] | | |
-| E2 | Protocol Handler 协议解析与能力协商 | [ ] | | |
-| E3 | query_knowledge_hub Tool | [ ] | | |
-| E4 | list_collections Tool | [ ] | | |
-| E5 | get_document_summary Tool | [ ] | | |
-| E6 | 多模态返回组装（Text + Image） | [ ] | | |
+| E1 | MCP Server 入口与 Stdio 约束 | [x] | 2026-08-24 | UTF-8 单行 JSON-RPC；日志仅写 stderr |
+| E2 | Protocol Handler 协议解析与能力协商 | [x] | 2026-08-24 | 兼容 2025 initialize 与 2026-07-28 stateless discovery |
+| E3 | query_knowledge_hub Tool | [x] | 2026-08-24 | 混合检索、重排降级、引用与结构化输出 |
+| E4 | list_collections Tool | [x] | 2026-08-24 | 本地集合、文档、Chunk 与业务域统计 |
+| E5 | get_document_summary Tool | [x] | 2026-08-24 | 按文档 ID、来源或流程编码返回抽取式摘要 |
+| E6 | 多模态返回组装（Text + Image） | [x] | 2026-08-24 | 图片目录白名单、大小/MIME 限制与去重 |
 
 #### 阶段 F：Trace 基础设施与打点
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| F1 | TraceContext 增强（finish + 耗时统计 + trace_type） | [ ] | | |
-| F2 | 结构化日志 logger（JSON Lines） | [ ] | | |
-| F3 | 在 Query 链路打点 | [ ] | | |
-| F4 | 在 Ingestion 链路打点 | [ ] | | |
-| F5 | Pipeline 进度回调 (on_progress) | [ ] | | |
+| F1 | TraceContext 增强（finish + 耗时统计 + trace_type） | [x] | 2026-08-24 | 线程安全 trace_id、阶段与总耗时 |
+| F2 | 结构化日志 logger（JSON Lines） | [x] | 2026-08-24 | TraceCollector 追加写本地 JSONL |
+| F3 | 在 Query 链路打点 | [x] | 2026-08-24 | 预处理、Dense/Sparse、融合、重排与错误状态 |
+| F4 | 在 Ingestion 链路打点 | [x] | 2026-08-24 | fit、Dense 编码、Chroma upsert 与 BM25 构建 |
+| F5 | Pipeline 进度回调 (on_progress) | [x] | 2026-08-24 | 保留各索引阶段回调并通过现有测试 |
 
 #### 阶段 G：可视化管理平台 Dashboard
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| G1 | Dashboard 基础架构与系统总览页 | [ ] | | |
-| G2 | DocumentManager 实现 | [ ] | | |
-| G3 | 数据浏览器页面 | [ ] | | |
+| G1 | Dashboard 基础架构与系统总览页 | [x] | 2026-08-24 | 六页面导航、配置摘要、真实索引统计与启动脚本 |
+| G2 | DocumentManager 实现 | [x] | 2026-08-24 | 跨 Chroma、BM25、图片和摄取历史的读取与协调删除；Day 8.2 完成 Windows 原子持久化重试与重复稳定性验收 |
+| G3 | 数据浏览器页面 | [x] | 2026-08-24 | 集合筛选、文档/Chunk/metadata 浏览和安全图片预览 |
 | G4 | Ingestion 管理页面 | [ ] | | |
 | G5 | Ingestion 追踪页面 | [ ] | | |
 | G6 | Query 追踪页面 | [ ] | | |
@@ -135,16 +135,16 @@
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
 | H1 | RagasEvaluator 实现 | [ ] | | |
-| H2 | CompositeEvaluator 实现 | [ ] | | |
-| H3 | EvalRunner + Golden Test Set | [ ] | | |
+| H2 | CompositeEvaluator 实现 | [x] | 2026-08-24 | 多 Evaluator 并行、结果汇总与单 Provider 故障隔离 |
+| H3 | EvalRunner + Golden Test Set | [x] | 2026-08-24 | Benchmark Runner、分路相关排名、Baseline 对比与 CLI 回归门槛 |
 | H4 | 评估面板页面 | [ ] | | |
-| H5 | Recall 回归测试（E2E） | [ ] | | |
+| H5 | Recall 回归测试（E2E） | [x] | 2026-08-24 | ingest→Dense/BM25→Hybrid→Benchmark 的脱敏端到端阈值测试 |
 
 #### 阶段 I：端到端验收与文档收口
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| I1 | E2E：MCP Client 侧调用模拟 | [ ] | | |
+| I1 | E2E：MCP Client 侧调用模拟 | [x] | 2026-08-24 | 子进程完成握手、tools/list、tools/call 与引用校验 |
 | I2 | E2E：Dashboard 冒烟测试 | [ ] | | |
 | I3 | 完善 README（运行说明 + MCP + Dashboard） | [ ] | | |
 | I4 | 清理接口一致性（契约测试补齐） | [ ] | | |
@@ -156,16 +156,21 @@
 
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
-| 阶段 A | 3 | 1 | 33% |
-| 阶段 B | 16 | 0 | 0% |
-| 阶段 C | 15 | 0 | 0% |
-| 阶段 D | 7 | 0 | 0% |
-| 阶段 E | 6 | 0 | 0% |
-| 阶段 F | 5 | 0 | 0% |
-| 阶段 G | 6 | 0 | 0% |
-| 阶段 H | 5 | 0 | 0% |
-| 阶段 I | 5 | 0 | 0% |
-| **总计** | **68** | **1** | **1.5%** |
+| 阶段 A | 3 | 3 | 100% |
+| 阶段 B | 16 | 10 | 63% |
+| 阶段 C | 15 | 15 | 100% |
+| 阶段 D | 7 | 7 | 100% |
+| 阶段 E | 6 | 6 | 100% |
+| 阶段 F | 5 | 5 | 100% |
+| 阶段 G | 6 | 3 | 50% |
+| 阶段 H | 5 | 3 | 60% |
+| 阶段 I | 5 | 1 | 20% |
+| **总计** | **68** | **53** | **77.9%** |
+
+> **Day 9 readiness revalidation（2026-08-25）**：共享 `replace_file_atomically` 已覆盖
+> Local LSA、Chroma swap journal、BM25、Manifest、处理产物、LLM failure ledger 与图片文件；
+> 新增单元级重试契约和单用例 12 次强制摄取压力测试。Interactive ingestion recovery suite
+> 连续 5 轮全部通过（55 次测试执行），全量测试 260 passed / 1 opt-in skipped，覆盖率 90.38%。
 
 
 ---
@@ -304,16 +309,15 @@
 > 说明：B7 只补齐与端到端主链路强相关的默认实现（LLM/Embedding/Splitter/VectorStore/Reranker）。其余可选扩展（例如额外 splitter 策略、更多 vector store 后端、更多 evaluator 后端等）保持原排期不提前。
 
 ### B7.1：OpenAI-Compatible LLM（OpenAI/Azure/DeepSeek）
-- **目标**：补齐 OpenAI-compatible 的 LLM 实现，确保通过 `LLMFactory` 可创建并可被 mock 测试。
+- **目标**：补齐 OpenAI Chat Completions Compatible 的通用 LLM 实现，确保通过 `LLMFactory` 创建并可被 mock 测试。
 - **修改文件**：
-  - `src/libs/llm/openai_llm.py`
-  - `src/libs/llm/azure_llm.py`
-  - `src/libs/llm/deepseek_llm.py`
-  - `tests/unit/test_llm_providers_smoke.py`（mock HTTP，不走真实网络）
+  - `src/libs/llm/openai_compatible_llm.py`
+  - `tests/unit/test_openai_compatible_llm.py`（mock HTTP，不走真实网络）
+  - `tests/integration/test_chunk_refiner_llm.py`（显式开启的真实 Provider 验收）
 - **验收标准**：
   - 配置不同 `provider` 时工厂路由正确。
   - `chat(messages)` 对输入 shape 校验清晰，异常信息可读（包含 provider 与错误类型）。
-- **测试方法**：`pytest -q tests/unit/test_llm_providers_smoke.py`。
+- **测试方法**：`pytest -q tests/unit/test_openai_compatible_llm.py`；配置 `WMS_LLM_INTEGRATION=1` 后运行真实验收。
 
 ### B7.2：Ollama LLM（本地后端）
 - **目标**：补齐 `ollama_llm.py`，支持本地 HTTP endpoint（默认 `base_url` + `model`），并可被 mock 测试。

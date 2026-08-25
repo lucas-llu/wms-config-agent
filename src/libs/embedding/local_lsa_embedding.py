@@ -13,6 +13,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import FeatureUnion
 from sklearn.preprocessing import Normalizer
 
+from libs.atomic_file import replace_file_atomically
 from libs.embedding.base_embedding import BaseEmbedding
 
 
@@ -140,7 +141,7 @@ class LocalLSAEmbedding(BaseEmbedding):
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             temporary = self.model_path.with_suffix(self.model_path.suffix + ".rollback.tmp")
             temporary.write_bytes(self._prepared_model_bytes)
-            temporary.replace(self.model_path)
+            replace_file_atomically(temporary, self.model_path)
         else:
             self.model_path.unlink(missing_ok=True)
         self._prepared_backup = None
@@ -234,7 +235,7 @@ class LocalLSAEmbedding(BaseEmbedding):
             },
             temporary,
         )
-        temporary.replace(self.model_path)
+        replace_file_atomically(temporary, self.model_path)
 
     def _load(self) -> None:
         values = joblib.load(self.model_path)
