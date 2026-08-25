@@ -1,0 +1,6 @@
+# Known false positives from configuration parsing and deliberate invalid-key QA fixtures.
+ad3fa0b7b473843e541affd7a2ebf519b6afb06a:src/core/settings.py:generic-api-key:303
+47a1995389693b968251166c421d05478c8d77a8:.claude/skills/qa-tester/scripts/qa_config.py:generic-api-key:110
+47a1995389693b968251166c421d05478c8d77a8:.claude/skills/qa-tester/scripts/qa_config.py:generic-api-key:117
+47a1995389693b968251166c421d05478c8d77a8:.github/skills/qa-tester/scripts/qa_config.py:generic-api-key:110
+47a1995389693b968251166c421d05478c8d77a8:.github/skills/qa-tester/scripts/qa_config.py:generic-api-key:117

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "name": "public-sanitized-smoke-v1",
+  "description": "Sanitized process-code retrieval checks for the local WMS corpus.",
+  "thresholds": {
+    "hit_at_3_min": 1.0,
+    "hit_at_5_min": 1.0,
+    "mrr_at_5_min": 0.75,
+    "evidence_accuracy_min": 1.0,
+    "p95_latency_ms_max": 2000
+  },
+  "test_cases": [
+    {
+      "id": "public-inbound-putaway-code",
+      "category": "exact_process_code",
+      "query": "SWL.I.11.04 sorted putaway configuration",
+      "expected": {
+        "process_codes": ["SWL.I.11.04"],
+        "domains": ["Inbound"],
+        "document_types": ["configuration"],
+        "text_contains": ["putaway"]
+      }
+    },
+    {
+      "id": "public-inbound-appointment-code",
+      "category": "exact_process_code",
+      "query": "SWL.I.01.01 appointment creation configuration",
+      "expected": {
+        "process_codes": ["SWL.I.01.01"],
+        "domains": ["Inbound"],
+        "document_types": ["configuration"],
+        "text_contains": ["appointment"]
+      }
+    },
+    {
+      "id": "public-outbound-replenishment-code",
+      "category": "exact_process_code",
+      "query": "SWL.O.07.03 replenishment tour configuration",
+      "expected": {
+        "process_codes": ["SWL.O.07.03"],
+        "domains": ["Outbound"],
+        "document_types": ["configuration"],
+        "text_contains": ["replenishment"]
+      }
+    },
+    {
+      "id": "public-stock-move-code",
+      "category": "exact_process_code",
+      "query": "SWL.S.01.02 inventory move configuration",
+      "expected": {
+        "process_codes": ["SWL.S.01.02"],
+        "domains": ["Stock Management"],
+        "document_types": ["configuration"],
+        "text_contains": ["inventory move"]
+      }
+    }
+  ]
+}

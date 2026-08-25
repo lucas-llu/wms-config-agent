@@ -2,12 +2,26 @@
 name = "wms-config-agent"
 version = "0.1.0"
 description = "Citation-first WMS and JDA MOCA configuration knowledge agent"
-readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "chromadb>=1.5,<1.6",
+    "joblib>=1.4,<2",
+    "PyYAML>=6.0.2,<7",
+    "pypdf[image]>=6.6,<7",
+    "scikit-learn>=1.5,<2",
+    "streamlit>=1.41,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-cov>=6,<7",
+    "ruff>=0.9,<1",
+]
 
 [project.scripts]
 wms-config-agent = "main:main"
+wms-config-mcp = "mcp_server.server:main"
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -19,3 +33,20 @@ py-modules = ["main"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = [
+    "integration: tests that exercise multiple project components",
+    "e2e: end-to-end tests that exercise a user-facing workflow",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".claude", ".github/skills"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

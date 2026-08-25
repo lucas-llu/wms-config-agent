@@ -1,0 +1,42 @@
+[
+  {
+    "name": "typical_noise_scenario",
+    "input": "<!-- draft -->\nPage 1 of 3\nMOCA   policy configuration\n\n\nSetup steps",
+    "contains": "MOCA policy configuration\n\nSetup steps"
+  },
+  {
+    "name": "ocr_line_break",
+    "input": "config-\nuration value",
+    "contains": "configuration value"
+  },
+  {
+    "name": "page_header_footer",
+    "input": "Page 2 of 8\nUseful content\n--- 2 ---",
+    "contains": "Useful content"
+  },
+  {
+    "name": "excessive_whitespace",
+    "input": "key       value\n\n\n\nnext line",
+    "contains": "key value\n\nnext line"
+  },
+  {
+    "name": "format_markers",
+    "input": "<!-- remove -->\n======\nKeep this",
+    "contains": "Keep this"
+  },
+  {
+    "name": "clean_text",
+    "input": "# Configuration\n\n- Keep this list item",
+    "contains": "# Configuration\n\n- Keep this list item"
+  },
+  {
+    "name": "code_blocks",
+    "input": "```moca\npublish data\n  where wh_id = 'W01'\n```",
+    "contains": "publish data\n  where wh_id = 'W01'"
+  },
+  {
+    "name": "mixed_noise",
+    "input": "第 3 页，共 9 页\n<!-- internal -->\nReceiving    setup\n________\nRF menu",
+    "contains": "Receiving setup\nRF menu"
+  }
+]

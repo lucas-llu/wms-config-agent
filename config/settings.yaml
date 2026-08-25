@@ -3,26 +3,77 @@ project:
   environment: development
 
 llm:
+  provider: openai_compatible
+  model: ox-alpha-free
+  base_url: https://opencode.ai/zen/go/v1/chat/completions
+  api_key_env: WMS_LLM_API_KEY
+  timeout_seconds: 60
+  max_tokens: 1024
+  temperature: 0
+  max_retries: 2
+  retry_backoff_seconds: 0.5
+
+vision_llm:
   provider: disabled
+  model: null
 
 embedding:
-  provider: disabled
+  provider: local_lsa
+  model: tfidf-svd
+  dimensions: 256
+  batch_size: 32
+  cache_dir: data/models/local_lsa
+
+splitter:
+  provider: recursive
+  chunk_size: 1000
+  chunk_overlap: 150
+
+ingestion:
+  extract_images: true
+  chunk_refiner:
+    enabled: true
+    use_llm: false
+    prompt_path: config/prompts/chunk_refinement.txt
+  metadata_enricher:
+    enabled: true
+    use_llm: false
+    prompt_path: null
+  image_captioner:
+    enabled: false
+    prompt_path: config/prompts/image_captioning.txt
+    append_to_text: true
+  image_storage:
+    enabled: true
+    root_path: data/images
+    database_path: data/db/image_index.db
+    collection: wms-system-training
 
 vector_store:
-  provider: chroma
-  persist_directory: data/db/chroma
+  backend: chroma
+  persist_path: data/db/chroma
+  collection_name: wms_config_chunks
 
 retrieval:
-  mode: hybrid
-  top_k: 5
+  sparse_backend: bm25
+  fusion_algorithm: rrf
+  top_k_dense: 20
+  top_k_sparse: 20
+  top_k_final: 5
+  rrf_k: 60
+  max_chunks_per_document: 2
+  min_fused_score: 0.02
 
 rerank:
-  provider: none
+  backend: none
+  model: null
+  top_m: 30
 
 evaluation:
-  provider: custom
+  backends:
+    - custom
+  golden_test_set: tests/fixtures/golden_test_set.json
 
 observability:
   enabled: true
   trace_file: logs/traces.jsonl
-

@@ -1,4 +1,9 @@
 Refine the supplied WMS/JDA MOCA document fragment without changing technical meaning. Preserve
-commands, parameters, configuration keys, versions, module names, and source-location metadata.
-Never invent missing values.
+commands, parameters, configuration keys, versions, module names, identifiers, and
+source-location metadata exactly, including letter case. Never invent missing values. Do not
+translate, decorate, or add characters to technical identifiers.
 
+Return only the refined fragment.
+
+Fragment:
+{text}

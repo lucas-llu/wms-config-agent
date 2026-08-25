@@ -91,7 +91,6 @@ dmypy.json
 .ruff_cache/
 
 # Project-specific
-README.md
 data/
 cache/
 logs/
@@ -107,3 +106,6 @@ traces.jsonl
 .env.*.local
 secrets.yaml
 nonexistent_traces.jsonl/
+
+# Alternative package manager lock files
+uv.lock
