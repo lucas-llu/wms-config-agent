@@ -20,6 +20,7 @@ from agents import (
     ValidationFinding,
     canonical_json,
     stable_contract_id,
+    state_fingerprint,
     validate_state_update,
 )
 
@@ -82,6 +83,32 @@ def test_stable_ids_ignore_dictionary_insertion_order() -> None:
     assert first.startswith("task:")
 
 
+def test_state_fingerprint_is_stable_and_ignores_runtime_noise() -> None:
+    first = {
+        "session_id": "session:one",
+        "revision": 1,
+        "user_goal": "Configure inbound receiving",
+        "updated_at": "2026-08-26T00:00:00Z",
+        "trace_id": "trace:one",
+        "nodes_executed": 2,
+    }
+    second = {
+        "nodes_executed": 8,
+        "trace_id": "trace:two",
+        "updated_at": "2026-08-26T01:00:00Z",
+        "user_goal": "Configure inbound receiving",
+        "revision": 1,
+        "session_id": "session:one",
+    }
+
+    assert state_fingerprint(first) == state_fingerprint(second)
+    assert state_fingerprint(first, include_runtime_counters=True) != state_fingerprint(
+        second, include_runtime_counters=True
+    )
+    second["revision"] = 2
+    assert state_fingerprint(first) != state_fingerprint(second)
+
+
 def test_canonical_json_rejects_non_serializable_checkpoint_values() -> None:
     with pytest.raises(AgentContractError, match="not JSON serializable"):
         canonical_json({"unsafe": object()})
@@ -96,6 +123,40 @@ def test_configuration_parameter_rejects_non_scalar_values() -> None:
             name="capacity",
             value=[10],  # type: ignore[arg-type]
             description="Capacity must remain a scalar value.",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "not-a-status"),
+        ("risk_level", "unknown-risk"),
+        ("evidence_status", "made-up"),
+    ],
+)
+def test_configuration_task_rejects_invalid_enum_values(field: str, value: str) -> None:
+    values = {
+        "task_id": "task:invalid-enum",
+        "title": "Reject invalid enum",
+        "module": "inbound",
+        "goal": "Keep checkpoint state valid",
+        field: value,
+    }
+
+    with pytest.raises(AgentContractError, match=field):
+        ConfigurationTask(**values)  # type: ignore[arg-type]
+
+
+def test_other_contracts_reject_invalid_enum_values() -> None:
+    with pytest.raises(AgentContractError, match="risk_tolerance"):
+        ConfirmedContext(risk_tolerance="unknown")  # type: ignore[arg-type]
+
+    with pytest.raises(AgentContractError, match="severity"):
+        ValidationFinding(
+            finding_id="finding:bad-severity",
+            rule_id="invalid_enum",
+            message="Invalid severity must not cross the contract boundary.",
+            severity="urgent",  # type: ignore[arg-type]
         )
 
 
@@ -120,6 +181,17 @@ def test_configuration_task_rejects_self_dependency() -> None:
         )
 
 
+def test_frozen_contracts_reject_mutable_list_boundaries() -> None:
+    with pytest.raises(AgentContractError, match="depends_on must be a tuple"):
+        ConfigurationTask(
+            task_id="task:mutable",
+            title="Reject mutable boundaries",
+            module="inbound",
+            goal="Keep frozen contracts immutable",
+            depends_on=["task:other"],  # type: ignore[arg-type]
+        )
+
+
 def test_evidence_rejects_invalid_page_range() -> None:
     with pytest.raises(AgentContractError, match="page_end"):
         Evidence(
@@ -141,6 +213,21 @@ def test_solution_rejects_duplicate_task_ids() -> None:
             goal="Configure inbound receiving",
             context=ConfirmedContext(product_version="2024.1", modules=("inbound",)),
             tasks=(_task(), _task()),
+            evidence=(_evidence(),),
+            generated_at="2026-08-26T00:00:00Z",
+            knowledge_fingerprint="knowledge-v1",
+            prompt_version="agent-v1",
+        )
+
+
+def test_solution_rejects_invalid_nested_contract_types() -> None:
+    with pytest.raises(AgentContractError, match="ConfirmedContext"):
+        ConfigurationSolution(
+            session_id="session:one",
+            revision=1,
+            goal="Configure inbound receiving",
+            context={"module": "inbound"},  # type: ignore[arg-type]
+            tasks=(_task(),),
             evidence=(_evidence(),),
             generated_at="2026-08-26T00:00:00Z",
             knowledge_fingerprint="knowledge-v1",

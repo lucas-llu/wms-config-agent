@@ -24,6 +24,7 @@ from agents.contracts import (
     ValidationFinding,
     canonical_json,
     stable_contract_id,
+    state_fingerprint,
     validate_state_update,
 )
 
@@ -51,5 +52,6 @@ __all__ = [
     "ValidationFinding",
     "canonical_json",
     "stable_contract_id",
+    "state_fingerprint",
     "validate_state_update",
 ]

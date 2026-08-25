@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import asdict, dataclass
 from enum import StrEnum
@@ -122,6 +123,7 @@ class ConfirmedContext(SerializableAgentContract):
         _validate_non_empty_items(self.integrations, "ConfirmedContext.integrations")
         _validate_non_empty_items(self.customizations, "ConfirmedContext.customizations")
         _validate_non_empty_items(self.constraints, "ConfirmedContext.constraints")
+        _validate_enum(self.risk_tolerance, RiskLevel, "ConfirmedContext.risk_tolerance")
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +137,7 @@ class Assumption(SerializableAgentContract):
         _validate_identifier(self.assumption_id, "Assumption.assumption_id")
         _validate_text(self.text, "Assumption.text")
         _validate_identifier(self.source_turn_id, "Assumption.source_turn_id")
+        _validate_bool(self.confirmed, "Assumption.confirmed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +152,8 @@ class OpenQuestion(SerializableAgentContract):
         _validate_identifier(self.question_id, "OpenQuestion.question_id")
         _validate_text(self.text, "OpenQuestion.text")
         _validate_text(self.reason, "OpenQuestion.reason")
+        _validate_bool(self.blocking, "OpenQuestion.blocking")
+        _validate_bool(self.answered, "OpenQuestion.answered")
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,8 +210,20 @@ class ConfigurationTask(SerializableAgentContract):
         _validate_text(self.title, "ConfigurationTask.title")
         _validate_identifier(self.module, "ConfigurationTask.module")
         _validate_text(self.goal, "ConfigurationTask.goal")
+        _validate_enum(self.status, TaskStatus, "ConfigurationTask.status")
+        _validate_enum(self.risk_level, RiskLevel, "ConfigurationTask.risk_level")
+        _validate_enum(
+            self.evidence_status,
+            EvidenceStatus,
+            "ConfigurationTask.evidence_status",
+        )
         _validate_identifiers(self.depends_on, "ConfigurationTask.depends_on")
         _validate_non_empty_items(self.preconditions, "ConfigurationTask.preconditions")
+        _validate_contract_tuple(
+            self.parameters,
+            ConfigurationParameter,
+            "ConfigurationTask.parameters",
+        )
         _validate_non_empty_items(self.steps, "ConfigurationTask.steps")
         _validate_non_empty_items(self.validation_steps, "ConfigurationTask.validation_steps")
         _validate_non_empty_items(self.rollback_steps, "ConfigurationTask.rollback_steps")
@@ -235,11 +252,17 @@ class Evidence(SerializableAgentContract):
         _validate_identifier(self.chunk_id, "Evidence.chunk_id")
         _validate_text(self.source, "Evidence.source")
         _validate_text(self.excerpt, "Evidence.excerpt")
-        if isinstance(self.score, bool) or not isinstance(self.score, int | float):
-            raise AgentContractError("Evidence.score must be a number")
-        if self.page_start is not None and self.page_start < 1:
+        if (
+            isinstance(self.score, bool)
+            or not isinstance(self.score, int | float)
+            or not math.isfinite(self.score)
+        ):
+            raise AgentContractError("Evidence.score must be a finite number")
+        if self.page_start is not None and (
+            isinstance(self.page_start, bool) or self.page_start < 1
+        ):
             raise AgentContractError("Evidence.page_start must be greater than 0")
-        if self.page_end is not None and self.page_end < 1:
+        if self.page_end is not None and (isinstance(self.page_end, bool) or self.page_end < 1):
             raise AgentContractError("Evidence.page_end must be greater than 0")
         if (
             self.page_start is not None
@@ -269,6 +292,7 @@ class ConfigurationConflict(SerializableAgentContract):
         _validate_identifiers(
             self.evidence_ids, "ConfigurationConflict.evidence_ids", require_items=True
         )
+        _validate_bool(self.blocking, "ConfigurationConflict.blocking")
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,6 +308,7 @@ class ValidationFinding(SerializableAgentContract):
         _validate_identifier(self.finding_id, "ValidationFinding.finding_id")
         _validate_identifier(self.rule_id, "ValidationFinding.rule_id")
         _validate_text(self.message, "ValidationFinding.message")
+        _validate_enum(self.severity, FindingSeverity, "ValidationFinding.severity")
         _validate_identifiers(self.task_ids, "ValidationFinding.task_ids")
         _validate_identifiers(self.evidence_ids, "ValidationFinding.evidence_ids")
 
@@ -321,9 +346,39 @@ class ConfigurationSolution(SerializableAgentContract):
         _validate_identifier(self.session_id, "ConfigurationSolution.session_id")
         _validate_revision(self.revision)
         _validate_text(self.goal, "ConfigurationSolution.goal")
-        _validate_unique_contract_ids(self.tasks, "task_id", "ConfigurationSolution.tasks")
+        if not isinstance(self.context, ConfirmedContext):
+            raise AgentContractError("ConfigurationSolution.context must be a ConfirmedContext")
         _validate_unique_contract_ids(
-            self.evidence, "evidence_id", "ConfigurationSolution.evidence"
+            self.tasks,
+            ConfigurationTask,
+            "task_id",
+            "ConfigurationSolution.tasks",
+        )
+        _validate_unique_contract_ids(
+            self.evidence,
+            Evidence,
+            "evidence_id",
+            "ConfigurationSolution.evidence",
+        )
+        _validate_contract_tuple(
+            self.assumptions,
+            Assumption,
+            "ConfigurationSolution.assumptions",
+        )
+        _validate_contract_tuple(
+            self.decisions,
+            Decision,
+            "ConfigurationSolution.decisions",
+        )
+        _validate_contract_tuple(
+            self.conflicts,
+            ConfigurationConflict,
+            "ConfigurationSolution.conflicts",
+        )
+        _validate_contract_tuple(
+            self.findings,
+            ValidationFinding,
+            "ConfigurationSolution.findings",
         )
         _validate_text(self.generated_at, "ConfigurationSolution.generated_at")
         _validate_text(
@@ -402,6 +457,7 @@ STATE_FIELD_OWNERS = MappingProxyType(
 def validate_state_update(role: AgentRole, update: dict[str, Any]) -> None:
     """Reject nodes that attempt to mutate state owned by another role."""
 
+    _validate_enum(role, AgentRole, "validate_state_update.role")
     allowed = STATE_FIELD_OWNERS[role]
     illegal = sorted(set(update) - allowed)
     if illegal:
@@ -421,6 +477,23 @@ def stable_contract_id(prefix: str, payload: Any, *, digest_length: int = 16) ->
         payload = payload.to_dict()
     digest = hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
     return f"{prefix}:{digest[:digest_length]}"
+
+
+def state_fingerprint(
+    state: ConfigurationSessionState,
+    *,
+    include_runtime_counters: bool = False,
+) -> str:
+    """Fingerprint semantic session state while ignoring tracing noise by default."""
+
+    payload = dict(state)
+    payload.pop("updated_at", None)
+    payload.pop("trace_id", None)
+    if not include_runtime_counters:
+        payload.pop("nodes_executed", None)
+        payload.pop("tool_calls_made", None)
+        payload.pop("retry_count", None)
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
 def canonical_json(value: Any) -> str:
@@ -468,6 +541,8 @@ def _validate_identifier(value: str, field_path: str) -> None:
 def _validate_identifiers(
     values: tuple[str, ...], field_path: str, *, require_items: bool = False
 ) -> None:
+    if not isinstance(values, tuple):
+        raise AgentContractError(f"{field_path} must be a tuple")
     if require_items and not values:
         raise AgentContractError(f"{field_path} must not be empty")
     for value in values:
@@ -486,7 +561,20 @@ def _validate_optional_text(value: str | None, field_path: str) -> None:
         _validate_text(value, field_path)
 
 
+def _validate_bool(value: bool, field_path: str) -> None:
+    if not isinstance(value, bool):
+        raise AgentContractError(f"{field_path} must be a boolean")
+
+
+def _validate_enum(value: StrEnum, enum_type: type[StrEnum], field_path: str) -> None:
+    if not isinstance(value, enum_type):
+        allowed = ", ".join(item.value for item in enum_type)
+        raise AgentContractError(f"{field_path} must be one of: {allowed}")
+
+
 def _validate_non_empty_items(values: tuple[str, ...], field_path: str) -> None:
+    if not isinstance(values, tuple):
+        raise AgentContractError(f"{field_path} must be a tuple")
     for value in values:
         _validate_text(value, field_path)
 
@@ -497,8 +585,23 @@ def _validate_revision(revision: int) -> None:
 
 
 def _validate_unique_contract_ids(
-    contracts: tuple[SerializableAgentContract, ...], attribute: str, field_path: str
+    contracts: tuple[SerializableAgentContract, ...],
+    expected_type: type[SerializableAgentContract],
+    attribute: str,
+    field_path: str,
 ) -> None:
+    _validate_contract_tuple(contracts, expected_type, field_path)
     values = [getattr(contract, attribute) for contract in contracts]
     if len(values) != len(set(values)):
         raise AgentContractError(f"{field_path} must not contain duplicate {attribute} values")
+
+
+def _validate_contract_tuple(
+    contracts: tuple[Any, ...],
+    expected_type: type[SerializableAgentContract],
+    field_path: str,
+) -> None:
+    if not isinstance(contracts, tuple):
+        raise AgentContractError(f"{field_path} must be a tuple")
+    if not all(isinstance(contract, expected_type) for contract in contracts):
+        raise AgentContractError(f"{field_path} must contain only {expected_type.__name__} values")

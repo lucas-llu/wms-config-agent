@@ -137,7 +137,32 @@ Day 1 必须在不实现业务功能的情况下完成：
 - 业务样板：先完成一个脱敏的 Inbound Appointment/Receiving 跨配置场景，用于验证多轮与任务依赖；
 - 质量：每天必须通过当日新增测试与相关 V1 回归；Day 5 和 Day 10 运行全量门禁。
 
-### 5.2 需求到开发日追溯
+### 5.2 Feature Branch 与 PR 流程
+
+每个开发日对应一个独立、可审查的 feature，并遵守以下规则：
+
+1. 开发前从最新 `dev` 创建 `feature/<简短功能描述>`；分支名不使用 `day1`/`day2` 或日期等无法表达交付内容的名称。
+2. 代码、测试与当日文档状态仅提交到 feature branch，禁止直接提交到 `dev`。
+3. 完成定向测试、Ruff、全量 pytest + coverage、V1 公开基准和密钥/隐私检查后，推送 feature branch 并创建以 `dev` 为 base 的 PR。
+4. PR 必须写明需求 ID、范围、关键设计、测试证据、安全边界、已知限制和回滚方式。
+5. 只有当所有必需检查通过且 PR 无未解决阻塞意见时才能 merge；merge 后同步本地 `dev`，下一个 feature 再从新 `dev` 创建。
+
+建议分支名与对应交付：
+
+| 交付内容 | Feature branch |
+|---|---|
+| Agent 契约与 checkpoint 运行时 | `feature/agent-contracts-checkpoint` |
+| 会话 Repository 与 revision | `feature/session-repository-revision` |
+| Supervisor 与需求路由 | `feature/requirements-routing` |
+| 配置任务 DAG | `feature/config-task-dag` |
+| RAG 证据适配 | `feature/rag-evidence-adapter` |
+| 依赖冲突与草案验证 | `feature/conflict-validation` |
+| 方案修订、审批与导出 | `feature/solution-approval-export` |
+| MCP 会话工具 | `feature/mcp-session-tools` |
+| Agent Trace 与 Dashboard | `feature/agent-observability` |
+| Agent E2E 与发布门禁 | `feature/agent-release-gates` |
+
+### 5.3 需求到开发日追溯
 
 | 需求 | 主开发日 | 最终验收日 |
 |---|---|---|
@@ -178,10 +203,12 @@ Day 1 必须在不实现业务功能的情况下完成：
 **完成记录**：
 
 - 锁定 `langgraph==1.2.11` 与 `langgraph-checkpoint-sqlite==3.1.1`（`pyproject.toml` 保留兼容范围）；
+- `uv.lock` 已纳入版本控制，记录完整传递依赖；Agent 依赖树许可证与隐私检查见 [Agent Runtime Dependency Review](AGENT_DEPENDENCY_REVIEW.md)；
 - 新增可序列化的 Agent 状态、任务、证据、冲突、验证与方案契约，以及稳定指纹和字段所有权检查；
+- 审计补强后，所有 Agent 契约枚举在运行时拒绝非法值，并为会话状态提供忽略 Trace/计数噪声的稳定指纹；
 - 新增三节点 async StateGraph 验证器，已验证 stream、interrupt、关闭/重开 SQLite 后 resume；
 - `agent.enabled` 默认关闭，持久化路径、预算、人工审批和环境工具开关均已纳入强类型配置；
-- Day 1 定向测试 19 passed；全量回归 304 passed / 1 opt-in skipped，总覆盖率 90.62%，Ruff check/format 通过。
+- 审计修复后 Day 1 定向测试 27 passed；全量回归 311 passed / 1 opt-in skipped，总覆盖率 90.52%，公开检索基准、Ruff check/format 和依赖一致性检查通过。
 
 ### Day 2 — 会话 Repository、checkpoint 与 revision
 
