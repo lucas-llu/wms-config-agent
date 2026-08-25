@@ -1,13 +1,16 @@
 <!-- WMS/JDA MOCA configuration agent specification. -->
 # WMS / JDA MOCA Configuration Agent — Developer Specification
 
-> 版本：0.2 — WMS 业务定制草案
+> 版本：0.3 — WMS 多 Agent 配置助手需求草案
+>
+> 状态：V1 RAG/MCP MVP 已完成；V2 Agent Orchestration 待实现
 
 ## 目录
 
 - 项目概述
 - 核心特点
 - 技术选型
+- 多 Agent 配置助手设计
 - 测试方案
 - 系统架构与模块设计
 - 项目排期
@@ -16,10 +19,18 @@
 ---
 
 ## 1. 项目概述
-本项目面向 WMS 后端研发与实施人员，聚焦 JDA MOCA 技术栈中“配置分散、版本差异大、专有名词多、文档定位慢”的问题。系统基于多阶段检索增强生成（RAG, Retrieval-Augmented Generation）与模型上下文协议（MCP, Model Context Protocol），提供带出处、可核验、版本敏感的配置定位与问答能力。
+本项目面向 WMS 后端研发、实施顾问、解决方案架构师与受权运维人员，聚焦 JDA MOCA 技术栈中“配置分散、版本差异大、专有名词多、跨模块依赖难梳理、全套方案高度依赖专家经验”的问题。
 
-### 业务问题与 MVP 边界
-首版优先回答以下问题：
+项目按两个可独立验收的产品阶段演进：
+
+- **V1 — 可信 RAG 知识内核（已完成）**：基于多阶段 RAG 与 MCP，提供带出处、可核验、版本敏感的单次配置定位与问答能力。
+- **V2 — 多 Agent 配置助手（本文新增目标）**：由本项目自己管理多轮会话、需求消歧、目标分解、专业 Agent 编排、跨文档证据聚合、配置依赖检查与方案验证，逐步产出一份可审查、可回滚、可导出的全套 WMS 配置方案。
+
+V2 不取代 V1：现有 RAG 作为“知识检索 Agent”的可信工具内核，并继续支持无会话、无 Agent 的独立 MCP 查询模式。
+
+### 业务问题与阶段边界
+
+V1 优先回答以下问题：
 
 - 某个配置项、策略或 MOCA 命令在哪里维护；
 - 配置的适用版本、模块、站点或环境是什么；
@@ -27,9 +38,11 @@
 - 当文档之间存在冲突时，分别给出来源并提示版本或上下文差异；
 - 文档没有足够证据时明确拒答，不编造配置步骤。
 
-首版数据源以完成授权和脱敏的 PDF、Markdown、TXT 文档为主。真实 WMS/MOCA 环境连接、生产写操作和自动修改配置不属于 MVP；后续工具接入也必须默认只读。
+数据源以完成授权和脱敏的 PDF、Markdown、TXT 文档为主。真实 WMS/MOCA 环境连接、生产写操作和自动修改配置不属于 V1，也不属于 V2 首个 Agent 版本。V2 可选接入经过独立授权的只读 MOCA/SQL 环境检查工具，但不得因“用户要求完成配置”而默认获得生产写入权限。
 
 每个答案至少包含：简要结论、配置位置、操作步骤、验证方法、适用范围、风险提示，以及可回溯到文件、章节和页码/行号的引用。
+
+V2 的交付单位从“一个问题的答案”升级为“一个配置目标的方案包”。方案包至少包含：需求基线、适用环境、前置条件、配置任务及依赖顺序、参数与决策记录、每步引用、验证清单、回滚方案、风险与未解决项。
 ---
 ## 2. 核心特点
 
@@ -124,7 +137,8 @@
 
 ### Agent 与业务扩展能力 (Agent & Domain Extensibility)
 
-- **Agent 客户端**：通过 MCP 调用知识检索、来源读取和配置定位工具，并根据问题决定调用顺序。
+- **V1 外部 Agent 客户端**：通过 MCP 调用知识检索、来源读取和配置定位工具，并根据问题决定调用顺序。
+- **V2 内聚 Agent 编排**：在项目内管理多轮会话、需求补全、任务 DAG、RAG 证据、冲突验证、草案修订与人工审批，不再将关键状态假设为外部 Host 的责任。
 - **WMS 数据源扩展**：后续可增加 Markdown、HTML、Word、导出的配置清单和经过脱敏的历史问题记录。
 - **只读诊断工具**：在独立安全边界内接入受控的 MOCA/SQL 查询，用于验证配置是否存在或生效。
 - **检索策略扩展**：针对命令、表名和配置键增强关键词召回，针对自然语言问题使用语义召回，并通过版本、模块和站点元数据过滤结果。
@@ -282,7 +296,7 @@
 本模块实现核心的 RAG 检索引擎，采用 **“多阶段过滤 (Multi-stage Filtering)”** 架构，负责接收已消歧的独立查询（Standalone Query），并精准召回 Top-K 最相关片段。
 
 - **Query Processing (查询预处理)**
-	- **核心假设**：输入 Query 已由上游（Client/MCP Host）完成会话上下文补全（De-referencing），不仅如此，还进行了指代消歧。
+	- **核心假设**：输入 Query 已由上游完成会话上下文补全（De-referencing）与指代消歧。V1 中上游是 Client/MCP Host；V2 中该职责由本项目的 Knowledge Agent 承担，并将消歧后 Query 与已确认的版本/模块/站点过滤一并传入检索引擎。
 	- **查询转换 (Transformation) 与扩张策略 (Expansion Strategy)**：
 		- **Keyword Extraction**：利用 NLP 工具提取 Query 中的关键实体与动词（去停用词），生成用于稀疏检索的 Token 列表。
 		- **Query Expansion **：
@@ -1048,6 +1062,213 @@ Hybrid Search 命中 Chunk（正文含 "[图片描述: 系统采用三层架构.
   - 当 Vision LLM 不可用时，系统回退到"仅保留图片占位符"模式，图片不参与检索但不阻塞 Ingestion 流程。
   - 在 Chunk 中标记 `has_unprocessed_images: true`，后续可增量补充描述。
 
+### 3.6 多 Agent 配置助手设计 (Multi-Agent Configuration Assistant)
+
+#### 3.6.1 产品目标与主要场景
+
+V2 的核心目标不是让多个 LLM “互相聊天”，而是用可观测、可恢复的编排流程，把一个笼统的 WMS 业务目标逐步收敛为有证据的配置方案。
+
+**目标用户**：
+
+- WMS 实施顾问：将客户业务需求转换为跨模块配置方案；
+- WMS 后端研发：定位 MOCA 命令、表、策略与扩展点，检查依赖与版本差异；
+- 解决方案架构师：审查需求基线、方案取舍、风险和回滚路径；
+- 受权运维人员：根据方案包手工执行、验证并回填结果。
+
+**核心用户故事**：
+
+1. 用户只需描述业务目标，例如“为新仓设计收货预约和月台容量方案”，系统应识别其为方案型任务，而不是简单问答。
+2. 系统应通过多轮追问收集版本、模块、仓库/站点、环境、业务量、上下游系统、现有定制和风险偏好等必需信息。
+3. 系统应将目标分解为可排序的配置任务，指明任务依赖、前置条件和验收标准。
+4. 每个配置结论必须绑定可追溯证据；无证据的推断必须明确标记为假设或未解决项。
+5. 用户可以修改任何已确认条件，系统应识别影响范围、使相关结论失效并重新规划，不得静默保留冲突方案。
+6. 用户确认前，输出始终是草案；确认后可导出结构化 JSON 和人类可读 Markdown 方案包。
+
+**V2 首版非目标**：
+
+- 不自动登录或修改真实 WMS；
+- 不在缺少客户环境证据时声称方案“已生效”；
+- 不将全部对话无界累积到 LLM Context；
+- 不让任何专业 Agent 绕过工具白名单、证据门禁或用户确认点。
+
+#### 3.6.2 Agent 角色与职责边界
+
+系统采用“一个主编排器 + 多个窄职责专业 Agent + 确定性工具”的模式。专业 Agent 可以是受控的 LLM 节点，也可以是纯规则/代码节点；不为追求 Agent 数量而把确定性逻辑交给 LLM。
+
+| 角色 | 主要职责 | 允许使用的能力 | 明确禁止 |
+|---|---|---|---|
+| **Supervisor / Orchestrator** | 识别任务类型，决定下一节点，控制循环、超时、降级和人工确认 | 状态图、Agent 注册表、策略规则 | 直接伪造配置结论或证据 |
+| **Requirement Agent** | 提取业务目标、已知条件、约束和缺失信息，生成最少必要追问 | 会话摘要、字段 Schema、领域词典 | 将未确认假设写入已确认事实 |
+| **Planning Agent** | 将目标分解为配置任务 DAG，列出依赖、需要的证据与验收条件 | 任务模板、领域模块目录 | 在无引用时把计划当作最终步骤 |
+| **Knowledge Agent** | 将会话中的子问题消歧为独立 Query，调用现有 Hybrid RAG 并登记证据 | V1 检索、文档摘要、章节导航 | 绕过 `evidence_sufficient` 或删除冲突来源 |
+| **Dependency & Conflict Agent** | 检查跨模块前置、版本/站点冲突、顺序、重复与循环依赖 | 配置任务 DAG、证据注册表、确定性规则 | 自行选择冲突文档而不暴露差异 |
+| **Validation Agent** | 检查完整性、引用覆盖、参数一致性、验证与回滚可用性 | Schema 验证器、证据核对、可选只读环境检查 | 将“文档支持”等同于“环境已验证” |
+| **Solution Composer** | 将通过验证的任务和证据组装成版本化方案包 | 方案模板、导出器 | 在生成文本时改写已确认事实 |
+
+可选的 **Environment Inspector** 是只读工具适配层，不是默认 Agent。只有在用户明确选定受权环境后，Validation Agent 才能调用它执行 allowlist 中的 MOCA/SQL 查询。
+
+#### 3.6.3 共享状态、会话内存与持久化
+
+新项目中“任务分类 + 共享状态 + 专业 Agent 路由”的思想可以复用，但 WMS 方案不能只保存一个当前 Agent 枚举。必须定义可版本化的 `ConfigurationSessionState`：
+
+```text
+ConfigurationSessionState
+├── session_id / revision / status / created_at / updated_at
+├── user_goal / intent / active_agent / next_action
+├── confirmed_context
+│   ├── product_version / module / site / environment
+│   ├── business_process / volume_profile / integrations
+│   └── customizations / constraints / risk_tolerance
+├── assumptions[] / open_questions[] / decisions[]
+├── configuration_tasks[] / dependency_edges[]
+├── evidence_registry[] / conflicts[] / validation_findings[]
+├── draft_version / approval_state / export_artifacts[]
+└── turn_budget / tool_budget / retry_count / trace_id
+```
+
+**状态管理约束**：
+
+- 每次 Agent 运行只返回它拥有字段的增量更新，不得整体覆盖状态；
+- 已确认事实、Agent 假设、文档证据和环境观测必须分字段存储；
+- 每个状态变更携带 `source_turn_id`、`actor`、`reason` 和时间戳；
+- 当用户修改版本、站点、模块或业务目标时，必须增加 `revision`，并对受影响的任务、证据和验证结论做失效标记；
+- 对话原文和结构化业务状态分开保存；LLM 默认使用受控的近期轮次 + 结构化摘要，而不是无界传入全部历史；
+- 本地首版使用 SQLite 持久化会话检查点，开启 WAL、外键和原子提交；不得使用模块级全局 `session_id` 共享不同会话。
+
+#### 3.6.4 可恢复状态图与编排策略
+
+```text
+START
+  → classify_intent
+      ├── atomic_query → existing_rag_query → answer → END
+      ├── configure_goal → load_or_create_session
+      ├── inspect_draft → render_current_draft → END
+      └── unsupported → bounded_rejection → END
+
+load_or_create_session
+  → collect_requirements
+      ├── missing_required_fields → ASK_USER / INTERRUPT
+      └── baseline_ready → plan_tasks
+  → retrieve_evidence [对独立子任务可有界并行]
+  → analyze_dependencies_and_conflicts
+      ├── blocking_conflict → ASK_USER / INTERRUPT
+      └── resolvable → compose_draft
+  → validate_draft
+      ├── evidence_gap → targeted_retrieval [最多 N 轮]
+      ├── requirement_gap → ASK_USER / INTERRUPT
+      └── valid → REVIEW_REQUIRED
+  → user_review
+      ├── revise → invalidate_affected_nodes → plan_tasks
+      ├── reject → CANCELLED
+      └── approve → APPROVED → export_solution → END
+```
+
+**编排原则**：
+
+- 使用显式状态图表达允许的转移，LLM 只能在当前节点的受限选项中提出路由；
+- 确定性规则优先于 LLM：Schema 检查、DAG 环检测、引用覆盖、权限和预算必须用代码实现；
+- 每次运行限制最大 Agent 节点数、重试次数、检索次数、时间和 Token 预算，超限时保存检查点并返回可恢复状态；
+- 并行只用于彼此独立的证据检索子任务；合并时按 `task_id` 排序且执行冲突检查，确保可复现；
+- 节点必须幂等。在检查点恢复或重试时，不得重复创建任务、证据或导出物。
+
+#### 3.6.5 配置任务、证据与方案包契约
+
+**`ConfigurationTask` 最小字段**：
+
+- `task_id`、`title`、`module`、`goal`、`status`、`depends_on[]`；
+- `preconditions[]`、`parameters[]`、`steps[]`、`validation_steps[]`、`rollback_steps[]`；
+- `evidence_ids[]`、`assumption_ids[]`、`risk_level`、`open_questions[]`；
+- `evidence_status`: `unsupported | partial | supported | environment_verified`。
+
+**证据注册表约束**：
+
+- 证据 ID 必须稳定，包含文档、页码/行号、Chunk ID、版本/模块范围、检索分数与原文摘录；
+- 方案中的命令、表名、配置键、默认值、步骤和回滚结论必须分别引用，不得用一条引用笼统覆盖整章；
+- 多来源冲突时同时保留证据，记录差异维度，要求用户选择或标记为阻塞项；
+- `environment_verified` 只能来自已审计的只读环境工具调用，不能由 LLM 自行设置。
+
+**`ConfigurationSolution` 导出结构**：
+
+1. 方案摘要与业务目标；
+2. 确认的环境与需求基线；
+3. 假设、决策和未解决问题；
+4. 按依赖排序的配置任务；
+5. 验证清单、回滚清单与风险矩阵；
+6. 证据目录和冲突来源；
+7. `session_id`、`revision`、生成时间、知识库指纹与 Agent/提示词版本。
+
+#### 3.6.6 多轮交互与人工确认门禁
+
+- 追问应遵循“阻塞优先、最少必要、可解释”原则，一次最多询问 3 个密切相关问题；
+- 每轮返回 `current_summary`、`new_decisions`、`open_questions`、`draft_progress`、`next_expected_input` 等结构化字段；
+- 用户可要求“为什么问这个”、“当前认为什么”、“哪些结论还没有证据”，系统必须从状态与证据注册表中回答；
+- `REVIEW_REQUIRED → APPROVED` 必须由用户明确操作触发，不得根据“看起来不错”等模糊用语自动推断审批；
+- 未来如增加执行工具，必须使用独立的 `PLAN → PREVIEW → APPROVE → APPLY → VERIFY` 流程，且“方案批准”不等于“执行批准”。
+
+#### 3.6.7 MCP 对外契约
+
+保留 V1 三个只读工具以维持兼容，V2 新增显式 `session_id` 的粗粒度工具。服务器不得把某个 MCP 连接或进程全局变量当作业务会话标识。
+
+| 工具 | 用途 | 关键输入 | 关键输出 | 副作用 |
+|---|---|---|---|---|
+| `start_configuration_session` | 创建方案会话 | `goal`, optional context | `session_id`, summary, questions | 仅写本地会话库 |
+| `continue_configuration_session` | 提交新一轮用户输入 | `session_id`, `message`, `expected_revision` | 状态差异、草案进展、下一问题 | 仅写本地会话库 |
+| `get_configuration_session` | 查看当前状态 | `session_id`, optional revision | 需求、任务、证据、阻塞项 | 只读 |
+| `validate_configuration_draft` | 显式重跑验证 | `session_id`, revision | findings, evidence coverage | 仅追加验证记录 |
+| `review_configuration_draft` | 批准、驳回或要求修订 | `session_id`, revision, decision, comment | approval state | 写本地审批记录 |
+| `export_configuration_solution` | 导出批准的方案包 | `session_id`, revision, format | artifact/resource link + fingerprint | 创建本地导出物 |
+
+所有工具必须定义 `inputSchema` 和 `outputSchema`，并正确标注只读、幂等、破坏性和外部世界提示。工具注解只用于可见描述，不替代服务端权限校验。
+
+#### 3.6.8 功能需求与验收标准
+
+| ID | 需求 | 优先级 | 可验收标准 |
+|---|---|---|---|
+| FR-AGT-001 | 任务识别 | P0 | 稳定区分原子问答、方案目标、草案查看和超出范围请求；低置信度时追问而非自行选择 |
+| FR-AGT-002 | 多会话隔离 | P0 | 两个 `session_id` 并行交替调用时，状态、引用和导出物不串话 |
+| FR-AGT-003 | 需求补全 | P0 | 在必需字段缺失时暂停流程并返回有理由的有界问题 |
+| FR-AGT-004 | 目标分解 | P0 | 产出无环 DAG；每个任务都有目标、前置、验证条件和证据需求 |
+| FR-AGT-005 | 会话内消歧 | P0 | 可将“那个预约配置”等输入转为带已确认版本/模块过滤的独立 Query |
+| FR-AGT-006 | 证据绑定 | P0 | 每个关键配置结论都能追溯到 Citation；证据不足时不得标记 `supported` |
+| FR-AGT-007 | 冲突检测 | P0 | 识别版本、模块、站点和步骤冲突，保留所有来源并生成阻塞项 |
+| FR-AGT-008 | 草案版本化 | P0 | 用户修改基线后 revision 递增，受影响结论失效，旧版可读但不可被当作最新版 |
+| FR-AGT-009 | 草案验证 | P0 | Schema、DAG、引用覆盖、验证/回滚完整性检查可重复运行且结果稳定 |
+| FR-AGT-010 | 人工审查 | P0 | 未显式批准不得进入 `APPROVED`；过期 revision 审批请求被拒绝 |
+| FR-AGT-011 | 方案导出 | P1 | 同一批准 revision 可导出语义等价的 JSON/Markdown，包含指纹和完整引用 |
+| FR-AGT-012 | 中断恢复 | P0 | 在追问、审批或临时故障处暂停后，重启进程仍可从最后成功检查点恢复 |
+| FR-AGT-013 | 预算与循环控制 | P0 | 任何会话均不能超过配置的节点/重试/时间/Token 上限，超限时安全暂停 |
+| FR-AGT-014 | V1 兼容 | P0 | 原有 3 个 MCP 工具、CLI、Dashboard 和公开基准无回归 |
+| FR-AGT-015 | 审计可观测 | P0 | 每个节点、工具调用、状态变更、中断和审批均关联 `session_id/revision/trace_id` |
+
+#### 3.6.9 非功能、安全与隐私需求
+
+- **可靠性**：节点失败不损坏已完成检查点；状态迁移、审批和导出提交必须原子化。
+- **一致性**：续写操作必须提交 `expected_revision`，对过期写入返回冲突，防止两个客户端覆盖彼此。
+- **延迟**：单个交互轮次 P95 目标 ≤ 15 秒（不含外部 LLM 长时间故障）；超过 2 秒必须输出阶段级进度事件。
+- **成本**：默认最多 2 轮自我修复、每个用户轮次最多 12 个图节点；缓存相同状态指纹的确定性产物。
+- **隐私**：对话、配置参数和环境检查结果视为敏感数据，不写入 Git；Trace 默认记录类型、长度、指纹和结果摘要，不记录密钥、完整提示词或原始环境返回。
+- **权限**：会话库、导出目录与可选环境适配器分离；应用层必须再次检查工具权限，不信任 LLM 生成的工具名或参数。
+- **安全默认**：V2 所有 WMS 环境工具默认禁用；即使启用也只读，并要求超时、行数限制、命令 allowlist、参数化查询与完整审计。
+
+#### 3.6.10 技术选型结论
+
+V2 首版采用 **LangGraph 1.2.x `StateGraph` + SQLite Checkpointer + 现有自定义 LLM/RAG/MCP 适配器**，不采用完全自由的 Agent-to-Agent 对话或一个大型 ReAct Agent 包办全部任务。
+
+| 技术点 | 选型 | 理由 |
+|---|---|---|
+| 编排运行时 | `langgraph>=1.2,<1.3` | 符合长运行状态图、检查点、中断/恢复、流式输出和人工确认需求；可保持节点级低层控制 |
+| 检查点 | `langgraph-checkpoint-sqlite>=3.1,<3.2` | 与当前本地单用户定位一致，易于备份、测试和故障恢复；未来多用户服务化时再迁移 Postgres |
+| 状态 Schema | Python 3.12 `TypedDict` + `dataclass` 边界模型 | 沿用现有类型化 dataclass 风格，避免仅为 Agent 增加第二套业务模型体系；对 MCP JSON Schema 单独做契约验证 |
+| 会话业务存储 | SQLite Repository | Checkpointer 解决图恢复，Repository 解决可查询的 session/draft/approval/export 业务记录；两者职责不混合 |
+| LLM | 复用 `BaseLLM` / `BudgetedLLM` / provider factory | 保持脱机 Fake 可测、预算统计、开放格式 Provider 和失败回退 |
+| RAG | 复用 `HybridSearch` + `SafeReranker` + `ResponseBuilder` | 不复制新项目的单路 FAISS；保留 MOCA 专有词、版本过滤、证据充分性和引用优势 |
+| 接口 | 保留 stdio MCP，新增显式 session tools | 兼容现有 Client；业务会话用服务端签发 handle，不依赖进程全局状态 |
+| 响应 | 结构化事件 + 最终 Markdown | 事件用于进度、中断、问题和草案差异；Markdown 保证普通 MCP Client 仍可读 |
+| 可观测 | 扩展现有 TraceContext/JSONL，不强依赖外部 SaaS | 增加 graph/node/session/revision/tool/interrupt 字段，保留本地隐私边界 |
+| 提示词 | 版本化文件 + 严格结构化输出 | 便于评审、回归、指纹化和不同 Provider 切换 |
+
+技术引入必须在独立分支中完成依赖锁定、许可证复核、Windows/Python 3.12 安装验证和全量 V1 回归；若 LangGraph 依赖与当前栈不兼容，回退方案是使用同一套状态/节点契约实现项目内显式状态机，不降级业务需求和安全门禁。
+
 ## 4. 测试方案
 
 ### 4.1 设计理念：测试驱动开发 (TDD)
@@ -1225,6 +1446,31 @@ Hybrid Search 命中 Chunk（正文含 "[图片描述: 系统采用三层架构.
 - **集成测试**：关键路径覆盖率 100%（如 Ingestion、Hybrid Search）
 - **E2E 测试**：核心用户场景覆盖率 100%（至少 3 个关键流程）
 
+### 4.6 Agent 编排与方案质量测试
+
+Agent 系统的测试不能只断言“有返回文本”，应将状态、路由、证据、安全门禁和方案完整性作为一等断言对象。
+
+| 测试层级 | 必测内容 | 通过门禁 |
+|---|---|---|
+| 单元 | 状态 Reducer、转移表、DAG 环检测、revision 乐观锁、证据覆盖、失效传播、预算计数 | 确定性核心模块分支覆盖 ≥ 90% |
+| 节点契约 | 使用 Fake LLM 验证每个 Agent 的输入/输出 Schema、字段所有权和失败回退 | 非法输出 100% 被拒绝或安全降级 |
+| 图集成 | 追问中断/恢复、检索循环上限、并行结果合并、审批门禁、进程重启 | 同一输入和 Fake 产物下状态变化可复现 |
+| 会话隔离 | 两个会话交替续写、过期 revision 写入、中断后续跑 | 零串话，过期写入 100% 被拒绝 |
+| 安全 | Prompt Injection、伪造引用、请求跳过审批、请求执行写操作、敏感信息日志泄漏 | 高危用例拦截率 100% |
+| E2E | 从一句业务目标经 3–6 轮交互形成可批准方案，修改基线后正确失效并重生成 | 公开脱敏场景集全部通过 |
+
+**Agent 评估指标**：
+
+- 意图路由准确率 ≥ 95%，低置信度误路由率 ≤ 2%；
+- 必需字段补全率 100%，已知字段重复追问率 ≤ 5%；
+- 任务 DAG 有效率 100%，人工标注关键任务覆盖率 ≥ 90%；
+- 关键结论引用覆盖率 100%，引用支持率 ≥ 95%；
+- 版本/范围冲突检出率 ≥ 95%，证据不足正确阻断率 100%；
+- 方案完整率（前置、步骤、验证、回滚、风险、引用）≥ 95%；
+- 中断恢复成功率 100%，未授权工具调用成功数必须为 0。
+
+上述阈值先在稳定 Fake LLM 与脱敏固定数据集上作为发布门禁，再使用至少一个受支持的真实 Provider 运行 opt-in 接受测试。
+
 
 ## 5. 系统架构与模块设计
 
@@ -1370,6 +1616,38 @@ Hybrid Search 命中 Chunk（正文含 "[图片描述: 系统采用三层架构.
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+#### 5.1.1 V2 Agent 编排扩展图
+
+V2 在 MCP 接口与现有 RAG Core 之间新增 Agent Application 层，不改变 Ingestion、Retrieval 和 Citation 的基础契约。
+
+```text
+MCP Client / CLI / 未来 Chat UI
+                │
+                ▼
+┌─────────────────────────────────────────────────┐
+│ Agent Interface: session tools + schemas + errors │
+└─────────────────────────────────────────────────┘
+                │
+                ▼
+┌─────────────────────────────────────────────────┐
+│ Supervisor StateGraph                           │
+│ classify → requirements → plan → retrieve      │
+│          → conflict → compose → validate → review │
+└─────────────────────────────────────────────────┘
+       │                │                 │
+       ▼                ▼                 ▼
+Session Repository   Agent Tool Adapters    Trace / Policy Guard
++ SQLite Checkpoint  ├─ Hybrid RAG         ├─ budgets/retries
++ draft revisions    ├─ Document Summary   ├─ allowlist/approval
++ approvals/exports  └─ optional read-only  └─ privacy/audit
+                          inspector
+                           │
+                           ▼
+             Existing V1 Core + Storage + Ingestion
+```
+
+分层调用方向必须为 `Interface → Orchestration → Agent/Domain Services → Repositories & Tool Adapters`。Agent 不直接访问 SQLite/Chroma/BM25，而是通过有类型契约的 Service/Adapter 使用现有能力。
+
 ### 5.2 目录结构
 
 ```
@@ -1380,7 +1658,10 @@ smart-knowledge-hub/
 │   └── prompts/                         # Prompt 模板目录
 │       ├── image_captioning.txt         # 图片描述生成 Prompt
 │       ├── chunk_refinement.txt         # Chunk 重写 Prompt
-│       └── rerank.txt                   # LLM Rerank Prompt
+│       ├── rerank.txt                   # LLM Rerank Prompt
+│       ├── agent_requirement.txt        # 需求抽取/追问 Prompt
+│       ├── agent_planning.txt           # 配置任务分解 Prompt
+│       └── agent_composer.txt           # 方案组装 Prompt
 │
 ├── src/                                 # 源代码主目录
 │   │
@@ -1392,7 +1673,31 @@ smart-knowledge-hub/
 │   │       ├── __init__.py
 │   │       ├── query_knowledge_hub.py   # 主检索工具
 │   │       ├── list_collections.py      # 列出集合工具
-│   │       └── get_document_summary.py  # 文档摘要工具
+│   │       ├── get_document_summary.py  # 文档摘要工具
+│   │       └── configuration_session.py # V2 会话/审查/导出工具
+│   │
+│   ├── agents/                          # V2 Agent Application 层
+│   │   ├── __init__.py
+│   │   ├── contracts.py                  # State/Task/Evidence/Solution 契约
+│   │   ├── graph.py                      # LangGraph StateGraph 构建
+│   │   ├── supervisor.py                 # 路由、预算、循环与中断策略
+│   │   ├── nodes/                        # 窄职责 Agent/规则节点
+│   │   │   ├── classify.py
+│   │   │   ├── requirements.py
+│   │   │   ├── planning.py
+│   │   │   ├── retrieval.py
+│   │   │   ├── conflict.py
+│   │   │   ├── validation.py
+│   │   │   └── composer.py
+│   │   ├── services/                     # 会话、草案、审批与导出用例
+│   │   │   ├── session_service.py
+│   │   │   ├── validation_service.py
+│   │   │   └── export_service.py
+│   │   ├── repositories/                 # SQLite 业务记录
+│   │   │   └── session_repository.py
+│   │   └── tools/                        # RAG/文档/只读环境适配器
+│   │       ├── knowledge_adapter.py
+│   │       └── environment_inspector.py
 │   │
 │   ├── core/                            # Core 层 (核心业务逻辑)
 │   │   ├── __init__.py
@@ -1686,6 +1991,21 @@ smart-knowledge-hub/
 | `evaluation/retrieval_benchmark.py` | 评估执行 | Hit@K/MRR/拒答/证据/延迟指标与报告生成 |
 | `evaluation/baseline_comparator.py` | 基线比较 | 指纹/case ID 校验、指标回退与失败变化 |
 
+#### 5.3.7 Agent Application 层（V2）
+
+| 模块 | 职责 | 关键技术点 |
+|---|---|---|
+| `agents/contracts.py` | 统一会话、任务、证据、冲突、验证和方案契约 | JSON 可序列化，版本化，稳定 ID，字段所有权 |
+| `agents/graph.py` | 构建主 StateGraph、边、条件路由和 Checkpointer | 可恢复节点，interrupt，有界循环，幂等 |
+| `agents/supervisor.py` | 统一路由、节点/重试/时间/Token 预算和安全策略 | 确定性策略优先，低置信度追问，失败分类 |
+| `agents/nodes/*` | 实现需求、规划、检索、冲突、验证与组装节点 | 窄职责，严格输出，可 Fake，只更新拥有字段 |
+| `agents/services/session_service.py` | 创建/续写/查询/修订/审查会话 | 乐观锁 revision，失效传播，事务边界 |
+| `agents/services/validation_service.py` | 执行非 LLM 完整性与证据门禁 | Schema/DAG/Citation/风险/回滚规则 |
+| `agents/services/export_service.py` | 从批准 revision 生成 JSON/Markdown | 内容指纹，原子写入，幂等导出 |
+| `agents/repositories/session_repository.py` | 持久化业务会话、草案、决策、审批和导出元数据 | SQLite WAL，原子事务，与 LangGraph checkpoint 分责 |
+| `agents/tools/knowledge_adapter.py` | 将现有 HybridSearch/ResponseBuilder 适配为 Agent 工具 | 独立 Query，filters，evidence registry，trace 传递 |
+| `agents/tools/environment_inspector.py` | 可选的受权只读环境检查 | 默认禁用，allowlist，超时/行数限制，参数化，审计 |
+
 
 ### 5.4 数据流说明
 
@@ -1815,6 +2135,40 @@ Dashboard (Streamlit UI)
            └── 返回 Trace 列表与详情
 ```
 
+#### 5.4.4 多轮 Agent 配置流 (Configuration Session Flow)
+
+```text
+用户业务目标
+      │
+      ▼
+start_configuration_session
+      │  创建 session_id + revision 1 + checkpoint
+      ▼
+Requirement Agent ── 缺少关键信息 ──► interrupt/追问 ──┐
+      │  需求基线完整                                      │
+      ▼                                                        │
+Planning Agent ──► ConfigurationTask DAG                       │
+      │                                                        │
+      ├──► Knowledge Agent ──► Hybrid RAG ──► Evidence Registry  │
+      │                                                        │
+      ▼                                                        │
+Conflict/Dependency ── 阻塞冲突 ──► interrupt/用户决策 ──┤
+      │  无阻塞冲突                                      │
+      ▼                                                        │
+Composer ──► Draft revision N                                 │
+      │                                                        │
+      ▼                                                        │
+Validation ── 需求/证据缺口 ──► 定向检索或 interrupt ──┤
+      │  通过                                                │
+      ▼                                                        │
+REVIEW_REQUIRED ── revise ──► revision N+1 ─────────┘
+      │ approve
+      ▼
+APPROVED ──► Export JSON + Markdown + fingerprints
+```
+
+每次 `continue_configuration_session` 只运行到下一个必要人工输入点、安全暂停点或稳定产物状态，不得在一次 MCP 调用中无限自治运行。
+
 ### 5.5 配置驱动设计
 
 
@@ -1869,6 +2223,21 @@ observability:
   enabled: true
   log_file: ./logs/traces.jsonl
 
+# V2 Agent 编排配置
+agent:
+  enabled: false                 # 实现并验收前默认关闭
+  runtime: langgraph
+  checkpoint_path: ./data/db/agent_checkpoints.db
+  session_db_path: ./data/db/configuration_sessions.db
+  export_root: ./data/exports
+  max_nodes_per_turn: 12
+  max_self_repair_rounds: 2
+  max_retrieval_tasks: 8
+  turn_timeout_seconds: 60
+  max_context_turns: 8
+  approval_required: true
+  environment_inspector_enabled: false
+
 # Dashboard 管理平台配置
 dashboard:
   enabled: true
@@ -1885,6 +2254,8 @@ dashboard:
 2. **新增文档格式**：实现 `BaseLoader` 接口，在 Pipeline 中注册对应文件扩展名的处理器
 3. **新增检索策略**：实现检索接口，在 `hybrid_search.py` 中组合调用
 4. **新增评估指标**：实现 `BaseEvaluator` 接口，在配置中添加到 `backends` 列表
+5. **新增专业 Agent**：先定义它拥有的状态字段和工具白名单，再实现独立节点并注册到主图；不得跨层访问存储
+6. **新增会话存储后端**：保持 Session Repository 和 Graph Checkpointer 接口分离，支持从 SQLite 迁移到 Postgres 而不修改 Agent 节点
 
 
 ## 6. 项目排期
@@ -1916,6 +2287,16 @@ dashboard:
    - 目的：实现确定性 Benchmark Runner、Threshold/Composite Evaluator，启用评估面板页面，建立 golden test set 回归基线；Ragas 保留为 post-MVP 可选扩展。
 9. **阶段 I：端到端验收与文档收口**
    - 目的：补齐 E2E 测试（MCP Client 模拟 + Dashboard 冒烟），完善 README，全链路验收，确保“开箱即用 + 可复现”。
+10. **阶段 J：Agent 契约、状态图与持久化（V2 Day 1–3）**
+    - 目的：建立可版本化会话状态、SQLite checkpoint/repository、Supervisor 和需求追问闭环。
+11. **阶段 K：规划、RAG 证据与冲突验证（V2 Day 4–6）**
+    - 目的：将配置目标转为任务 DAG，复用 V1 RAG 绑定证据，并阻断冲突或不完整草案。
+12. **阶段 L：方案修订、审批、导出与 MCP（V2 Day 7–8）**
+    - 目的：完成方案包产物、revision 失效传播、显式审批和 session tools。
+13. **阶段 M：可观测、安全与发布验收（V2 Day 9–10）**
+    - 目的：为 Agent 增加 Trace/Dashboard/隐私安全门禁与 golden scenario 评估，且保证 V1 无回归。
+
+V2 的每日任务、依赖、测试方法、退出标准和范围切除顺序见 [Agent Development Plan](docs/AGENT_DEVELOPMENT_PLAN.md)。
 
 
 ---
@@ -2038,6 +2419,17 @@ dashboard:
 | I3 | 完善 README（运行说明 + MCP + Dashboard） | [x] | 2026-08-25 | README 已纳入版本控制并覆盖快速开始、评估、隐私与排障 |
 | I4 | 清理接口一致性（契约测试补齐） | [x] | 2026-08-25 | VectorStore、DocumentManager、Reranker、Evaluator 与故障隔离边界闭合 |
 | I5 | 全链路 E2E 验收 | [x] | 2026-08-25 | 脱敏 PDF→索引→MCP 引用→Dashboard→评估→确认清理通过 |
+
+#### V2 Agent 阶段跟踪
+
+| 阶段 | 时间 | 状态 | 主要验收 |
+|---|---|---|---|
+| J：Agent 契约、状态图与持久化 | Day 1–3 | [~] | Day 1 已完成依赖/Agent 契约/持久化 Spike；Day 2–3 待完成业务 Repository 与需求流 |
+| K：规划、RAG 证据与冲突验证 | Day 4–6 | [ ] | 无环任务 DAG、引用绑定、冲突/证据缺口阻断 |
+| L：方案修订、审批、导出与 MCP | Day 7–8 | [ ] | 批准门禁、JSON/Markdown 导出、6 个 session tools、V1 兼容 |
+| M：可观测、安全与发布验收 | Day 9–10 | [ ] | Agent Trace/Dashboard、安全测试、golden scenarios、全量回归 |
+
+> V1 进度表保持原统计口径；V2 单独跟踪，不因新需求把“V1 MVP 完成度 100%”重新解读为未完成。
 
 ---
 
@@ -3166,6 +3558,11 @@ dashboard:
 - **M4（完成阶段 F）**：Ingestion + Query 双链路可追踪，JSON Lines 持久化。
 - **M5（完成阶段 G）**：六页面导航与五个管理/追踪页面就绪；当时评估页占位，已在 M6 替换。
 - **M6（完成阶段 H+I，2026-08-25）**：确定性评估体系、隐私安全历史、E2E 验收与运行维护文档完成，形成可复现 MVP 交付。
+- **M7（V2 Day 2）**：会话契约、revision、checkpoint 与重启恢复基座完成。
+- **M8（V2 Day 4）**：多轮需求补全与配置任务 DAG 可演示。
+- **M9（V2 Day 6）**：任务绑定 V1 RAG 证据，冲突、无引用和不完整草案可被阻断。
+- **M10（V2 Day 8）**：通过 MCP 完成会话创建、续写、审查和方案导出闭环。
+- **M11（V2 Day 10）**：Agent golden scenarios、安全/隐私门禁、可观测与 V1 全量回归通过，形成 Agent MVP 发布候选。
 
 
 
@@ -3200,16 +3597,22 @@ dashboard:
         - **拒答机制**：当召回内容的置信度不足时，如何让系统诚实地回答“不知道”而不是基于相关性较低的片段强行拼凑答案（幻觉问题）？
 
 ### 7.3 迈向自主智能：Agentic RAG 的演进路径
-当前的 RAG 架构主要遵循“一次检索-一次生成”的固有范式，但在面对极其复杂的问题（如跨文档对比、多步推理）时，单一的线性流程往往力不从心。本项目作为标准的 MCP Server，天然具备向 **Agentic RAG（代理式 RAG）** 演进的潜力。这不需要重写现有代码，而是通过在 Server 端提供更细粒度的工具，赋能 Client 端的 Agent 具备更强的自主性：
 
-- **从“单步检索”到“多步决策”**：
-    - 目前 Agent 可能只调用一个通用的 `search` 工具。
-    - **未来演进**：Server 可以暴露 `list_modules`（查看模块）、`preview_document`（预览摘要）、`verify_configuration`（核验配置证据）等更原子化的工具。Agent 先限定版本和模块，再读取相关章节，最后交叉验证配置位置与操作步骤。
-- **让 Agent 具备“反思”能力**：
-    - **未来演进**：利用现有的评估模块，Server 可以提供一个 `self_check` 接口。Agent 在生成答案后，可以自主调用该接口检测是否存在幻觉，或者检索结果是否真正支撑了论点。如果发现不足，Agent 可以自主决定进行第二轮更深度的搜索。
-- **动态策略选择**：
-    - **未来演进**：不再硬编码使用混合检索。Server 可以将 `keyword_search` 和 `semantic_search` 作为独立工具暴露。查询 MOCA 命令、表名或配置键时优先使用关键词检索；查询故障现象或业务概念时优先使用语义检索。
+Agentic RAG 已从模糊的“未来可能”提升为 V2 正式需求，详见第 3.6 节和 [10 天 Agent 开发计划](docs/AGENT_DEVELOPMENT_PLAN.md)。演进策略是：
 
-这种演进方向将把项目从文档检索服务升级为可执行多步证据核验的 WMS 配置助手。
+1. **先内聚编排再扩展工具**：本项目自己管理会话、需求、任务 DAG、证据、修订和审批，不再假设外部 MCP Host 已完成指代消歧和流程编排。
+2. **先显式状态图再考虑自由自治**：需求补全、规划、检索、冲突、验证、审查和导出使用可恢复的有界图，不使用无限 ReAct 循环。
+3. **先确定性验证再允许自我修复**：证据覆盖、DAG、版本冲突和审批由代码检查；Agent 只能在预算内做定向重检索或请求用户补充。
+4. **先交付方案再考虑执行**：V2 Agent MVP 产出可审查方案包，不修改真实 WMS。
+
+### 7.4 从配置方案到受控执行
+
+只有在 Agent MVP 经过真实实施项目评估，且方案引用、冲突检出、回滚完整性和审计性达到发布门禁后，才评估真实执行能力。执行层必须是独立安全边界，至少包含：
+
+- 独立身份与 RBAC，不复用检索或会话进程的默认权限；
+- 命令/表/参数 allowlist，参数化请求、超时、行数限制与环境级断路器；
+- `PLAN → PREVIEW → APPROVE → APPLY → VERIFY` 五阶段，方案批准和执行批准两次独立人工决策；
+- 每次 Apply 前的环境快照、幂等键、预览差异、实施后验证与自动/人工回滚路径；
+- 不可篡改的审计记录，能将执行结果回溯到批准的 session/revision/task/evidence。
 
 

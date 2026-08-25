@@ -1,5 +1,9 @@
 # Five-Day MVP Development Plan
 
+> This document is the completed V1 RAG/MCP delivery record. The V2 multi-agent requirements,
+> design review, technology choices, and new ten-day implementation plan are maintained in
+> [AGENT_DEVELOPMENT_PLAN.md](AGENT_DEVELOPMENT_PLAN.md).
+
 This sprint delivers a local, citation-first WMS/JDA MOCA configuration knowledge agent.
 The scope intentionally excludes production WMS connections, configuration writes, and
 undocumented data. All document fixtures must be authorized and sanitized.
