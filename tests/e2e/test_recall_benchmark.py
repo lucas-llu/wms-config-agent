@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from core.query_engine import (
@@ -16,26 +18,31 @@ from ingestion.storage import BM25Indexer
 from libs.embedding import LocalLSAEmbedding
 from libs.vector_store import ChromaStore
 from observability.evaluation import (
-    BenchmarkCase,
     BenchmarkDataset,
-    BenchmarkExpectation,
     RetrievalBenchmarkRunner,
 )
 
 pytestmark = pytest.mark.e2e
 
 
-def _chunk(chunk_id: str, code: str, title: str, text: str) -> Chunk:
+def _chunk(
+    chunk_id: str,
+    code: str,
+    title: str,
+    text: str,
+    *,
+    domain: str,
+) -> Chunk:
     return Chunk(
         id=chunk_id,
         text=text,
         metadata={
-            "source_path": f"private/{chunk_id}.pdf",
+            "source_path": f"sanitized/{chunk_id}.pdf",
             "source_relative_path": f"sanitized/{chunk_id}.pdf",
             "file_hash": chunk_id,
             "title": title,
             "collection": "test",
-            "domain": "Inbound",
+            "domain": domain,
             "process_code": code,
             "document_type": "configuration",
             "page_start": 1,
@@ -46,28 +53,38 @@ def _chunk(chunk_id: str, code: str, title: str, text: str) -> Chunk:
     )
 
 
-def test_ingest_to_benchmark_recall_and_refusal(tmp_path) -> None:
+def test_ingest_to_committed_public_benchmark(tmp_path) -> None:
     chunks = [
         _chunk(
             "putaway",
-            "PROCESS-1",
-            "RF Directed Putaway",
-            "Configure directed putaway policy and storage location rules.",
+            "SWL.I.11.04",
+            "Sorted Putaway Configuration",
+            "Configure sorted putaway policy and storage location rules.",
+            domain="Inbound",
         ),
         _chunk(
             "appointment",
-            "PROCESS-2",
+            "SWL.I.01.01",
             "Appointment Creation",
             "Configure inbound appointment capacity and dock schedules.",
+            domain="Inbound",
         ),
         _chunk(
-            "cycle-count",
-            "PROCESS-3",
-            "RF Cycle Count",
-            "Configure inventory cycle count plans and tolerances.",
+            "replenishment-tour",
+            "SWL.O.07.03",
+            "Replenishment Tour Configuration",
+            "Configure outbound replenishment tour rules and execution sequencing.",
+            domain="Outbound",
+        ),
+        _chunk(
+            "inventory-move",
+            "SWL.S.01.02",
+            "Inventory Move Configuration",
+            "Configure stock management inventory move rules and location validation.",
+            domain="Stock Management",
         ),
     ]
-    embedding = LocalLSAEmbedding(dimensions=2, cache_dir=tmp_path / "model")
+    embedding = LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path / "model")
     store = ChromaStore(persist_path=tmp_path / "chroma", collection_name="chunks")
     bm25 = BM25Indexer(tmp_path / "bm25")
     IndexingPipeline(
@@ -93,46 +110,11 @@ def test_ingest_to_benchmark_recall_and_refusal(tmp_path) -> None:
         SparseRetriever(bm25, store),
         ReciprocalRankFusion(settings.rrf_k),
     )
-    dataset = BenchmarkDataset(
-        name="e2e",
-        description="Sanitized end-to-end recall test",
-        thresholds={
-            "hit_at_3_min": 1.0,
-            "refusal_accuracy_min": 1.0,
-            "evidence_accuracy_min": 1.0,
-        },
-        test_cases=(
-            BenchmarkCase(
-                case_id="putaway",
-                category="semantic",
-                query="directed putaway storage location configuration",
-                expected=BenchmarkExpectation(
-                    chunk_ids=("putaway",),
-                    process_codes=("PROCESS-1",),
-                    text_contains=("storage location rules",),
-                ),
-            ),
-            BenchmarkCase(
-                case_id="appointment",
-                category="semantic",
-                query="inbound appointment dock configuration",
-                expected=BenchmarkExpectation(
-                    chunk_ids=("appointment",),
-                    process_codes=("PROCESS-2",),
-                    text_contains=("dock schedules",),
-                ),
-            ),
-            BenchmarkCase(
-                case_id="refusal",
-                category="unsupported_refusal",
-                query="quantum payroll satellite configuration",
-                expected=BenchmarkExpectation(should_refuse=True),
-            ),
-        ),
-    )
+    dataset = BenchmarkDataset.load(Path("tests/fixtures/golden_test_set.json"))
 
     report = RetrievalBenchmarkRunner(search, top_k=5).run(dataset)
 
     assert report.passed is True
+    assert report.case_count == 4
     assert report.metrics["hit_at_3"] == 1.0
-    assert report.metrics["refusal_accuracy"] == 1.0
+    assert report.metrics["evidence_accuracy"] == 1.0

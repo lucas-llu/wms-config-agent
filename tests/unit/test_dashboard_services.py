@@ -54,3 +54,4 @@ def test_dashboard_command_uses_current_python_and_absolute_app_path() -> None:
     assert command[:4] == [sys.executable, "-m", "streamlit", "run"]
     assert Path(command[4]).is_absolute()
     assert Path(command[4]).name == "app.py"
+    assert command[5:] == ["--server.address=127.0.0.1"]

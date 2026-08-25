@@ -7,13 +7,16 @@ from core.query_engine import (
     HybridSearch,
     QueryProcessor,
     ReciprocalRankFusion,
+    SafeReranker,
     SparseRetriever,
 )
 from core.settings import RetrievalSettings
+from core.trace import TraceContext
 from core.types import Chunk
 from ingestion import IndexingPipeline
 from ingestion.storage import BM25Indexer
 from libs.embedding import LocalLSAEmbedding
+from libs.reranker import NoneReranker
 from libs.vector_store import ChromaStore
 
 pytestmark = pytest.mark.integration
@@ -105,13 +108,42 @@ def test_hybrid_search_handles_chinese_expansion_filter_and_diversity(tmp_path) 
         ReciprocalRankFusion(settings.rrf_k),
     )
 
-    outcome = search.search_with_details("如何配置上架库位？")
+    trace = TraceContext("query")
+    outcome = search.search_with_details("如何配置上架库位？", trace=trace)
+    SafeReranker(NoneReranker()).rerank(
+        outcome.processed_query.retrieval_query,
+        list(outcome.results),
+        trace=trace,
+    )
 
     assert outcome.evidence_sufficient is True
     assert outcome.processed_query.filters["document_type"] == "configuration"
     assert outcome.results[0].metadata["process_code"] == "SWL.I.11.01"
     assert all(result.metadata["document_type"] == "configuration" for result in outcome.results)
     assert sum(result.metadata["process_code"] == "SWL.I.11.01" for result in outcome.results) <= 2
+
+    stages = {stage["name"]: stage["details"] for stage in trace.to_dict()["stages"]}
+    for stage_name in (
+        "query_processing",
+        "dense_retrieval",
+        "sparse_retrieval",
+        "fusion",
+        "rerank",
+    ):
+        assert stages[stage_name]["method"]
+        assert stages[stage_name]["provider"]
+    assert stages["dense_retrieval"]["results"][0] == {
+        "chunk_id": outcome.dense_results[0].chunk_id,
+        "rank": 1,
+        "score": round(outcome.dense_results[0].score, 8),
+        "source_scores": {"dense": round(outcome.dense_results[0].source_scores["dense"], 8)},
+        "source_ranks": {"dense": 1},
+    }
+    assert stages["fusion"]["rankings"]["dense"]
+    assert stages["fusion"]["rankings"]["sparse"]
+    assert stages["fusion"]["rankings"]["fused"]
+    assert stages["rerank"]["before"] == stages["rerank"]["after"]
+    assert "Directed putaway selects a storage location" not in str(trace.to_dict())
 
     unsupported = search.search_with_details("quantum inventory portal configuration")
     assert unsupported.results

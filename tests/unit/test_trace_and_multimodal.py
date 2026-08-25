@@ -23,6 +23,54 @@ def test_trace_collector_writes_completed_jsonl(tmp_path) -> None:
     assert payload["stages"][0]["elapsed_ms"] == 12.346
 
 
+def test_trace_redacts_credentials_and_omits_document_bodies(tmp_path) -> None:
+    path = tmp_path / "traces.jsonl"
+    collector = TraceCollector(path)
+    trace = collector.start(
+        "query",
+        {
+            "query": "find config api_key=do-not-store-this-value",
+            "authorization": "Bearer secret-token",
+        },
+    )
+    assert trace is not None
+    trace.record_stage(
+        "dense_retrieval",
+        1.0,
+        details={
+            "content": "private document body",
+            "results": [{"chunk_id": "chunk-1", "score": 0.9}],
+        },
+    )
+    trace.finish()
+    collector.collect(trace)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    serialized = json.dumps(payload)
+    assert "do-not-store-this-value" not in serialized
+    assert "secret-token" not in serialized
+    assert "private document body" not in serialized
+    assert payload["stages"][0]["details"]["results"][0]["chunk_id"] == "chunk-1"
+
+
+def test_trace_finish_retains_only_safe_error_categories() -> None:
+    safe = TraceCollector("unused.jsonl").start("query")
+    assert safe is not None
+    safe.finish(status="error", error="TimeoutError")
+    assert safe.to_dict()["error"] == "TimeoutError"
+
+    unsafe = TraceCollector("unused.jsonl").start("query")
+    assert unsafe is not None
+    unsafe.finish(
+        status="error",
+        error="Bearer private-token while parsing private document body",
+    )
+    serialized = json.dumps(unsafe.to_dict())
+    assert "private-token" not in serialized
+    assert "private document body" not in serialized
+    assert unsafe.to_dict()["error"] == "[REDACTED]"
+
+
 def test_multimodal_assembler_only_reads_allowed_images(tmp_path) -> None:
     allowed = tmp_path / "allowed"
     allowed.mkdir()

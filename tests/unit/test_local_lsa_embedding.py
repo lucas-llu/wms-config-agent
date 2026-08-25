@@ -36,3 +36,28 @@ def test_local_lsa_rejects_empty_corpus(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="must not be empty"):
         embedding.fit([])
+
+
+def test_prepared_fit_can_rollback_without_replacing_query_model(tmp_path) -> None:
+    embedding = LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path)
+    embedding.fit(TEXTS)
+    original_signature = embedding.signature
+    original_query = embedding.embed_query("putaway settings")
+    original_cache = embedding.model_path.read_bytes()
+
+    changed = embedding.prepare_fit(
+        [
+            "cycle count adjustment policy",
+            "inventory hold release configuration",
+        ]
+    )
+
+    assert changed is True
+    assert embedding.actual_dimensions == 1
+    assert embedding.model_path.read_bytes() == original_cache
+
+    embedding.rollback_fit()
+
+    assert embedding.signature == original_signature
+    assert embedding.embed_query("putaway settings") == pytest.approx(original_query)
+    assert embedding.model_path.read_bytes() == original_cache

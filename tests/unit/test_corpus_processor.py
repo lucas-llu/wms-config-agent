@@ -307,3 +307,47 @@ def test_retry_rebuilds_corrupt_chunk_artifact_from_source(tmp_path: Path) -> No
     assert report.succeeded == 1
     assert report.skipped == 0
     assert json.loads(chunks_path.read_text(encoding="utf-8").splitlines()[0])["id"]
+
+
+def test_history_snapshot_restores_failed_status_and_metadata(tmp_path: Path) -> None:
+    source = tmp_path / "SWL.I.01.01 Test.pdf"
+    source.write_bytes(b"fake-pdf")
+    entry = _entry(source)
+    processor = CorpusProcessor(
+        source_root=tmp_path,
+        output_root=tmp_path / "processed",
+        database_path=tmp_path / "history.db",
+        splitter_settings=SplitterSettings(
+            provider="recursive",
+            chunk_size=100,
+            chunk_overlap=10,
+        ),
+        loader_builder=lambda *args, **kwargs: FakeLoader(),
+    )
+    processor.integrity.mark_success(
+        entry.file_hash,
+        entry.source_path,
+        collection="test",
+        artifact_marker="keep-me",
+    )
+    processor.integrity.mark_failed(
+        entry.file_hash,
+        "original failure",
+        entry.source_path,
+        collection="test",
+    )
+    snapshot = processor.capture_history(entry, collection="test")
+    processor.integrity.mark_success(
+        entry.file_hash,
+        entry.source_path,
+        collection="test",
+        artifact_marker="replacement",
+    )
+
+    processor.restore_history(entry, snapshot, collection="test")
+
+    restored = processor.integrity.list_processed(status=None, collection="test")
+    assert len(restored) == 1
+    assert restored[0].status == "failed"
+    assert restored[0].error_msg == "original failure"
+    assert restored[0].metadata["artifact_marker"] == "keep-me"
