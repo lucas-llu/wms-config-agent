@@ -42,8 +42,37 @@ class LocalLSAEmbedding(BaseEmbedding):
         self._normalizer: Normalizer | None = None
         self._corpus_hash: str | None = None
         self.actual_dimensions: int | None = None
+        self._prepared_backup: (
+            tuple[
+                FeatureUnion | None,
+                TruncatedSVD | None,
+                Normalizer | None,
+                str | None,
+                int | None,
+            ]
+            | None
+        ) = None
+        self._prepared_model_bytes: bytes | None = None
+        self._prepared_model_existed = False
 
     def fit(self, texts: list[str], *, force: bool = False) -> bool:
+        """Fit and persist immediately for the standalone embedding contract."""
+
+        changed = self.prepare_fit(texts, force=force)
+        self.commit_fit()
+        self.finalize_fit()
+        return changed
+
+    def prepare_fit(self, texts: list[str], *, force: bool = False) -> bool:
+        """Fit in memory while leaving the last query-compatible model on disk.
+
+        The ingestion coordinator commits this prepared model only after its dense and
+        sparse indexes have both switched successfully.  On failure, ``rollback_fit``
+        restores the in-memory provider and the previous cache remains untouched.
+        """
+
+        if self._prepared_backup is not None:
+            raise RuntimeError("A Local LSA fit is already prepared")
         clean_texts = self._validate_texts(texts)
         corpus_hash = self._hash_corpus(clean_texts)
         if not force and self.model_path.is_file():
@@ -62,13 +91,61 @@ class LocalLSAEmbedding(BaseEmbedding):
         normalizer = Normalizer(copy=False)
         normalizer.fit(dense)
 
+        self._prepared_backup = (
+            self._features,
+            self._svd,
+            self._normalizer,
+            self._corpus_hash,
+            self.actual_dimensions,
+        )
+        self._prepared_model_existed = self.model_path.is_file()
+        self._prepared_model_bytes = (
+            self.model_path.read_bytes() if self._prepared_model_existed else None
+        )
         self._features = features
         self._svd = svd
         self._normalizer = normalizer
         self._corpus_hash = corpus_hash
         self.actual_dimensions = actual_dimensions
-        self._save()
         return True
+
+    def commit_fit(self) -> None:
+        """Atomically persist a prepared model after index synchronization succeeds."""
+
+        if self._prepared_backup is None:
+            return
+        self._save()
+
+    def finalize_fit(self) -> None:
+        """Release rollback state after every coordinated storage commit succeeds."""
+
+        self._prepared_backup = None
+        self._prepared_model_bytes = None
+        self._prepared_model_existed = False
+
+    def rollback_fit(self) -> None:
+        """Discard an uncommitted model and restore the prior in-memory provider."""
+
+        if self._prepared_backup is None:
+            return
+        (
+            self._features,
+            self._svd,
+            self._normalizer,
+            self._corpus_hash,
+            self.actual_dimensions,
+        ) = self._prepared_backup
+        if self._prepared_model_existed:
+            assert self._prepared_model_bytes is not None
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            temporary = self.model_path.with_suffix(self.model_path.suffix + ".rollback.tmp")
+            temporary.write_bytes(self._prepared_model_bytes)
+            temporary.replace(self.model_path)
+        else:
+            self.model_path.unlink(missing_ok=True)
+        self._prepared_backup = None
+        self._prepared_model_bytes = None
+        self._prepared_model_existed = False
 
     def embed(self, texts: list[str], trace: Any | None = None) -> list[list[float]]:
         del trace

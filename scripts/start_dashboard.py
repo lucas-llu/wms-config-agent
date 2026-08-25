@@ -9,7 +9,14 @@ from pathlib import Path
 
 def dashboard_command() -> list[str]:
     app_path = Path(__file__).parents[1] / "src" / "observability" / "dashboard" / "app.py"
-    return [sys.executable, "-m", "streamlit", "run", str(app_path)]
+    return [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(app_path),
+        "--server.address=127.0.0.1",
+    ]
 
 
 def main() -> None:

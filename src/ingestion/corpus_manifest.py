@@ -61,6 +61,48 @@ class CorpusManifestSummary:
 class CorpusManifestBuilder:
     """Scan PDFs without writing extracted text or images."""
 
+    def build_entry(
+        self,
+        source_path: str | Path,
+        *,
+        source_root: str | Path | None = None,
+    ) -> CorpusManifestEntry:
+        """Inspect one PDF for an interactive ingestion request."""
+        path = Path(source_path).resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Corpus document does not exist: {path}")
+        if path.suffix.lower() != ".pdf":
+            raise ValueError("Interactive corpus ingestion currently accepts PDF files only")
+        root = Path(source_root).resolve() if source_root is not None else path.parent
+        try:
+            relative_path = path.relative_to(root).as_posix()
+        except ValueError as exc:
+            raise ValueError("source_path must be inside source_root") from exc
+        parent_parts = Path(relative_path).parts[:-1]
+        domain = parent_parts[0] if parent_parts else "Unclassified"
+        process_stage = parent_parts[1] if len(parent_parts) > 1 else domain
+        file_hash = BaseLoader.compute_file_hash(path)
+        try:
+            process_code = self._process_code(path.stem)
+        except ValueError:
+            process_code = "UNSPECIFIED"
+        return CorpusManifestEntry(
+            schema_version=1,
+            document_id=BaseLoader.build_document_id(file_hash),
+            file_hash=file_hash,
+            source_path=relative_path,
+            source_name=path.name,
+            title=self._title(path.stem) or path.stem,
+            process_code=process_code,
+            domain=domain,
+            process_stage=process_stage,
+            document_type=self._document_type(path.stem),
+            page_count=len(PdfReader(path, strict=False).pages),
+            size_bytes=path.stat().st_size,
+            modified_at=datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat(),
+            version="unspecified",
+        )
+
     def scan(self, source_root: str | Path) -> list[CorpusManifestEntry]:
         root = Path(source_root).resolve()
         if not root.is_dir():

@@ -3,16 +3,41 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
-from dataclasses import replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from core.settings import SplitterSettings, load_settings
 from ingestion import CorpusManifestBuilder, CorpusProcessor
-from ingestion.storage import ImageStorage
+from ingestion.storage import ImageStorage, LifecycleLock
 from ingestion.transform import ChunkRefiner, ImageCaptioner, MetadataEnricher
 from libs.llm import BudgetedLLM, LLMFactory
+from libs.loader import SQLiteIntegrityChecker
+from libs.sqlite_snapshot import connect_sqlite_snapshot
+
+_DEFAULT_HISTORY_DATABASE = Path("data/db/ingestion_history.db")
+_LEGACY_HISTORY_DATABASE = Path("data/db/corpus_preprocessing.db")
+_LEGACY_HISTORY_COLUMNS = {
+    "file_hash",
+    "file_path",
+    "status",
+    "processed_at",
+    "error_msg",
+    "metadata_json",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryMigrationReport:
+    source_found: bool
+    rows_read: int
+    rows_inserted: int
+
+    def to_dict(self) -> dict[str, bool | int]:
+        return asdict(self)
 
 
 def _positive_int(value: str) -> int:
@@ -38,7 +63,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--database",
         type=Path,
-        default=Path("data/db/corpus_preprocessing.db"),
+        default=_DEFAULT_HISTORY_DATABASE,
+    )
+    parser.add_argument(
+        "--legacy-database",
+        type=Path,
+        help=(
+            "Override the legacy preprocessing history source. The default legacy database is "
+            "migrated automatically only when --database uses the unified default."
+        ),
     )
     parser.add_argument("--chunk-size", type=int)
     parser.add_argument("--chunk-overlap", type=int)
@@ -74,6 +107,119 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def migrate_legacy_history(
+    legacy_path: str | Path,
+    target_path: str | Path,
+    *,
+    default_collection: str = "wms-system-training",
+) -> HistoryMigrationReport:
+    """Copy legacy preprocessing history without modifying it or replacing target rows."""
+    source = Path(legacy_path)
+    target = Path(target_path)
+    if source.resolve() == target.resolve() or not source.is_file():
+        return HistoryMigrationReport(source_found=source.is_file(), rows_read=0, rows_inserted=0)
+    collection = default_collection.strip()
+    if not collection:
+        raise ValueError("default_collection must not be empty")
+
+    rows = _read_legacy_history(source, default_collection=collection)
+    if not rows:
+        return HistoryMigrationReport(source_found=True, rows_read=0, rows_inserted=0)
+
+    # Reuse the production initializer so an existing legacy target schema is upgraded first.
+    SQLiteIntegrityChecker(target)
+    connection = sqlite3.connect(target, timeout=30)
+    try:
+        connection.execute("PRAGMA busy_timeout=30000")
+        connection.execute("BEGIN IMMEDIATE")
+        before = connection.total_changes
+        connection.executemany(
+            """
+            INSERT OR IGNORE INTO ingestion_history (
+                record_id, file_hash, collection, file_path, status,
+                processed_at, error_msg, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        inserted = connection.total_changes - before
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return HistoryMigrationReport(
+        source_found=True,
+        rows_read=len(rows),
+        rows_inserted=inserted,
+    )
+
+
+def _read_legacy_history(
+    source: Path,
+    *,
+    default_collection: str,
+) -> list[tuple[str, str, str, str, str, str, str | None, str]]:
+    connection = connect_sqlite_snapshot(source)
+    try:
+        columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(ingestion_history)").fetchall()
+        }
+        missing = sorted(_LEGACY_HISTORY_COLUMNS - columns)
+        if missing:
+            raise ValueError(
+                "Legacy history has an unsupported schema; missing columns: " + ", ".join(missing)
+            )
+        has_collection = "collection" in columns
+        selection = "file_hash, file_path, status, processed_at, error_msg, metadata_json" + (
+            ", collection" if has_collection else ""
+        )
+        raw_rows = connection.execute(
+            f"SELECT {selection} FROM ingestion_history ORDER BY processed_at, file_hash"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    migrated: list[tuple[str, str, str, str, str, str, str | None, str]] = []
+    for row in raw_rows:
+        file_hash = str(row[0]).strip()
+        file_path = str(row[1])
+        status = str(row[2])
+        processed_at = str(row[3]).strip()
+        error_msg = str(row[4]) if row[4] is not None else None
+        metadata_json = str(row[5]) if row[5] is not None else "{}"
+        metadata = _metadata_mapping(metadata_json)
+        row_collection = row[6] if has_collection else metadata.get("collection")
+        collection = str(row_collection).strip() if row_collection is not None else ""
+        collection = collection or default_collection
+        if not file_hash or not processed_at or status not in {"success", "failed"}:
+            raise ValueError("Legacy history contains an invalid required value")
+        record_id = hashlib.sha256(f"{file_hash}\0{collection}".encode()).hexdigest()
+        migrated.append(
+            (
+                record_id,
+                file_hash,
+                collection,
+                file_path,
+                status,
+                processed_at,
+                error_msg,
+                metadata_json,
+            )
+        )
+    return migrated
+
+
+def _metadata_mapping(value: str) -> dict[str, Any]:
+    try:
+        metadata = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
 def _require_bounded_llm_run(
     *,
     llm_enabled: bool,
@@ -90,6 +236,23 @@ def _require_bounded_llm_run(
 def main() -> None:
     args = parse_args()
     settings = load_settings()
+    with LifecycleLock.for_database(args.database).lease():
+        _process_locked(args, settings)
+
+
+def _process_locked(args: argparse.Namespace, settings: Any) -> None:
+    legacy_database = args.legacy_database
+    if legacy_database is None and args.database.resolve() == _DEFAULT_HISTORY_DATABASE.resolve():
+        legacy_database = _LEGACY_HISTORY_DATABASE
+    migration = (
+        migrate_legacy_history(
+            legacy_database,
+            args.database,
+            default_collection=settings.ingestion.image_storage.collection,
+        )
+        if legacy_database is not None
+        else HistoryMigrationReport(False, 0, 0)
+    )
     splitter_settings = SplitterSettings(
         provider=settings.splitter.provider,
         chunk_size=args.chunk_size or settings.splitter.chunk_size,
@@ -156,6 +319,7 @@ def main() -> None:
         retry_llm_failures=args.retry_llm_failures,
     )
     result = {
+        "history_migration": migration.to_dict(),
         "manifest": builder.summarize(entries).to_dict(),
         "selection": {
             "documents": len(selected_entries),

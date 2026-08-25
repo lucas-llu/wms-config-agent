@@ -29,14 +29,17 @@ def get_dashboard_services(settings_path: str | None = None) -> DashboardService
     chroma = ChromaStore(
         persist_path=settings.vector_store.persist_path,
         collection_name=settings.vector_store.collection_name,
+        read_only=True,
     )
-    bm25 = BM25Indexer(os.getenv("WMS_BM25_PATH", "data/db/bm25"))
+    bm25 = BM25Indexer(os.getenv("WMS_BM25_PATH", "data/db/bm25"), read_only=True)
     images = ImageStorage(
         settings.ingestion.image_storage.root_path,
         settings.ingestion.image_storage.database_path,
+        read_only=True,
     )
     integrity = SQLiteIntegrityChecker(
-        Path(os.getenv("WMS_INGESTION_HISTORY_PATH", "data/db/ingestion_history.db"))
+        Path(os.getenv("WMS_INGESTION_HISTORY_PATH", "data/db/ingestion_history.db")),
+        read_only=True,
     )
     manager = DocumentManager(chroma, bm25, images, integrity)
     return DashboardServices(

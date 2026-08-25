@@ -19,6 +19,7 @@ from core.query_engine import (
 )
 from core.response import ResponseBuilder
 from core.settings import load_settings
+from core.trace import TraceCollector
 from ingestion.storage import BM25Indexer
 from libs.embedding import EmbeddingFactory
 from libs.reranker import RerankerFactory
@@ -72,24 +73,48 @@ def main() -> None:
         SparseRetriever(bm25_indexer, vector_store),
         ReciprocalRankFusion(settings.retrieval.rrf_k),
     )
-    outcome = hybrid_search.search_with_details(
-        args.query,
-        top_k=args.top_k,
-        filters=_filters(args),
+    filters = _filters(args)
+    collector = TraceCollector(
+        settings.observability.trace_file,
+        enabled=settings.observability.enabled,
     )
-    rerank_failure = None
-    if not args.no_rerank:
-        reranked = SafeReranker(RerankerFactory.create(settings)).rerank(
-            outcome.processed_query.retrieval_query,
-            list(outcome.results),
+    trace = collector.start(
+        "query",
+        {
+            "query": args.query,
+            "collection": args.collection,
+            "filters": filters,
+        },
+    )
+    try:
+        outcome = hybrid_search.search_with_details(
+            args.query,
+            top_k=args.top_k,
+            filters=filters,
+            trace=trace,
         )
-        outcome = replace(outcome, results=reranked.results)
-        rerank_failure = reranked.failure
+        rerank_failure = None
+        if not args.no_rerank:
+            reranked = SafeReranker(RerankerFactory.create(settings)).rerank(
+                outcome.processed_query.retrieval_query,
+                list(outcome.results),
+                trace=trace,
+            )
+            outcome = replace(outcome, results=reranked.results)
+            rerank_failure = reranked.failure
 
-    response = ResponseBuilder().build(outcome)
-    payload = response.to_dict()
-    if rerank_failure:
-        payload["diagnostics"]["rerank_failure"] = rerank_failure
+        response = ResponseBuilder().build(outcome)
+        payload = response.to_dict()
+        if rerank_failure:
+            payload["diagnostics"]["rerank_failure"] = rerank_failure
+        if trace:
+            trace.finish()
+    except Exception as exc:
+        if trace:
+            trace.finish(status="error", error=type(exc).__name__)
+        raise
+    finally:
+        collector.collect(trace)
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return

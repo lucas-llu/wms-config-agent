@@ -13,8 +13,15 @@ from ingestion.document_manager import (
     DocumentInfo,
     DocumentManager,
 )
+from ingestion.factory import create_ingestion_pipeline
 from ingestion.llm_failure_ledger import LLMFailureLedger, LLMFallback, collect_llm_fallbacks
-from ingestion.pipeline import IndexingPipeline, IndexingReport, load_preprocessed_chunks
+from ingestion.pipeline import (
+    IndexingPipeline,
+    IndexingReport,
+    IngestionPipeline,
+    IngestionResult,
+    load_preprocessed_chunks,
+)
 
 __all__ = [
     "CorpusManifestBuilder",
@@ -27,8 +34,11 @@ __all__ = [
     "DocumentDetail",
     "DocumentInfo",
     "DocumentManager",
+    "create_ingestion_pipeline",
     "IndexingPipeline",
     "IndexingReport",
+    "IngestionPipeline",
+    "IngestionResult",
     "LLMFailureLedger",
     "LLMFallback",
     "collect_llm_fallbacks",

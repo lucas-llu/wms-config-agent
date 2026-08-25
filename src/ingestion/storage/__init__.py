@@ -1,7 +1,16 @@
 """Ingestion storage orchestration."""
 
+from ingestion.storage.artifact_storage import LocalArtifactStorage
 from ingestion.storage.bm25_indexer import BM25Indexer
 from ingestion.storage.image_storage import ImageStorage, StoredImage
+from ingestion.storage.lifecycle_lock import LifecycleLock
 from ingestion.storage.vector_upserter import VectorUpserter
 
-__all__ = ["BM25Indexer", "ImageStorage", "StoredImage", "VectorUpserter"]
+__all__ = [
+    "BM25Indexer",
+    "ImageStorage",
+    "LocalArtifactStorage",
+    "LifecycleLock",
+    "StoredImage",
+    "VectorUpserter",
+]

@@ -73,7 +73,12 @@ class HybridSearch:
             trace,
             "query_processing",
             started,
-            {"keyword_count": len(processed.keywords), "filters": processed.filters},
+            {
+                "method": type(self.query_processor).__name__,
+                "provider": type(self.query_processor).__module__,
+                "keyword_count": len(processed.keywords),
+                "filters": processed.filters,
+            },
         )
         store_filters = build_store_filters(processed.filters)
 
@@ -120,9 +125,17 @@ class HybridSearch:
             "fusion",
             started,
             {
+                "method": type(self.fusion).__name__,
+                "provider": type(self.fusion).__module__,
                 "dense_count": len(dense),
                 "sparse_count": len(sparse),
                 "result_count": len(diversified),
+                "rankings": {
+                    "dense": self._rank_snapshot(dense),
+                    "sparse": self._rank_snapshot(sparse),
+                    "fused": self._rank_snapshot(fused),
+                    "final": self._rank_snapshot(diversified),
+                },
             },
         )
         evidence_sufficient = (
@@ -150,6 +163,20 @@ class HybridSearch:
         filters: dict[str, Any] | None,
     ) -> list[RetrievalResult]:
         started = time.perf_counter()
+        owner = getattr(retrieve, "__self__", None)
+        method = type(owner).__name__ if owner is not None else stage_name
+        provider_component = (
+            getattr(owner, "embedding", None)
+            if stage_name == "dense_retrieval"
+            else getattr(owner, "bm25_indexer", None)
+        )
+        provider = (
+            type(provider_component).__name__
+            if provider_component is not None
+            else type(owner).__module__
+            if owner is not None
+            else "unknown"
+        )
         try:
             results = retrieve(query, top_k, filters, trace)
         except Exception as exc:
@@ -157,16 +184,44 @@ class HybridSearch:
                 trace,
                 stage_name,
                 started,
-                {"status": "error", "error_type": type(exc).__name__},
+                {
+                    "method": method,
+                    "provider": provider,
+                    "status": "error",
+                    "error_type": type(exc).__name__,
+                },
             )
             raise
         HybridSearch._record_stage(
             trace,
             stage_name,
             started,
-            {"status": "ok", "result_count": len(results)},
+            {
+                "method": method,
+                "provider": provider,
+                "status": "ok",
+                "result_count": len(results),
+                "results": HybridSearch._rank_snapshot(results),
+            },
         )
         return results
+
+    @staticmethod
+    def _rank_snapshot(results: list[RetrievalResult]) -> list[dict[str, Any]]:
+        """Return a privacy-safe ranking snapshot without chunk text or metadata."""
+        return [
+            {
+                "chunk_id": result.chunk_id,
+                "rank": rank,
+                "score": round(float(result.score), 8),
+                "source_scores": {
+                    key: round(float(value), 8)
+                    for key, value in sorted(result.source_scores.items())
+                },
+                "source_ranks": dict(sorted(result.source_ranks.items())),
+            }
+            for rank, result in enumerate(results, start=1)
+        ]
 
     @staticmethod
     def _boost_metadata_matches(

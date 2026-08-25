@@ -23,6 +23,7 @@ def render(data_service: DataService | None = None) -> None:
     collection_filter = None if selected_collection == "All collections" else selected_collection
     try:
         documents = data_service.list_documents(collection_filter)
+        document_rows = data_service.document_rows(collection_filter)
     except Exception as exc:
         st.error(f"Documents could not be loaded: {type(exc).__name__}: {exc}")
         return
@@ -31,7 +32,7 @@ def render(data_service: DataService | None = None) -> None:
         return
 
     st.dataframe(
-        data_service.document_rows(collection_filter),
+        document_rows,
         width="stretch",
         hide_index=True,
         column_config={"Source": st.column_config.TextColumn(width="large")},
@@ -46,18 +47,23 @@ def render(data_service: DataService | None = None) -> None:
     )
     try:
         detail = data_service.get_document_detail(selected_id)
-    except (KeyError, OSError, TypeError, ValueError) as exc:
+    except Exception as exc:
         st.error(f"Document details could not be loaded: {type(exc).__name__}: {exc}")
         return
 
     st.subheader(labels[selected_id])
     st.caption(detail.document.source_path)
-    for chunk in data_service.chunk_rows(detail):
+    try:
+        chunks = data_service.chunk_rows(detail)
+        images = data_service.previewable_images(detail)
+    except Exception as exc:
+        st.error(f"Document content could not be loaded: {type(exc).__name__}: {exc}")
+        return
+    for chunk in chunks:
         with st.expander(f"Chunk {chunk['number']} · {chunk['id']}"):
             st.text(chunk["text"] or "[Empty chunk]")
             st.json(chunk["metadata"])
 
-    images = data_service.previewable_images(detail)
     if images:
         st.subheader("Images")
         for image in images:

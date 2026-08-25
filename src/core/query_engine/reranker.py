@@ -28,6 +28,7 @@ class SafeReranker:
         trace: Any | None = None,
     ) -> RerankOutcome:
         started = time.perf_counter()
+        before = self._ranking_snapshot(candidates)
         try:
             results = self.backend.rerank(query, candidates, trace=trace)
             if len(results) != len(candidates) or {result.chunk_id for result in results} != {
@@ -46,8 +47,25 @@ class SafeReranker:
                 "rerank",
                 (time.perf_counter() - started) * 1000,
                 details={
+                    "method": type(self.backend).__name__,
+                    "provider": type(self.backend).__module__,
                     "candidate_count": len(candidates),
                     "fallback_used": outcome.fallback_used,
+                    "before": before,
+                    "after": self._ranking_snapshot(list(outcome.results)),
                 },
             )
         return outcome
+
+    @staticmethod
+    def _ranking_snapshot(
+        candidates: list[RetrievalResult],
+    ) -> list[dict[str, int | float | str]]:
+        return [
+            {
+                "chunk_id": result.chunk_id,
+                "rank": rank,
+                "score": round(float(result.score), 8),
+            }
+            for rank, result in enumerate(candidates, start=1)
+        ]
