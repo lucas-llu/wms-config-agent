@@ -1,20 +1,27 @@
 from __future__ import annotations
 
 import gc
+import json
 import os
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 from streamlit.testing.v1 import AppTest
 
 from core.types import Chunk, ChunkRecord
-from ingestion import DocumentInfo
+from ingestion import DeleteResult, DocumentInfo
 from ingestion.embedding import SparseEncoder
 from ingestion.storage import BM25Indexer, ImageStorage
 from libs.vector_store import ChromaStore
-from observability.dashboard.services import get_dashboard_services
+from observability.dashboard.services import (
+    IngestionService,
+    TraceService,
+    get_dashboard_services,
+    get_ingestion_service,
+)
 from scripts.verify_dashboard_readonly import (
     changed_nodes,
     configured_storage_paths,
@@ -43,12 +50,15 @@ def _configure_fixture(
     settings["vector_store"]["collection_name"] = "dashboard_chunks"
     settings["ingestion"]["image_storage"]["root_path"] = str(tmp_path / "images")
     settings["ingestion"]["image_storage"]["database_path"] = str(tmp_path / "images.db")
+    settings["observability"]["trace_file"] = str(tmp_path / "logs" / "traces.jsonl")
     config_path = tmp_path / "settings.yaml"
     config_path.write_text(yaml.safe_dump(settings, sort_keys=False), encoding="utf-8")
     bm25_path = tmp_path / "bm25"
     monkeypatch.setenv("WMS_CONFIG_PATH", str(config_path))
     monkeypatch.setenv("WMS_BM25_PATH", str(bm25_path))
     monkeypatch.setenv("WMS_INGESTION_HISTORY_PATH", str(tmp_path / "history.db"))
+    monkeypatch.setenv("WMS_STAGING_PATH", str(tmp_path / "staging"))
+    monkeypatch.setenv("WMS_PROCESSED_PATH", str(tmp_path / "processed"))
 
     if include_document:
         metadata = {
@@ -91,6 +101,7 @@ def _configure_fixture(
             connection.close()
             gc.collect()
     get_dashboard_services.cache_clear()
+    get_ingestion_service.cache_clear()
 
 
 _ONE_PIXEL_PNG = (
@@ -130,6 +141,72 @@ class _BrokenDetailDataService:
     def get_document_detail(self, doc_id: str) -> None:
         del doc_id
         raise RuntimeError("damaged metadata")
+
+
+class _IngestionPageService:
+    def __init__(self, *, documents: list[DocumentInfo] | None = None) -> None:
+        self.documents = documents or []
+        self.ingested: list[tuple[str, bytes, str, bool]] = []
+        self.deleted: list[tuple[str, str]] = []
+
+    @staticmethod
+    def bounded_progress(stage: str, current: int, total: int):
+        return IngestionService.bounded_progress(stage, current, total)
+
+    def ingest_pdf(self, filename, payload, collection, *, force, on_progress):
+        self.ingested.append((filename, payload, collection, force))
+        on_progress("load", 1, 1)
+        on_progress("upsert", 2, 2)
+        return SimpleNamespace(
+            source_path=filename,
+            collection=collection,
+            indexing=SimpleNamespace(total_chunks=2, vector_count=2, bm25_count=2),
+            skipped=False,
+            trace_id="trace-dashboard",
+        )
+
+    def list_documents(self):
+        return self.documents
+
+    @staticmethod
+    def deletion_phrase(document):
+        return IngestionService.deletion_phrase(document)
+
+    def delete_document(self, doc_id, *, confirmation):
+        self.deleted.append((doc_id, confirmation))
+        document = self.documents[0]
+        return DeleteResult(document.source_path, document.collection, 2, 2, 0, 1, 1)
+
+
+class _UnavailableTraceService:
+    @staticmethod
+    def list_traces(*args, **kwargs):
+        del args, kwargs
+        raise OSError("trace provider unavailable")
+
+
+class _FailingIngestionPageService(_IngestionPageService):
+    def ingest_pdf(self, filename, payload, collection, *, force, on_progress):
+        del filename, payload, collection, force, on_progress
+        raise RuntimeError("embedding provider unavailable")
+
+
+def _render_ingestion(service: object) -> None:
+    from observability.dashboard.pages.ingestion_manager import render
+
+    render(service)  # type: ignore[arg-type]
+
+
+def _render_ingestion_traces(service: object) -> None:
+    from observability.dashboard.pages.ingestion_traces import render
+
+    render(service)  # type: ignore[arg-type]
+
+
+def _render_query_traces(service: object) -> None:
+    from observability.dashboard.pages.query_traces import render
+
+    render(service)  # type: ignore[arg-type]
 
 
 def test_overview_page_renders_fixture_index(tmp_path: Path, monkeypatch) -> None:
@@ -290,6 +367,19 @@ def test_dashboard_factory_composes_only_read_only_storage_adapters(
     assert manager.file_integrity.read_only is True
 
 
+def test_dashboard_write_services_are_isolated_to_explicit_ingestion_factory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _configure_fixture(tmp_path, monkeypatch)
+
+    service = get_ingestion_service()
+
+    assert service.staging_root == (tmp_path / "staging").resolve()
+    assert service.pipeline.indexing_pipeline.vector_store.read_only is False
+    assert service.pipeline.indexing_pipeline.bm25_indexer.read_only is False
+    assert service.pipeline.corpus_processor.integrity.read_only is False
+
+
 def test_dashboard_readonly_verifier_does_not_initialize_missing_stores(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -324,3 +414,165 @@ def test_dashboard_readonly_snapshot_detects_rollback_journal_creation(tmp_path:
 
     changes = changed_nodes(before, snapshot_storage(paths))
     assert "history-journal" in changes
+
+
+def test_ingestion_page_validates_upload_and_reports_bounded_success() -> None:
+    service = _IngestionPageService()
+    app = AppTest.from_function(_render_ingestion, args=(service,)).run(timeout=20)
+
+    app.button[0].click().run(timeout=20)
+    assert app.error[0].value == "Select a PDF before starting ingestion."
+
+    app.file_uploader[0].upload("fixture.pdf", b"%PDF-1.4\nfixture", "application/pdf")
+    app.text_input[0].input("dashboard-fixture")
+    app.button[0].click().run(timeout=20)
+
+    assert not app.exception
+    assert app.success[0].value == "Indexed fixture.pdf into dashboard-fixture."
+    assert [metric.value for metric in app.metric[:3]] == ["2", "2", "2"]
+    assert service.ingested[0][:3] == (
+        "fixture.pdf",
+        b"%PDF-1.4\nfixture",
+        "dashboard-fixture",
+    )
+
+
+def test_ingestion_page_keeps_deletion_disabled_until_confirmation_matches() -> None:
+    document = DocumentInfo(
+        "0123456789abcdef",
+        "staging/fixture.pdf",
+        "dashboard-fixture",
+        2,
+        0,
+        None,
+        "fixture-hash",
+        "Fixture",
+    )
+    service = _IngestionPageService(documents=[document])
+    app = AppTest.from_function(_render_ingestion, args=(service,)).run(timeout=20)
+
+    assert app.button[1].disabled is True
+    app.text_input[1].input("DELETE 0123456789ab").run(timeout=20)
+    assert app.button[1].disabled is False
+    app.button[1].click().run(timeout=20)
+
+    assert not app.exception
+    assert app.success[0].value.startswith("Document deleted:")
+    assert service.deleted == [(document.doc_id, "DELETE 0123456789ab")]
+
+
+def test_ingestion_page_reports_provider_failure_without_crashing() -> None:
+    app = AppTest.from_function(
+        _render_ingestion,
+        args=(_FailingIngestionPageService(),),
+    ).run(timeout=20)
+    app.file_uploader[0].upload("fixture.pdf", b"%PDF-1.4\nfixture", "application/pdf")
+    app.text_input[0].input("dashboard-fixture")
+    app.button[0].click().run(timeout=20)
+
+    assert not app.exception
+    assert app.error[0].value.startswith("Ingestion failed: RuntimeError")
+
+
+def test_trace_pages_filter_records_and_tolerate_malformed_lines(tmp_path: Path) -> None:
+    trace_path = tmp_path / "traces.jsonl"
+    values = [
+        _dashboard_trace("ingestion-ok", "ingestion", "ok"),
+        _dashboard_trace("ingestion-error", "ingestion", "error"),
+        _dashboard_trace("query-ok", "query", "ok"),
+    ]
+    trace_path.write_text(
+        "\n".join(json.dumps(value) for value in values) + "\n{malformed\n",
+        encoding="utf-8",
+    )
+    service = TraceService(trace_path)
+    ingestion_app = AppTest.from_function(
+        _render_ingestion_traces,
+        args=(service,),
+    ).run(timeout=20)
+
+    assert not ingestion_app.exception
+    assert ingestion_app.warning[0].value.startswith("Ignored 1 malformed")
+    assert len(ingestion_app.dataframe[0].value) == 2
+    ingestion_app.selectbox[0].select("error").run(timeout=20)
+    assert len(ingestion_app.dataframe[0].value) == 1
+    assert ingestion_app.dataframe[0].value["Status"].tolist() == ["error"]
+
+    query_app = AppTest.from_function(_render_query_traces, args=(service,)).run(timeout=20)
+    assert not query_app.exception
+    assert [metric.value for metric in query_app.metric[1:4]] == ["2", "1", "1"]
+    assert query_app.metric[4].value == "Yes"
+
+
+def test_trace_pages_report_provider_failures_without_crashing() -> None:
+    ingestion_app = AppTest.from_function(
+        _render_ingestion_traces,
+        args=(_UnavailableTraceService(),),
+    ).run(timeout=20)
+    query_app = AppTest.from_function(
+        _render_query_traces,
+        args=(_UnavailableTraceService(),),
+    ).run(timeout=20)
+
+    assert not ingestion_app.exception
+    assert ingestion_app.error[0].value.startswith("Ingestion traces are unavailable: OSError")
+    assert not query_app.exception
+    assert query_app.error[0].value.startswith("Query traces are unavailable: OSError")
+
+
+def _dashboard_trace(trace_id: str, trace_type: str, status: str) -> dict[str, object]:
+    attributes = (
+        {"source_name": "fixture.pdf", "collection": "dashboard-fixture"}
+        if trace_type == "ingestion"
+        else {"query": "putaway fixture", "collection": "dashboard-fixture"}
+    )
+    stages = (
+        [
+            {
+                "name": "load",
+                "elapsed_ms": 1.0,
+                "details": {"provider": "fixture", "status": status},
+            },
+            {
+                "name": "upsert",
+                "elapsed_ms": 2.0,
+                "details": {"record_count": 2},
+            },
+        ]
+        if trace_type == "ingestion"
+        else [
+            {
+                "name": "dense_retrieval",
+                "elapsed_ms": 1.0,
+                "details": {"result_count": 2},
+            },
+            {
+                "name": "sparse_retrieval",
+                "elapsed_ms": 1.0,
+                "details": {"result_count": 1},
+            },
+            {
+                "name": "fusion",
+                "elapsed_ms": 1.0,
+                "details": {
+                    "result_count": 1,
+                    "rankings": {"final": [{"chunk_id": "fixture-1", "score": 0.9}]},
+                },
+            },
+            {
+                "name": "rerank",
+                "elapsed_ms": 1.0,
+                "details": {"fallback_used": True},
+            },
+        ]
+    )
+    return {
+        "trace_id": trace_id,
+        "trace_type": trace_type,
+        "started_at": "2026-08-25T00:00:00+00:00",
+        "finished_at": "2026-08-25T00:00:01+00:00",
+        "total_elapsed_ms": 12.5,
+        "status": status,
+        "attributes": attributes,
+        "stages": stages,
+    }

@@ -212,7 +212,7 @@ Dashboard read-only verification also passed.
 
 ## Day 9 — Dashboard ingestion operations and trace observability
 
-Status: planned.
+Status: completed on 2026-08-25.
 
 - Complete G4: add staged PDF upload, explicit collection selection, bounded ingestion progress,
   and confirmed document deletion through `DocumentManager`.
@@ -224,6 +224,14 @@ Status: planned.
   malformed trace lines, and storage/provider failure fallbacks.
 - Exit criteria: a sanitized fixture PDF can be uploaded, indexed, inspected, traced, queried, and
   deleted without touching the private corpus; all automated tests and both benchmarks pass.
+
+Delivered: the Dashboard now validates and atomically stages bounded PDF uploads, requires an
+explicit collection, reports monotonic five-stage progress, and gates coordinated deletion behind
+an exact confirmation phrase. A bounded tolerant `TraceService` skips malformed JSONL records,
+removes credential/body fields, and drives searchable Ingestion/Query history, latency, Dense/BM25,
+fusion ranking, and rerank fallback views. The sanitized Dashboard lifecycle E2E passed, as did 279
+automated tests with one opt-in live LLM test skipped and 90.45% coverage. The fingerprint-matched
+40-case private and four-case public benchmarks both remained at 100% with no regressions.
 
 ## Day 10 — Evaluation UI, contracts, and reproducible MVP release
 

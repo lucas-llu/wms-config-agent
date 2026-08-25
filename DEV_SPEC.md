@@ -1515,6 +1515,8 @@ smart-knowledge-hub/
 │       │   │   ├── query_traces.py      # Query 追踪 (查询历史与详情)
 │       │   │   └── evaluation_panel.py  # 评估面板 (运行评估/查看指标)
 │       │   └── services/                # Dashboard 数据服务层
+│       │       ├── factory.py           # 只读服务与显式写服务的隔离构造
+│       │       ├── ingestion_service.py # PDF 校验/暂存/摄取与确认删除编排
 │       │       ├── trace_service.py     # Trace 读取服务 (解析 traces.jsonl)
 │       │       ├── data_service.py      # 数据浏览服务 (ChromaStore/ImageStorage)
 │       │       └── config_service.py    # 配置读取服务 (Settings 展示)
@@ -1669,7 +1671,9 @@ smart-knowledge-hub/
 | `dashboard/pages/ingestion_traces.py` | Ingestion 追踪 | 摄取历史，阶段耗时瀑布图 |
 | `dashboard/pages/query_traces.py` | Query 追踪 | 查询历史，Dense/Sparse 对比，Rerank 变化 |
 | `dashboard/pages/evaluation_panel.py` | 评估面板 | 运行评估，指标展示，历史趋势（Phase H 实现） |
-| `dashboard/services/trace_service.py` | Trace 数据服务 | 解析 traces.jsonl，按 trace_type 分类 |
+| `dashboard/services/factory.py` | 服务构造 | 默认只读服务与显式请求的写入服务隔离 |
+| `dashboard/services/ingestion_service.py` | Ingestion 管理服务 | PDF 校验、原子暂存、进度归一化与确认删除 |
+| `dashboard/services/trace_service.py` | Trace 数据服务 | 有界容错解析 JSONL、过滤敏感字段并按类型/状态/关键词检索 |
 | `dashboard/services/data_service.py` | 数据浏览服务 | 封装 ChromaStore/ImageStorage 读取 |
 | `dashboard/services/config_service.py` | 配置读取服务 | 封装 Settings 展示 |
 | `evaluation/eval_runner.py` | 评估执行 | 黄金测试集，指标计算，报告生成 |
@@ -2005,9 +2009,9 @@ dashboard:
 | G1 | Dashboard 基础架构与系统总览页 | [x] | 2026-08-24 | 六页面导航、配置摘要、真实索引统计与启动脚本 |
 | G2 | DocumentManager 实现 | [x] | 2026-08-24 | 跨 Chroma、BM25、图片和摄取历史的读取与协调删除；Day 8.2 完成 Windows 原子持久化重试与重复稳定性验收 |
 | G3 | 数据浏览器页面 | [x] | 2026-08-24 | 集合筛选、文档/Chunk/metadata 浏览和安全图片预览 |
-| G4 | Ingestion 管理页面 | [ ] | | |
-| G5 | Ingestion 追踪页面 | [ ] | | |
-| G6 | Query 追踪页面 | [ ] | | |
+| G4 | Ingestion 管理页面 | [x] | 2026-08-25 | PDF 校验与原子暂存、显式集合、五阶段有界进度及确认删除 |
+| G5 | Ingestion 追踪页面 | [x] | 2026-08-25 | 有界容错 JSONL 读取、历史筛选、阶段耗时与失败类别 |
+| G6 | Query 追踪页面 | [x] | 2026-08-25 | Query 搜索、Dense/Sparse/Fusion 排名、Rerank fallback 与延迟视图 |
 
 #### 阶段 H：评估体系
 
@@ -2041,15 +2045,20 @@ dashboard:
 | 阶段 D | 7 | 7 | 100% |
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
-| 阶段 G | 6 | 3 | 50% |
+| 阶段 G | 6 | 6 | 100% |
 | 阶段 H | 5 | 3 | 60% |
 | 阶段 I | 5 | 1 | 20% |
-| **总计** | **68** | **53** | **77.9%** |
+| **总计** | **68** | **56** | **82.4%** |
 
 > **Day 9 readiness revalidation（2026-08-25）**：共享 `replace_file_atomically` 已覆盖
 > Local LSA、Chroma swap journal、BM25、Manifest、处理产物、LLM failure ledger 与图片文件；
 > 新增单元级重试契约和单用例 12 次强制摄取压力测试。Interactive ingestion recovery suite
 > 连续 5 轮全部通过（55 次测试执行），全量测试 260 passed / 1 opt-in skipped，覆盖率 90.38%。
+
+> **Day 9 completion（2026-08-25）**：G4-G6 已完成。Dashboard 支持受限 PDF 上传、原子暂存、
+> 显式集合、五阶段进度和确认删除；`TraceService` 提供有界容错读取与隐私过滤，页面展示
+> Ingestion/Query 历史、延迟、Dense/Sparse/Fusion 与 Rerank fallback。脱敏全链路 E2E、
+> 279 passed / 1 opt-in skipped、90.45% 覆盖率以及 40-case private / 4-case public 基准均通过。
 
 
 ---

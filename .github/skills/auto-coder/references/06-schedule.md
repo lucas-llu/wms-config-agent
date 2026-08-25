@@ -126,9 +126,9 @@
 | G1 | Dashboard 基础架构与系统总览页 | [x] | 2026-08-24 | 六页面导航、配置摘要、真实索引统计与启动脚本 |
 | G2 | DocumentManager 实现 | [x] | 2026-08-24 | 跨 Chroma、BM25、图片和摄取历史的读取与协调删除；Day 8.2 完成 Windows 原子持久化重试与重复稳定性验收 |
 | G3 | 数据浏览器页面 | [x] | 2026-08-24 | 集合筛选、文档/Chunk/metadata 浏览和安全图片预览 |
-| G4 | Ingestion 管理页面 | [ ] | | |
-| G5 | Ingestion 追踪页面 | [ ] | | |
-| G6 | Query 追踪页面 | [ ] | | |
+| G4 | Ingestion 管理页面 | [x] | 2026-08-25 | PDF 校验与原子暂存、显式集合、五阶段有界进度及确认删除 |
+| G5 | Ingestion 追踪页面 | [x] | 2026-08-25 | 有界容错 JSONL 读取、历史筛选、阶段耗时与失败类别 |
+| G6 | Query 追踪页面 | [x] | 2026-08-25 | Query 搜索、Dense/Sparse/Fusion 排名、Rerank fallback 与延迟视图 |
 
 #### 阶段 H：评估体系
 
@@ -162,15 +162,20 @@
 | 阶段 D | 7 | 7 | 100% |
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
-| 阶段 G | 6 | 3 | 50% |
+| 阶段 G | 6 | 6 | 100% |
 | 阶段 H | 5 | 3 | 60% |
 | 阶段 I | 5 | 1 | 20% |
-| **总计** | **68** | **53** | **77.9%** |
+| **总计** | **68** | **56** | **82.4%** |
 
 > **Day 9 readiness revalidation（2026-08-25）**：共享 `replace_file_atomically` 已覆盖
 > Local LSA、Chroma swap journal、BM25、Manifest、处理产物、LLM failure ledger 与图片文件；
 > 新增单元级重试契约和单用例 12 次强制摄取压力测试。Interactive ingestion recovery suite
 > 连续 5 轮全部通过（55 次测试执行），全量测试 260 passed / 1 opt-in skipped，覆盖率 90.38%。
+
+> **Day 9 completion（2026-08-25）**：G4-G6 已完成。Dashboard 支持受限 PDF 上传、原子暂存、
+> 显式集合、五阶段进度和确认删除；`TraceService` 提供有界容错读取与隐私过滤，页面展示
+> Ingestion/Query 历史、延迟、Dense/Sparse/Fusion 与 Rerank fallback。脱敏全链路 E2E、
+> 279 passed / 1 opt-in skipped、90.45% 覆盖率以及 40-case private / 4-case public 基准均通过。
 
 
 ---

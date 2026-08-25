@@ -107,18 +107,21 @@ The command exits with status 1 only when `--enforce-thresholds` is supplied and
 configured gate fails. Each report records its dataset SHA-256 fingerprint, Git revision,
 retrieval providers, aggregate/category metrics, failed cases, and sanitized ranked results.
 
-## Compare a candidate with Baseline V1
+## Compare a candidate with the current fingerprint-matched baseline
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\run_benchmark.py `
   --dataset data\evaluation\benchmark_v1.private.json `
-  --baseline data\evaluation\baseline_v1.json `
+  --baseline data\evaluation\candidate_day8.json `
   --output data\evaluation\candidate.json `
   --enforce-thresholds `
   --fail-on-regression
 ```
 
-Comparison is rejected when dataset fingerprints or case IDs differ. Quality regression is
+The original `baseline_v1.json` predates the current dataset expansion. Use the latest accepted
+report whose fingerprint matches the dataset; Day 9 uses `candidate_day8.json` for the private set
+and `public_day8.json` for the public set. Comparison is rejected when dataset fingerprints or case
+IDs differ. Quality regression is
 reported separately from per-case fixes and failures. Dense, BM25, raw fusion, and final
 relevant ranks are retained for diagnosing whether a miss came from recall or final ranking.
 

@@ -291,6 +291,8 @@ smart-knowledge-hub/
 │       │   │   ├── query_traces.py      # Query 追踪 (查询历史与详情)
 │       │   │   └── evaluation_panel.py  # 评估面板 (运行评估/查看指标)
 │       │   └── services/                # Dashboard 数据服务层
+│       │       ├── factory.py           # 只读服务与显式写服务的隔离构造
+│       │       ├── ingestion_service.py # PDF 校验/暂存/摄取与确认删除编排
 │       │       ├── trace_service.py     # Trace 读取服务 (解析 traces.jsonl)
 │       │       ├── data_service.py      # 数据浏览服务 (ChromaStore/ImageStorage)
 │       │       └── config_service.py    # 配置读取服务 (Settings 展示)
@@ -445,7 +447,9 @@ smart-knowledge-hub/
 | `dashboard/pages/ingestion_traces.py` | Ingestion 追踪 | 摄取历史，阶段耗时瀑布图 |
 | `dashboard/pages/query_traces.py` | Query 追踪 | 查询历史，Dense/Sparse 对比，Rerank 变化 |
 | `dashboard/pages/evaluation_panel.py` | 评估面板 | 运行评估，指标展示，历史趋势（Phase H 实现） |
-| `dashboard/services/trace_service.py` | Trace 数据服务 | 解析 traces.jsonl，按 trace_type 分类 |
+| `dashboard/services/factory.py` | 服务构造 | 默认只读服务与显式请求的写入服务隔离 |
+| `dashboard/services/ingestion_service.py` | Ingestion 管理服务 | PDF 校验、原子暂存、进度归一化与确认删除 |
+| `dashboard/services/trace_service.py` | Trace 数据服务 | 有界容错解析 JSONL、过滤敏感字段并按类型/状态/关键词检索 |
 | `dashboard/services/data_service.py` | 数据浏览服务 | 封装 ChromaStore/ImageStorage 读取 |
 | `dashboard/services/config_service.py` | 配置读取服务 | 封装 Settings 展示 |
 | `evaluation/eval_runner.py` | 评估执行 | 黄金测试集，指标计算，报告生成 |
