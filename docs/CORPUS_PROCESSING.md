@@ -45,9 +45,15 @@ Outputs:
 - `data/corpus/processed/chunks/`: traceable Chunk JSONL grouped by document
 - `data/corpus/processed/llm_failures.jsonl`: retryable per-Chunk generation fallback ledger
 - `data/corpus/processed/processing_report.json`: last-run result
-- `data/db/corpus_preprocessing.db`: preprocessing-only SHA256 status
+- `data/db/ingestion_history.db`: collection-aware SHA256 status and artifact lifecycle metadata
 - `data/images/wms-system-training/`: content-addressed extracted images
 - `data/db/image_index.db`: SQLite image ID to local-path index
+
+When the unified history database is used, `process_corpus.py` automatically imports the former
+`data/db/corpus_preprocessing.db` history if it exists. The migration is transactional and
+idempotent: it never edits or deletes the legacy database, preserves original status, timestamp,
+error, and metadata values, and does not replace an existing collection-aware target record. Use
+`--legacy-database <path>` only when importing a legacy database from a non-default location.
 
 Use `--force` after intentionally changing preprocessing, transform, or chunk settings. Image
 extraction is controlled by `ingestion.extract_images` and is enabled for this local corpus.
@@ -73,6 +79,21 @@ indexes with:
 ```powershell
 .\.venv\Scripts\python.exe scripts\ingest.py
 ```
+
+The no-argument command remains backward compatible with bulk indexing from
+`data/corpus/processed/chunks`; use `--chunks <directory>` to select another preprocessed Chunk
+directory. To preprocess and index one PDF through the complete ingestion pipeline, provide the
+PDF and its explicit collection together:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\ingest.py `
+  --path data\staging\manual.pdf `
+  --collection warehouse-a
+```
+
+`--path` and `--chunks` are mutually exclusive, and `--collection` is accepted only with
+`--path`. Single-PDF mode writes collection-aware history to `data/db/ingestion_history.db` and
+uses the same artifact, Dense, BM25, progress, and trace contracts as Dashboard ingestion.
 
 The current offline baseline trains a corpus-specific TF-IDF + truncated-SVD (LSA) model. It
 produces normalized 256-dimensional dense vectors without sending proprietary text to an API.

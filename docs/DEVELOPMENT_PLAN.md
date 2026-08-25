@@ -165,6 +165,33 @@ Dense/BM25 Chunks, and 3,316 image mappings. Ruff checks passed; 179 tests passe
 live LLM test skipped; coverage reached 91.27%; and both the 40-case private and four-case public
 benchmarks stayed at 100% with zero regression.
 
+## Day 8.1 — Day 9 readiness hardening
+
+Status: completed on 2026-08-25.
+
+- Make Dashboard construction strictly read-only and bind its local server to `127.0.0.1` by
+  default.
+- Cover empty and unavailable stores, collection interaction, managed-image previews, and all six
+  navigation targets with Streamlit `AppTest`.
+- Verify fixture stores during public tests and provide an opt-in real-store check that compares
+  file hashes, sizes, timestamps, and node sets before and after Dashboard management reads:
+
+  ```powershell
+  .\.venv\Scripts\python.exe scripts\verify_dashboard_readonly.py
+  ```
+
+- Run the sanitized retrieval benchmark and a repository secret scan as explicit public CI gates.
+- Do not mark this increment complete until lifecycle, ingestion, query-trace, full-suite,
+  coverage, and Benchmark V1 verification all pass together.
+
+Delivered: strict read-only Dashboard construction with a real-store hash/timestamp verification
+script; empty-store and all-six-page AppTest coverage; Gitleaks secret scanning in CI; BM25
+lifecycle lock; ImageStorage persistent delete queue with concurrent protection; DocumentManager
+collection isolation and cleanup fail-closed; force reprocessing without image extraction no
+longer inherits stale image paths from history; WAL journal recovery after simulated crash;
+orphaned artifacts from crashed runs are tolerated during legacy directory scans without
+corrupting restart; and full-corpus lifecycle locking for process_corpus snapshots and writes.
+
 ## Day 9 — Dashboard ingestion operations and trace observability
 
 Status: planned.
