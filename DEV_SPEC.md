@@ -541,8 +541,8 @@ MCP 协议的 Tool 返回格式支持多种内容类型（`content` 数组），
 评估体系的可插拔性确保团队可以根据业务目标灵活选择或组合不同的质量度量维度。
 
 - **设计思路**：
-	- 定义统一的 `Evaluator` 接口，暴露 `evaluate(query, retrieved_chunks, generated_answer, ground_truth) -> metrics` 方法。
-	- 各评估框架实现该接口，输出标准化的指标字典。
+	- 定义统一的 `BaseEvaluator` 接口，暴露 `evaluate(request: EvaluationRequest) -> EvaluationResult` 方法。
+	- 各评估 Provider 实现该接口，输出标准化的指标、阈值检查、详情与错误集合。
 
 - **可选评估框架**：
 
@@ -550,11 +550,11 @@ MCP 协议的 Tool 返回格式支持多种内容类型（`content` 数组），
 |-----|------|---------|
 | **Ragas** | RAG 专用、指标丰富（Faithfulness, Answer Relevancy, Context Precision 等） | 全面评估 RAG 质量、学术对比 |
 | **DeepEval** | LLM-as-Judge 模式、支持自定义评估标准 | 需要主观质量判断、复杂业务规则 |
-| **自定义指标** | Hit Rate, MRR, Latency P99 等基础工程指标 | 快速回归测试、上线前 Sanity Check |
+| **自定义指标** | Hit@K、MRR@5、拒答/证据准确率、Latency P95 等基础工程指标 | 快速回归测试、上线前 Sanity Check |
 
 - **组合与扩展**：
 	- 评估模块设计为**组合模式**，可同时挂载多个 Evaluator，生成综合报告。
-	- 配置示例：`evaluation.backends: [ragas, custom_metrics]`，系统并行执行并汇总结果。
+	- 当前 MVP 配置为 `evaluation.backends: [custom]`；新增已注册 Provider 后，工厂会自动组合并汇总结果。
 
 #### 3.3.5 配置管理与切换流程
 
@@ -775,10 +775,11 @@ Dashboard 基于 Streamlit 构建多页面应用（`st.navigation`），提供�
     - **最终结果表**：展示 Top-K 候选文档的标题、分数、来源。
 
 **页面 6：评估面板 (Evaluation Panel)**
-- **评估运行**：选择评估后端（Ragas / Custom / All）与 golden test set，点击运行。
-- **指标展示**：以表格和图表展示 hit_rate、mrr、faithfulness 等指标。
-- **历史趋势**：对比不同时间的评估结果，观察策略调整的效果。
-- **注意**：评估面板在 Phase H 实现，Phase G 完成后该页面显示"评估模块尚未启用"的占位提示。
+- **评估运行**：选择配置中明确批准的脱敏 golden test set，以及指纹兼容的历史基线，点击运行。
+- **指标展示**：展示 Hit@1/3/5、MRR@5、拒答/证据准确率、P95 延迟、阈值与分类指标。
+- **历史趋势**：对比隐私安全历史报告的指标增量、回退项与失败 case ID。
+- **隐私边界**：Dashboard 历史不保存或展示 Query 原文、检索正文、Chunk ID 与来源路径。
+- **状态**：Phase H / Day 10 已完成实现，不再使用占位提示。
 
 **Dashboard 技术架构**：
 
@@ -791,8 +792,11 @@ src/observability/dashboard/
 │   ├── ingestion_manager.py  # 页面 3：Ingestion 管理
 │   ├── ingestion_traces.py   # 页面 4：Ingestion 追踪
 │   ├── query_traces.py       # 页面 5：Query 追踪
-│   └── evaluation_panel.py   # 页面 6：评估面板
+│   └── evaluation.py         # 页面 6：评估面板
 └── services/
+    ├── factory.py            # 只读/写入/评估服务的隔离构造
+    ├── evaluation_service.py # 批准数据集、评估运行与隐私安全历史
+    ├── ingestion_service.py  # PDF 暂存、摄取进度与确认删除
     ├── trace_service.py      # Trace 数据读取服务（解析 traces.jsonl）
     ├── data_service.py       # 数据浏览服务（封装 ChromaStore/ImageStorage 读取）
     └── config_service.py     # 配置读取服务（封装 Settings 读取与展示）
@@ -1498,8 +1502,8 @@ smart-knowledge-hub/
 │   │       ├── __init__.py
 │   │       ├── base_evaluator.py        # Evaluator 抽象基类
 │   │       ├── evaluator_factory.py     # Evaluator 工厂
-│   │       ├── ragas_evaluator.py       # Ragas 实现
-│   │       └── custom_evaluator.py      # 自定义指标实现
+│   │       ├── threshold_evaluator.py   # 本地阈值评估实现
+│   │       └── composite_evaluator.py   # 多 Provider 并行与故障隔离
 │   │
 │   └── observability/                   # Observability 层 (可观测性)
 │       ├── __init__.py
@@ -1513,18 +1517,19 @@ smart-knowledge-hub/
 │       │   │   ├── ingestion_manager.py # Ingestion 管理 (触发摄取/删除文档)
 │       │   │   ├── ingestion_traces.py  # Ingestion 追踪 (摄取历史与详情)
 │       │   │   ├── query_traces.py      # Query 追踪 (查询历史与详情)
-│       │   │   └── evaluation_panel.py  # 评估面板 (运行评估/查看指标)
+│       │   │   └── evaluation.py        # 评估面板 (运行评估/查看指标)
 │       │   └── services/                # Dashboard 数据服务层
 │       │       ├── factory.py           # 只读服务与显式写服务的隔离构造
+│       │       ├── evaluation_service.py # 批准数据集与隐私安全评估历史
 │       │       ├── ingestion_service.py # PDF 校验/暂存/摄取与确认删除编排
 │       │       ├── trace_service.py     # Trace 读取服务 (解析 traces.jsonl)
 │       │       ├── data_service.py      # 数据浏览服务 (ChromaStore/ImageStorage)
 │       │       └── config_service.py    # 配置读取服务 (Settings 展示)
 │       └── evaluation/                  # 评估模块
 │           ├── __init__.py
-│           ├── eval_runner.py           # 评估执行器
-│           ├── ragas_evaluator.py       # Ragas 评估实现
-│           └── composite_evaluator.py   # 组合评估器 (多后端并行)
+│           ├── benchmark.py             # Golden dataset schema 与指纹
+│           ├── retrieval_benchmark.py   # 检索评估执行器与指标
+│           └── baseline_comparator.py   # 指纹兼容基线比较
 
 │
 ├── data/                                # 数据目录
@@ -1571,9 +1576,9 @@ smart-knowledge-hub/
 │   │   ├── test_hybrid_search.py        # D5: 混合检索集成测试
 │   │   └── test_mcp_server.py           # E1-E6: MCP 服务器集成测试
 │   ├── e2e/                             # 端到端测试
-│   │   ├── test_data_ingestion.py
-│   │   ├── test_recall.py               # G2: 召回回归测试
-│   │   └── test_mcp_client.py           # G1: MCP Client 模拟测试
+│   │   ├── test_pdf_ingestion_to_query.py
+│   │   ├── test_recall_benchmark.py     # H5: 脱敏召回回归测试
+│   │   └── test_dashboard_day9_workflow.py # I5: 脱敏全链路验收
 │   └── fixtures/                        # 测试数据
 │       ├── sample_documents/
 │       └── golden_test_set.json         # F5/G2: 黄金测试集
@@ -1581,7 +1586,7 @@ smart-knowledge-hub/
 ├── scripts/                             # 脚本目录
 │   ├── ingest.py                        # 数据摄取脚本（离线摄取入口）
 │   ├── query.py                         # 查询测试脚本（在线查询入口）
-│   ├── evaluate.py                      # 评估运行脚本
+│   ├── run_benchmark.py                 # 评估运行与基线比较脚本
 │   └── start_dashboard.py               # Dashboard 启动脚本
 │
 ├── main.py                              # MCP Server 启动入口
@@ -1670,15 +1675,16 @@ smart-knowledge-hub/
 | `dashboard/pages/ingestion_manager.py` | Ingestion 管理 | 文件上传，摄取触发（进度条），文档删除 |
 | `dashboard/pages/ingestion_traces.py` | Ingestion 追踪 | 摄取历史，阶段耗时瀑布图 |
 | `dashboard/pages/query_traces.py` | Query 追踪 | 查询历史，Dense/Sparse 对比，Rerank 变化 |
-| `dashboard/pages/evaluation_panel.py` | 评估面板 | 运行评估，指标展示，历史趋势（Phase H 实现） |
+| `dashboard/pages/evaluation.py` | 评估面板 | 运行批准的脱敏评估，展示指标与隐私安全历史 |
 | `dashboard/services/factory.py` | 服务构造 | 默认只读服务与显式请求的写入服务隔离 |
+| `dashboard/services/evaluation_service.py` | 评估服务 | 数据集白名单、原子报告、历史边界与基线比较 |
 | `dashboard/services/ingestion_service.py` | Ingestion 管理服务 | PDF 校验、原子暂存、进度归一化与确认删除 |
 | `dashboard/services/trace_service.py` | Trace 数据服务 | 有界容错解析 JSONL、过滤敏感字段并按类型/状态/关键词检索 |
 | `dashboard/services/data_service.py` | 数据浏览服务 | 封装 ChromaStore/ImageStorage 读取 |
 | `dashboard/services/config_service.py` | 配置读取服务 | 封装 Settings 展示 |
-| `evaluation/eval_runner.py` | 评估执行 | 黄金测试集，指标计算，报告生成 |
-| `evaluation/ragas_evaluator.py` | Ragas 评估 | Faithfulness, Answer Relevancy, Context Precision |
-| `evaluation/composite_evaluator.py` | 组合评估器 | 多后端并行执行，结果汇总 |
+| `evaluation/benchmark.py` | 评估数据契约 | 黄金测试集校验、脱敏来源约束与稳定指纹 |
+| `evaluation/retrieval_benchmark.py` | 评估执行 | Hit@K/MRR/拒答/证据/延迟指标与报告生成 |
+| `evaluation/baseline_comparator.py` | 基线比较 | 指纹/case ID 校验、指标回退与失败变化 |
 
 
 ### 5.4 数据流说明
@@ -1905,9 +1911,9 @@ dashboard:
 6. **阶段 F：Trace 基础设施与打点**
    - 目的：增强 TraceContext，实现结构化日志持久化，在 Ingestion + Query 双链路打点，添加 Pipeline 进度回调。
 7. **阶段 G：可视化管理平台 Dashboard**
-   - 目的：搭建 Streamlit 六页面管理平台（系统总览 / 数据浏览 / Ingestion 管理 / Ingestion 追踪 / Query 追踪 / 评估占位），实现 DocumentManager 跨存储协调。
+   - 目的：搭建 Streamlit 六页面管理平台（系统总览 / 数据浏览 / Ingestion 管理 / Ingestion 追踪 / Query 追踪 / 评估），实现 DocumentManager 跨存储协调。
 8. **阶段 H：评估体系**
-   - 目的：实现 RagasEvaluator + CompositeEvaluator + EvalRunner，启用评估面板页面，建立 golden test set 回归基线。
+   - 目的：实现确定性 Benchmark Runner、Threshold/Composite Evaluator，启用评估面板页面，建立 golden test set 回归基线；Ragas 保留为 post-MVP 可选扩展。
 9. **阶段 I：端到端验收与文档收口**
    - 目的：补齐 E2E 测试（MCP Client 模拟 + Dashboard 冒烟），完善 README，全链路验收，确保“开箱即用 + 可复现”。
 
@@ -1939,15 +1945,15 @@ dashboard:
 | B5 | Reranker 抽象接口与工厂（含 None 回退） | [x] | 2026-08-24 | BaseReranker、None 后端、工厂与安全回退 |
 | B6 | Evaluator 抽象接口与工厂 | [x] | 2026-08-24 | BaseEvaluator、Threshold/Composite 实现与配置工厂 |
 | B7.1 | OpenAI-Compatible LLM 实现与 Hardening | [x] | 2026-08-24 | OpenCode Go/ox-alpha-free 真实调用通过；输出守卫、调用预算、失败账本、Chunk 定向重试及 Day 7.2 稳定性修复完成 |
-| B7.2 | Ollama LLM 实现 | [ ] | | |
-| B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | |
-| B7.4 | Ollama Embedding 实现 | [ ] | | |
+| B7.2 | Ollama LLM 实现 | [ ] | | Post-MVP 可选 Provider，当前 MVP 不依赖 |
+| B7.3 | OpenAI & Azure Embedding 实现 | [ ] | | Post-MVP 可选 Provider，需单独评估隐私与成本 |
+| B7.4 | Ollama Embedding 实现 | [ ] | | Post-MVP 可选 Provider，当前本地 LSA 已满足 MVP |
 | B7.5 | Recursive Splitter 默认实现 | [x] | 2026-08-23 | 确定性重叠切片并保持 Markdown 代码块完整 |
 | B7.6 | ChromaStore 默认实现 | [x] | 2026-08-23 | 持久化 upsert/query、metadata filter 与 roundtrip 测试 |
-| B7.7 | LLM Reranker 实现 | [ ] | | |
-| B7.8 | Cross-Encoder Reranker 实现 | [ ] | | |
+| B7.7 | LLM Reranker 实现 | [ ] | | Post-MVP 可选 Provider，默认 None + 安全回退已完成 |
+| B7.8 | Cross-Encoder Reranker 实现 | [ ] | | Post-MVP 可选 Provider，默认 None + 安全回退已完成 |
 | B8 | Vision LLM 抽象接口与工厂集成 | [x] | 2026-08-24 | BaseVisionLLM.chat_with_image；工厂路由与 Transform 注入 |
-| B9 | Azure Vision LLM 实现 | [ ] | | |
+| B9 | Azure Vision LLM 实现 | [ ] | | Post-MVP 可选 Provider，Vision 契约与安全回退已完成 |
 
 #### 阶段 C：Ingestion Pipeline MVP
 
@@ -2017,10 +2023,10 @@ dashboard:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| H1 | RagasEvaluator 实现 | [ ] | | |
+| H1 | RagasEvaluator 实现 | [ ] | | Post-MVP 可选评估后端，需单独评估依赖、隐私与成本 |
 | H2 | CompositeEvaluator 实现 | [x] | 2026-08-24 | 多 Evaluator 并行、结果汇总与单 Provider 故障隔离 |
-| H3 | EvalRunner + Golden Test Set | [x] | 2026-08-24 | Benchmark Runner、分路相关排名、Baseline 对比与 CLI 回归门槛 |
-| H4 | 评估面板页面 | [ ] | | |
+| H3 | Benchmark Runner + Golden Test Set | [x] | 2026-08-24 | Benchmark Runner、分路相关排名、Baseline 对比与 CLI 回归门槛 |
+| H4 | 评估面板页面 | [x] | 2026-08-25 | 批准数据集、Hit@K/MRR/拒答/证据/延迟指标、隐私安全历史与基线对比 |
 | H5 | Recall 回归测试（E2E） | [x] | 2026-08-24 | ingest→Dense/BM25→Hybrid→Benchmark 的脱敏端到端阈值测试 |
 
 #### 阶段 I：端到端验收与文档收口
@@ -2028,10 +2034,10 @@ dashboard:
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
 | I1 | E2E：MCP Client 侧调用模拟 | [x] | 2026-08-24 | 子进程完成握手、tools/list、tools/call 与引用校验 |
-| I2 | E2E：Dashboard 冒烟测试 | [ ] | | |
-| I3 | 完善 README（运行说明 + MCP + Dashboard） | [ ] | | |
-| I4 | 清理接口一致性（契约测试补齐） | [ ] | | |
-| I5 | 全链路 E2E 验收 | [ ] | | |
+| I2 | E2E：Dashboard 冒烟测试 | [x] | 2026-08-25 | Streamlit AppTest 覆盖六页面、交互与故障降级 |
+| I3 | 完善 README（运行说明 + MCP + Dashboard） | [x] | 2026-08-25 | README 已纳入版本控制并覆盖快速开始、评估、隐私与排障 |
+| I4 | 清理接口一致性（契约测试补齐） | [x] | 2026-08-25 | VectorStore、DocumentManager、Reranker、Evaluator 与故障隔离边界闭合 |
+| I5 | 全链路 E2E 验收 | [x] | 2026-08-25 | 脱敏 PDF→索引→MCP 引用→Dashboard→评估→确认清理通过 |
 
 ---
 
@@ -2046,9 +2052,12 @@ dashboard:
 | 阶段 E | 6 | 6 | 100% |
 | 阶段 F | 5 | 5 | 100% |
 | 阶段 G | 6 | 6 | 100% |
-| 阶段 H | 5 | 3 | 60% |
-| 阶段 I | 5 | 1 | 20% |
-| **总计** | **68** | **56** | **82.4%** |
+| 阶段 H | 5 | 4 | 80%（H1 为 post-MVP 可选项） |
+| 阶段 I | 5 | 5 | 100% |
+| **总计** | **68** | **61** | **89.7%** |
+
+> **MVP 范围完成度：100%**。总表剩余的 7 项均为明确延期的可选 Provider/评估后端：
+> B7.2-B7.4、B7.7-B7.8、B9 与 H1；它们不阻塞 `v0.1.0` MVP 发布。
 
 > **Day 9 readiness revalidation（2026-08-25）**：共享 `replace_file_atomically` 已覆盖
 > Local LSA、Chroma swap journal、BM25、Manifest、处理产物、LLM failure ledger 与图片文件；
@@ -2059,6 +2068,12 @@ dashboard:
 > 显式集合、五阶段进度和确认删除；`TraceService` 提供有界容错读取与隐私过滤，页面展示
 > Ingestion/Query 历史、延迟、Dense/Sparse/Fusion 与 Rerank fallback。脱敏全链路 E2E、
 > 279 passed / 1 opt-in skipped、90.45% 覆盖率以及 40-case private / 4-case public 基准均通过。
+
+> **Day 10 / MVP completion（2026-08-25）**：H4、I2-I5 已完成。Evaluation 页面只运行
+> 配置批准的脱敏数据集，原子历史不包含 Query/检索正文/Chunk ID/来源路径；六页面 AppTest、
+> 契约测试与 PDF→索引→MCP→Dashboard→评估→清理的发布 E2E 均通过。最终门禁为
+> 289 passed / 1 opt-in skipped、90.58% 覆盖率、私有 40-case 与公开 4-case 全部 100%、
+> Gitleaks 无泄漏，GitHub `quality` run 32862979896 成功。
 
 
 ---
@@ -2183,14 +2198,15 @@ dashboard:
 - **测试方法**：`pytest -q tests/unit/test_reranker_factory.py`。
 
 ### B6：Evaluator 抽象接口与工厂（先做自定义轻量指标）
-- **目标**：定义 `BaseEvaluator`、`EvaluatorFactory`，实现最小 `CustomEvaluator`（例如 hit_rate/mrr）。
+- **目标**：定义 `BaseEvaluator`、`EvaluatorFactory`，实现确定性 `ThresholdEvaluator` 与多 Provider `CompositeEvaluator`。
 - **修改文件**：
   - `src/libs/evaluator/base_evaluator.py`
   - `src/libs/evaluator/evaluator_factory.py`
-  - `src/libs/evaluator/custom_evaluator.py`
-  - `tests/unit/test_custom_evaluator.py`
-- **验收标准**：输入 query + retrieved_ids + golden_ids 能输出稳定 metrics。
-- **测试方法**：`pytest -q tests/unit/test_custom_evaluator.py`。
+  - `src/libs/evaluator/threshold_evaluator.py`
+  - `src/libs/evaluator/composite_evaluator.py`
+  - `tests/unit/test_evaluators.py`
+- **验收标准**：输入 metrics + thresholds 能输出稳定检查结果；多 Provider 并行时单个失败被隔离并报告。
+- **测试方法**：`pytest -q tests/unit/test_evaluators.py`。
 
 ### B7：补齐 Libs 默认实现（拆分为≈1h可验收增量）
 
@@ -2932,7 +2948,7 @@ dashboard:
   - `src/observability/dashboard/services/config_service.py`（新增：配置读取服务）
   - `scripts/start_dashboard.py`（新增：Dashboard 启动脚本）
 - **实现要点**：
-  - `app.py` 使用 `st.navigation()` 注册六个页面（未完成的页面显示占位提示）
+  - `app.py` 使用 `st.navigation()` 注册六个页面；Day 10 后六页均为完整实现
   - Overview 页面：读取 `Settings` 展示组件卡片，调用 `ChromaStore.get_collection_stats()` 展示数据统计
   - `ConfigService`：封装 Settings 读取，格式化组件配置信息
 - **验收标准**：`streamlit run src/observability/dashboard/app.py` 可启动，总览页展示当前配置信息。
@@ -3013,9 +3029,10 @@ dashboard:
 ## 阶段 H：评估体系（目标：可插拔评估 + 可量化回归）
 
 ### H1：RagasEvaluator 实现
+- **状态**：Post-MVP 可选项，`v0.1.0` 不实现；启用前需单独完成依赖、隐私、费用与生成质量评审。
 - **目标**：实现 `ragas_evaluator.py`：封装 Ragas 框架，实现 `BaseEvaluator` 接口。
 - **修改文件**：
-  - `src/observability/evaluation/ragas_evaluator.py`（新增）
+  - `src/libs/evaluator/ragas_evaluator.py`（新增）
   - `src/libs/evaluator/evaluator_factory.py`（注册 ragas provider）
   - `tests/unit/test_ragas_evaluator.py`（新增）
 - **实现类/函数**：
@@ -3026,116 +3043,118 @@ dashboard:
 - **测试方法**：`pytest -q tests/unit/test_ragas_evaluator.py`。
 
 ### H2：CompositeEvaluator 实现
-- **目标**：实现 `composite_evaluator.py`：组合多个 Evaluator 并行执行，汇总结果。
+- **状态**：已完成（2026-08-24）。
+- **目标**：实现 `composite_evaluator.py`：组合多个 Evaluator 并行执行，汇总结果并隔离单 Provider 故障。
 - **修改文件**：
-  - `src/observability/evaluation/composite_evaluator.py`（新增）
-  - `tests/unit/test_composite_evaluator.py`（新增）
+  - `src/libs/evaluator/composite_evaluator.py`
+  - `tests/unit/test_evaluators.py`
 - **实现类/函数**：
   - `CompositeEvaluator.__init__(evaluators: List[BaseEvaluator])`
-  - `CompositeEvaluator.evaluate() -> dict`：并行执行所有 evaluator，合并 metrics
-  - 配置驱动：`evaluation.backends: [ragas, custom]` → 工厂自动组合
-- **验收标准**：配置两个 evaluator 时，返回的 metrics 包含两者的指标。
-- **测试方法**：`pytest -q tests/unit/test_composite_evaluator.py`。
+  - `CompositeEvaluator.evaluate(request: EvaluationRequest) -> EvaluationResult`：并行执行所有 evaluator，合并 checks/details 并隔离异常
+  - 配置驱动：MVP 默认 `evaluation.backends: [custom]`；注册多个 Provider 后由工厂自动组合
+- **验收标准**：配置两个 evaluator 时，返回结果包含两者命名空间隔离的 checks/details；单 Provider 异常不会中断其他结果收集。
+- **测试方法**：`pytest -q tests/unit/test_evaluators.py`。
 
-### H3：EvalRunner + Golden Test Set
-- **目标**：实现 `eval_runner.py`：读取 `tests/fixtures/golden_test_set.json`，跑 retrieval 并产出 metrics。
-- **前置依赖**：D5（HybridSearch）、H1-H2（评估器）
+### H3：Benchmark Runner + Golden Test Set
+- **状态**：已完成（2026-08-24）。
+- **目标**：读取严格校验并带 SHA-256 指纹的 golden set，执行 retrieval benchmark 并产出可比较报告。
+- **前置依赖**：D5（HybridSearch）、H2（评估器）；不依赖可选 H1。
 - **修改文件**：
-  - `src/observability/evaluation/eval_runner.py`（新增）
-  - `tests/fixtures/golden_test_set.json`（新增：黄金测试集）
-  - `scripts/evaluate.py`（新增：评估运行脚本）
+  - `src/observability/evaluation/benchmark.py`
+  - `src/observability/evaluation/retrieval_benchmark.py`
+  - `src/observability/evaluation/baseline_comparator.py`
+  - `tests/fixtures/golden_test_set.json`
+  - `scripts/run_benchmark.py`
 - **实现类/函数**：
-  - `EvalRunner.__init__(settings, hybrid_search, evaluator)`
-  - `EvalRunner.run(test_set_path) -> EvalReport`：运行评估并返回报告
-  - `EvalReport`：包含 hit_rate, mrr, 各 query 结果详情
-- **golden_test_set.json 格式**：
-  ```json
-  {
-    "test_cases": [
-      {
-        "query": "如何配置 Azure OpenAI？",
-        "expected_chunk_ids": ["chunk_abc_001", "chunk_abc_002"],
-        "expected_sources": ["config_guide.pdf"]
-      }
-    ]
-  }
-  ```
-- **验收标准**：`python scripts/evaluate.py` 可运行，输出 metrics。
-- **测试方法**：`pytest -q tests/integration/test_hybrid_search.py` 或 `python scripts/evaluate.py`。
+  - `BenchmarkDataset.load(path)`：校验 schema、来源相对路径、case ID 与阈值并计算稳定指纹
+  - `RetrievalBenchmarkRunner.run(dataset) -> BenchmarkReport`
+  - `BaselineComparator.compare(baseline, candidate)`：拒绝不匹配的指纹/case ID
+- **验收标准**：CLI 输出 Hit@1/3/5、MRR@5、拒答/证据准确率、P50/P95 延迟并可强制阈值/回退门。
+- **测试方法**：`pytest -q tests/unit/test_benchmark_dataset.py tests/unit/test_retrieval_benchmark.py tests/unit/test_baseline_comparator.py`。
 
 ### H4：评估面板页面
+- **状态**：已完成（2026-08-25）。
 - **目标**：实现 Dashboard 评估面板页面（运行评估、查看指标、历史对比）。
-- **前置依赖**：H3（EvalRunner）、G1（Dashboard 架构）
+- **前置依赖**：H3（Benchmark Runner）、G1（Dashboard 架构）
 - **修改文件**：
-  - `src/observability/dashboard/pages/evaluation_panel.py`（实现：替换占位提示）
+  - `src/observability/dashboard/pages/evaluation.py`
+  - `src/observability/dashboard/services/evaluation_service.py`
+  - `src/observability/dashboard/services/factory.py`
 - **实现要点**：
-  - 选择评估后端与 golden test set
-  - 点击运行，展示评估结果（hit_rate、mrr、各 query 明细）
-  - 可选：历史评估结果对比图
-- **验收标准**：可在 Dashboard 中运行评估并查看指标。
-- **测试方法**：手动验证。
+  - 仅允许选择配置明确批准的脱敏 golden test set，拒绝任意路径
+  - 展示 Hit@K、MRR、拒答/证据准确率、延迟、阈值与分类指标
+  - 仅比较数据集指纹兼容的历史；报告原子写入且不含 Query/检索正文/Chunk ID/来源路径
+- **验收标准**：Dashboard 可运行评估、查看指标与无回退基线比较，并在 Provider/历史损坏时安全降级。
+- **测试方法**：`pytest -q tests/unit/test_dashboard_evaluation_service.py tests/integration/test_dashboard_app.py`。
 
 ### H5：Recall 回归测试（E2E）
-- **目标**：实现 `tests/e2e/test_recall.py`：基于 golden set 做最小召回阈值（例如 hit@k）。
-- **前置依赖**：H3（EvalRunner + golden_test_set）
+- **状态**：已完成（2026-08-24）。
+- **目标**：实现 `tests/e2e/test_recall_benchmark.py`：从脱敏临时索引运行 committed golden set 阈值。
+- **前置依赖**：H3（Benchmark Runner + golden_test_set）
 - **修改文件**：
-  - `tests/e2e/test_recall.py`（新增）
+  - `tests/e2e/test_recall_benchmark.py`
   - `tests/fixtures/golden_test_set.json`（补齐若干条）
 - **验收标准**：hit@k 达到阈值（阈值写死在测试里，便于回归）。
-- **测试方法**：`pytest -q tests/e2e/test_recall.py`。
+- **测试方法**：`pytest -q tests/e2e/test_recall_benchmark.py`。
 
 ---
 
 ## 阶段 I：端到端验收与文档收口（目标：开箱即用的"可复现"工程）
 
 ### I1：E2E：MCP Client 侧调用模拟
-- **目标**：实现 `tests/e2e/test_mcp_client.py`：以子进程启动 server，模拟 tools/list + tools/call。
+- **状态**：已完成（2026-08-24）。
+- **目标**：以子进程启动 server，模拟 initialize + tools/list + tools/call 并验证引用与 stdout 隔离。
 - **修改文件**：
-  - `tests/e2e/test_mcp_client.py`
+  - `tests/integration/test_mcp_server_e2e.py`
 - **验收标准**：完整走通 query_knowledge_hub 并返回 citations。
-- **测试方法**：`pytest -q tests/e2e/test_mcp_client.py`。
+- **测试方法**：`pytest -q tests/integration/test_mcp_server_e2e.py`。
 
 ### I2：E2E：Dashboard 冒烟测试
+- **状态**：已完成（2026-08-25）。
 - **目标**：验证 Dashboard 各页面在有数据时可正常渲染、无 Python 异常。
 - **修改文件**：
-  - `tests/e2e/test_dashboard_smoke.py`（新增）
+  - `tests/integration/test_dashboard_app.py`
 - **实现要点**：
   - 使用 Streamlit 的 `AppTest` 框架进行自动化冒烟测试
   - 验证 6 个页面均可加载、不抛异常
 - **验收标准**：所有页面冒烟测试通过。
-- **测试方法**：`pytest -q tests/e2e/test_dashboard_smoke.py`。
+- **测试方法**：`pytest -q tests/integration/test_dashboard_app.py`。
 
 ### I3：完善 README（运行说明 + 测试说明 + MCP 配置 + Dashboard 使用）
-- **目标**：让新用户能在 10 分钟内跑通 ingest + query + dashboard + tests，并能在 Copilot/Claude 中使用。
+- **状态**：已完成（2026-08-25）。
+- **目标**：让新用户从干净 checkout 可复现安装、脱敏验收、ingest/query、MCP、Dashboard 与测试门禁。
 - **修改文件**：
   - `README.md`
 - **验收标准**：README 包含以下章节：
-  - **快速开始**：安装依赖、配置 API Key、运行首次摄取
+  - **快速开始**：安装依赖、默认离线配置、脱敏 E2E 与首次摄取
   - **配置说明**：`settings.yaml` 各字段含义
-  - **MCP 配置示例**：GitHub Copilot `mcp.json` 与 Claude Desktop `claude_desktop_config.json`
-  - **Dashboard 使用指南**：启动命令、各页面功能说明、截图示例
+  - **MCP 配置示例**：绝对路径 stdio host 配置与三个只读工具
+  - **Dashboard 使用指南**：启动命令、六页面功能与安全边界
   - **运行测试**：单元测试、集成测试、E2E 测试命令
   - **常见问题**：API Key 配置、依赖安装、连接问题排查
 - **测试方法**：按 README 手动走一遍。
 
 ### I4：清理接口一致性（契约测试补齐）
+- **状态**：已完成（2026-08-25）。
 - **目标**：为关键抽象（VectorStore / Reranker / Evaluator / DocumentManager）补齐契约测试。
 - **修改文件**：
-  - `tests/unit/test_vector_store_contract.py`（补齐 delete_by_metadata 边界）
-  - `tests/unit/test_reranker_factory.py`（补齐边界）
-  - `tests/unit/test_custom_evaluator.py`（补齐边界）
+  - `tests/integration/test_chroma_store_roundtrip.py`（删除/过滤/分页/只读边界）
+  - `tests/unit/test_document_manager.py`（输入、集合隔离与跨存储失败）
+  - `tests/unit/test_reranker_fallback.py`（Provider 与输出契约失败）
+  - `tests/unit/test_evaluators.py`（阈值、Factory 与 Provider 故障隔离）
 - **验收标准**：`pytest -q` 全绿，且 contract tests 覆盖主要输入输出形状。
 - **测试方法**：`pytest -q`。
 
 ### I5：全链路 E2E 验收
+- **状态**：已完成（2026-08-25）。
 - **目标**：执行完整的端到端验收流程：ingest → query via MCP → Dashboard 可视化 → evaluate。
-- **修改文件**：无新文件，验收已有功能
+- **修改文件**：`tests/e2e/test_dashboard_day9_workflow.py`
 - **验收标准**：
-  - `python scripts/ingest.py --path tests/fixtures/sample_documents/ --collection test` 成功
-  - `python scripts/query.py --query "测试查询" --verbose` 返回结果
-  - Dashboard 可展示摄取与查询追踪
-  - `python scripts/evaluate.py` 输出评估指标
-- **测试方法**：手动全链路走通 + `pytest -q` 全量测试。
+  - 运行时生成脱敏 PDF 并完成 ingest 与 Dense/BM25 对齐
+  - MCP `query_wms_knowledge` 返回去除绝对路径的流程编码引用
+  - Dashboard 服务可检查文档/Chunk/Trace，评估报告通过且不泄漏内容或路径
+  - 使用精确确认短语清理所有索引与受管产物
+- **测试方法**：`pytest -q tests/e2e/test_dashboard_day9_workflow.py` + `pytest -q` 全量测试。
 
 ---
 
@@ -3145,8 +3164,8 @@ dashboard:
 - **M2（完成阶段 C）**：离线摄取链路可用，能构建本地索引。
 - **M3（完成阶段 D+E）**：在线查询 + MCP tools 可用，可在 Copilot/Claude 中调用。
 - **M4（完成阶段 F）**：Ingestion + Query 双链路可追踪，JSON Lines 持久化。
-- **M5（完成阶段 G）**：六页面可视化管理平台就绪（评估面板为占位），数据可浏览、可管理、链路可追踪。
-- **M6（完成阶段 H+I）**：评估体系完整 + E2E 验收通过 + 运行与维护文档完善，形成可复现交付。
+- **M5（完成阶段 G）**：六页面导航与五个管理/追踪页面就绪；当时评估页占位，已在 M6 替换。
+- **M6（完成阶段 H+I，2026-08-25）**：确定性评估体系、隐私安全历史、E2E 验收与运行维护文档完成，形成可复现 MVP 交付。
 
 
 
