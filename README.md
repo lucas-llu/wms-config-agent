@@ -193,3 +193,21 @@ evaluation UI, contract coverage, and sanitized release acceptance. Ollama/hoste
 cross-encoder or LLM rerankers, Azure Vision, and Ragas remain explicitly deferred provider work.
 
 The detailed delivery record is [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md).
+
+## V2 multi-agent roadmap
+
+The next planned phase evolves the citation-first RAG core into a stateful configuration assistant:
+it will clarify a business goal over multiple turns, decompose it into dependent configuration
+tasks, gather evidence for each task, surface version or scope conflicts, validate a versioned
+draft, and require explicit human approval before exporting a configuration solution. V2 remains
+read-only with respect to real WMS environments.
+
+The formal requirements are in [DEV_SPEC.md](DEV_SPEC.md),
+and the design review, technology choices, and ten-day implementation plan are in
+[docs/AGENT_DEVELOPMENT_PLAN.md](docs/AGENT_DEVELOPMENT_PLAN.md).
+
+Day 1 includes a repeatable runtime compatibility probe:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_agent_runtime.py
+```
