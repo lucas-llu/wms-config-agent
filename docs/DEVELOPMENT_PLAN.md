@@ -235,7 +235,7 @@ automated tests with one opt-in live LLM test skipped and 90.45% coverage. The f
 
 ## Day 10 — Evaluation UI, contracts, and reproducible MVP release
 
-Status: planned.
+Status: completed on 2026-08-25.
 
 - Complete H4 using the existing Benchmark Runner and custom evaluator: run a selected sanitized
   dataset, display Hit@K/MRR/refusal/evidence metrics, and compare privacy-safe historical reports.
@@ -249,6 +249,20 @@ Status: planned.
 - Exit criteria: a new developer can reproduce the sanitized MVP from the README, public CI is
   green, coverage remains at least 90%, the private 40-case and public four-case benchmarks do not
   regress, and the repository is ready for a tagged MVP checkpoint.
+
+Delivered: H4 now runs only the explicitly configured sanitized benchmark, displays Hit@1/3/5,
+MRR@5, refusal/evidence accuracy, latency, thresholds, category metrics, failed case IDs, and
+fingerprint-compatible baseline deltas. Dashboard history uses an atomic, bounded schema that
+omits query text, retrieved text, Chunk IDs, and source paths. All six pages have Streamlit
+`AppTest` coverage, and the remaining Chroma deletion/filter/pagination, DocumentManager input,
+Reranker output, Evaluator provider-failure, and cross-store isolation contracts are enforced.
+The sanitized release E2E now covers PDF ingestion, aligned local indexes, Dashboard services, an
+MCP cited query, evaluation, privacy checks, and confirmed cleanup. The final README is tracked and
+documents setup, settings, ingestion/query, MCP, Dashboard, evaluation, security, privacy, and
+troubleshooting. Ruff passed; 289 automated tests passed with one opt-in live LLM test skipped;
+coverage reached 90.58%; the 40-case private and four-case public benchmarks remained at 100% with
+zero regression; and Gitleaks found no leaks in the complete Git history or the 256 tracked and
+unignored working-tree files.
 
 ## Deferred optional provider work after Day 10
 

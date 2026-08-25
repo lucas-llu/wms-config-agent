@@ -119,11 +119,24 @@ retrieval providers, aggregate/category metrics, failed cases, and sanitized ran
 ```
 
 The original `baseline_v1.json` predates the current dataset expansion. Use the latest accepted
-report whose fingerprint matches the dataset; Day 9 uses `candidate_day8.json` for the private set
-and `public_day8.json` for the public set. Comparison is rejected when dataset fingerprints or case
-IDs differ. Quality regression is
+report whose fingerprint matches the dataset; Day 10 uses `candidate_day10.json` for the private
+set and `public_day10.json` for the public set. Comparison is rejected when dataset fingerprints
+or case IDs differ. Quality regression is
 reported separately from per-case fixes and failures. Dense, BM25, raw fusion, and final
 relevant ranks are retained for diagnosing whether a miss came from recall or final ranking.
+
+## Dashboard evaluation
+
+The Day 10 Evaluation page uses only the dataset explicitly configured by
+`evaluation.golden_test_set`; it does not accept an arbitrary local path. Clicking **Run
+evaluation** constructs the configured local retrieval stack, evaluates the selected dataset, and
+optionally compares it with a fingerprint-compatible Dashboard baseline.
+
+Dashboard reports are written atomically below `data/evaluation/dashboard` by default (override
+with `WMS_EVALUATION_REPORT_ROOT`). Unlike the diagnostic CLI report, this history schema omits
+query text, retrieved text, Chunk IDs, ranked result content, and source paths. The UI shows only
+aggregate/category metrics, threshold state, comparison deltas, and failed case IDs. Malformed or
+unsupported history files are skipped rather than breaking the page.
 
 ## Day 6 candidate result
 

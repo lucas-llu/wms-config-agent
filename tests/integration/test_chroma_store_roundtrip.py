@@ -51,6 +51,55 @@ def test_chroma_upsert_query_filter_and_get(tmp_path) -> None:
     assert store.count() == 2
 
 
+def test_chroma_delete_requires_filters_and_matches_every_metadata_field(tmp_path) -> None:
+    store = ChromaStore(persist_path=tmp_path, collection_name="test_chunks")
+    records = [
+        ChunkRecord(
+            id="manual-inbound",
+            text="manual inbound",
+            metadata={
+                "source_path": "manual-inbound.pdf",
+                "domain": "Inbound",
+                "collection": "manuals",
+            },
+            dense_vector=[1.0, 0.0],
+        ),
+        ChunkRecord(
+            id="training-inbound",
+            text="training inbound",
+            metadata={
+                "source_path": "training-inbound.pdf",
+                "domain": "Inbound",
+                "collection": "training",
+            },
+            dense_vector=[0.8, 0.2],
+        ),
+    ]
+    store.upsert(records)
+
+    with pytest.raises(ValueError, match="filters must not be empty"):
+        store.delete_by_metadata({})
+    assert store.delete_by_metadata({"domain": "Inbound", "collection": "manuals"}) == 1
+    assert store.list_ids() == ["training-inbound"]
+
+
+def test_chroma_management_filter_pagination_contract(tmp_path) -> None:
+    store = ChromaStore(persist_path=tmp_path, collection_name="test_chunks")
+    store.upsert(
+        [
+            _record("first", [1.0, 0.0]),
+            _record("second", [0.9, 0.1]),
+            _record("third", [0.8, 0.2]),
+        ]
+    )
+
+    assert len(store.get_by_metadata({"domain": "Inbound"}, limit=1, offset=1)) == 1
+    with pytest.raises(ValueError, match="limit must be greater than 0"):
+        store.get_by_metadata(limit=0)
+    with pytest.raises(ValueError, match="offset must be greater"):
+        store.get_by_metadata(offset=-1)
+
+
 def test_chroma_strict_read_only_management_reads_do_not_mutate_store(tmp_path) -> None:
     writable = ChromaStore(persist_path=tmp_path, collection_name="test_chunks")
     writable.upsert([_record("putaway", [1.0, 0.0, 0.0])])

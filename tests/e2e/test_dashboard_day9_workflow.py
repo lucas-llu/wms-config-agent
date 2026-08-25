@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from io import BytesIO
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from core.query_engine import (
     SafeReranker,
     SparseRetriever,
 )
+from core.response import MultimodalAssembler, ResponseBuilder
 from core.settings import RetrievalSettings, SplitterSettings
 from core.trace import TraceCollector
 from core.types import Document
@@ -24,7 +26,14 @@ from libs.embedding import LocalLSAEmbedding
 from libs.loader import BaseLoader
 from libs.reranker import NoneReranker
 from libs.vector_store import ChromaStore
-from observability.dashboard.services import DataService, IngestionService, TraceService
+from mcp_server.tools import QueryKnowledgeHubTool
+from observability.dashboard.services import (
+    DataService,
+    EvaluationService,
+    IngestionService,
+    TraceService,
+)
+from observability.evaluation import BenchmarkDataset, RetrievalBenchmarkRunner
 
 pytestmark = pytest.mark.e2e
 
@@ -39,6 +48,12 @@ class _FixtureLoader(BaseLoader):
                 "file_hash": self.compute_file_hash(source),
                 "images": [],
                 "title": "Sanitized Day 9 fixture",
+                "source_relative_path": "fixtures/sanitized-mvp.pdf",
+                "domain": "Inbound",
+                "document_type": "configuration",
+                "process_code": "SWL.I.11.01",
+                "page_start": 1,
+                "page_end": 1,
             }
         )
         text = "\n\n".join(
@@ -80,7 +95,7 @@ def _pdf_payload() -> bytes:
     return stream.getvalue()
 
 
-def test_sanitized_dashboard_upload_inspect_trace_query_and_delete(tmp_path: Path) -> None:
+def test_sanitized_mvp_ingestion_mcp_dashboard_evaluation_and_cleanup(tmp_path: Path) -> None:
     staging = tmp_path / "staging"
     processed = tmp_path / "processed"
     history = tmp_path / "db" / "history.db"
@@ -134,13 +149,14 @@ def test_sanitized_dashboard_upload_inspect_trace_query_and_delete(tmp_path: Pat
         "query",
         {"query": "directed putaway storage location", "collection": "day9-fixture"},
     )
-    outcome = HybridSearch(
+    hybrid_search = HybridSearch(
         retrieval,
         QueryProcessor(),
         DenseRetriever(embedding, vector_store),
         SparseRetriever(bm25, vector_store),
         ReciprocalRankFusion(60),
-    ).search_with_details(
+    )
+    outcome = hybrid_search.search_with_details(
         "directed putaway storage location",
         filters={"collection": "day9-fixture"},
         trace=trace,
@@ -165,6 +181,68 @@ def test_sanitized_dashboard_upload_inspect_trace_query_and_delete(tmp_path: Pat
     assert query_traces.records[0].trace_id == trace.trace_id
     assert traces.query_diagnostics(query_traces.records[0])["final_count"] > 0
 
+    mcp_result = QueryKnowledgeHubTool(
+        hybrid_search,
+        SafeReranker(NoneReranker()),
+        ResponseBuilder(),
+        MultimodalAssembler([tmp_path]),
+        TraceCollector(trace_path),
+    ).call(
+        {
+            "query": "SWL.I.11.01 directed putaway storage location",
+            "collection": "day9-fixture",
+        }
+    )
+    structured = mcp_result["structuredContent"]
+    assert mcp_result["isError"] is False
+    assert structured["status"] == "evidence_found"
+    assert structured["citations"][0]["process_code"] == "SWL.I.11.01"
+    assert "source_path" not in structured["citations"][0]["metadata"]
+
+    dataset_path = tmp_path / "sanitized-release-benchmark.json"
+    dataset_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "name": "Sanitized MVP release",
+                "description": "Synthetic end-to-end release fixture",
+                "thresholds": {
+                    "hit_at_3_min": 1.0,
+                    "mrr_at_5_min": 1.0,
+                    "evidence_accuracy_min": 1.0,
+                },
+                "test_cases": [
+                    {
+                        "id": "directed-putaway",
+                        "category": "retrieval",
+                        "query": "directed putaway storage location",
+                        "filters": {"collection": "day9-fixture"},
+                        "expected": {"process_codes": ["SWL.I.11.01"]},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    dataset = BenchmarkDataset.load(dataset_path)
+    evaluation = EvaluationService(
+        lambda: RetrievalBenchmarkRunner(
+            hybrid_search,
+            SafeReranker(NoneReranker()),
+            top_k=5,
+        ),
+        [dataset_path],
+        tmp_path / "evaluation-history",
+    )
+    evaluation_result = evaluation.run(dataset.fingerprint)
+
+    assert evaluation_result.report.passed is True
+    safe_report = (
+        tmp_path / "evaluation-history" / evaluation_result.report_summary.identifier
+    ).read_text(encoding="utf-8")
+    assert "directed putaway storage location" not in safe_report
+    assert source_path_not_exposed(ingestion_result.staged_pdf_path, safe_report)
+
     phrase = ingestion.deletion_phrase(documents[0])
     deletion = ingestion.delete_document(documents[0].doc_id, confirmation=phrase)
 
@@ -174,3 +252,7 @@ def test_sanitized_dashboard_upload_inspect_trace_query_and_delete(tmp_path: Pat
     assert data.list_documents("day9-fixture") == []
     assert vector_store.count() == bm25.count() == 0
     assert not Path(ingestion_result.staged_pdf_path).exists()
+
+
+def source_path_not_exposed(source_path: str, report: str) -> bool:
+    return source_path.replace("\\", "/") not in report.replace("\\", "/")

@@ -124,8 +124,12 @@ def test_document_manager_rejects_unknown_detail_and_scopes_collection(tmp_path:
     manager, _ = _build_manager(tmp_path)
 
     assert manager.list_documents("other") == []
+    with pytest.raises(ValueError, match="doc_id must not be empty"):
+        manager.get_document_detail(" ")
     with pytest.raises(KeyError, match="Unknown document"):
         manager.get_document_detail("missing")
+    with pytest.raises(ValueError, match="source_path and collection"):
+        manager.delete_document("", "manuals")
 
 
 @pytest.mark.integration

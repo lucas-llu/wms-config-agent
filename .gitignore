@@ -91,7 +91,6 @@ dmypy.json
 .ruff_cache/
 
 # Project-specific
-README.md
 data/
 cache/
 logs/

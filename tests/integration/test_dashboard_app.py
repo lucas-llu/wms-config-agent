@@ -20,6 +20,7 @@ from observability.dashboard.services import (
     IngestionService,
     TraceService,
     get_dashboard_services,
+    get_evaluation_service,
     get_ingestion_service,
 )
 from scripts.verify_dashboard_readonly import (
@@ -101,6 +102,7 @@ def _configure_fixture(
             connection.close()
             gc.collect()
     get_dashboard_services.cache_clear()
+    get_evaluation_service.cache_clear()
     get_ingestion_service.cache_clear()
 
 
@@ -191,6 +193,54 @@ class _FailingIngestionPageService(_IngestionPageService):
         raise RuntimeError("embedding provider unavailable")
 
 
+class _EvaluationPageService:
+    option = SimpleNamespace(
+        identifier="safe-fingerprint",
+        name="Sanitized fixture",
+        description="Synthetic release benchmark",
+        case_count=2,
+        fingerprint="safe-fingerprint",
+    )
+    report = SimpleNamespace(
+        dataset_fingerprint="safe-fingerprint",
+        passed=True,
+        metrics={
+            "hit_at_1": 1.0,
+            "hit_at_3": 1.0,
+            "hit_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "refusal_accuracy": 1.0,
+            "evidence_accuracy": 1.0,
+            "p95_latency_ms": 4.5,
+        },
+        thresholds={"hit_at_3_min": 1.0},
+        threshold_results={"hit_at_3_min": True},
+        category_metrics={"retrieval": {"hit_at_3": 1.0}},
+        cases=(SimpleNamespace(case_id="safe-case", passed=True),),
+    )
+
+    def __init__(self, *, failure: Exception | None = None) -> None:
+        self.failure = failure
+        self.runs: list[tuple[str, str | None]] = []
+
+    def list_datasets(self):
+        return (self.option,)
+
+    @staticmethod
+    def list_reports():
+        return ()
+
+    def run(self, identifier: str, *, baseline_identifier: str | None = None):
+        self.runs.append((identifier, baseline_identifier))
+        if self.failure:
+            raise self.failure
+        return SimpleNamespace(
+            report=self.report,
+            comparison=None,
+            report_summary=SimpleNamespace(identifier="safe-report.json"),
+        )
+
+
 def _render_ingestion(service: object) -> None:
     from observability.dashboard.pages.ingestion_manager import render
 
@@ -205,6 +255,12 @@ def _render_ingestion_traces(service: object) -> None:
 
 def _render_query_traces(service: object) -> None:
     from observability.dashboard.pages.query_traces import render
+
+    render(service)  # type: ignore[arg-type]
+
+
+def _render_evaluation(service: object) -> None:
+    from observability.dashboard.pages.evaluation import render
 
     render(service)  # type: ignore[arg-type]
 
@@ -518,6 +574,39 @@ def test_trace_pages_report_provider_failures_without_crashing() -> None:
     assert ingestion_app.error[0].value.startswith("Ingestion traces are unavailable: OSError")
     assert not query_app.exception
     assert query_app.error[0].value.startswith("Query traces are unavailable: OSError")
+
+
+def test_evaluation_page_runs_approved_dataset_and_renders_release_metrics() -> None:
+    service = _EvaluationPageService()
+    app = AppTest.from_function(_render_evaluation, args=(service,)).run(timeout=20)
+
+    assert not app.exception
+    assert [item.label for item in app.selectbox] == ["Dataset", "Baseline"]
+    app.button[0].click().run(timeout=20)
+
+    assert not app.exception
+    assert app.success[0].value.startswith("Benchmark passed")
+    assert [metric.value for metric in app.metric[:7]] == [
+        "100.0%",
+        "100.0%",
+        "100.0%",
+        "100.0%",
+        "100.0%",
+        "100.0%",
+        "4.5 ms",
+    ]
+    assert service.runs == [("safe-fingerprint", None)]
+
+
+def test_evaluation_page_reports_provider_failure_without_crashing() -> None:
+    app = AppTest.from_function(
+        _render_evaluation,
+        args=(_EvaluationPageService(failure=RuntimeError("index unavailable")),),
+    ).run(timeout=20)
+    app.button[0].click().run(timeout=20)
+
+    assert not app.exception
+    assert app.error[0].value.startswith("Evaluation failed: RuntimeError")
 
 
 def _dashboard_trace(trace_id: str, trace_type: str, status: str) -> dict[str, object]:

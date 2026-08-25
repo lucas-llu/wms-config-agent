@@ -32,6 +32,17 @@ class BrokenReranker(BaseReranker):
         raise TimeoutError("model timeout")
 
 
+class DroppingReranker(BaseReranker):
+    def rerank(
+        self,
+        query: str,
+        candidates: list[RetrievalResult],
+        trace: Any | None = None,
+    ) -> list[RetrievalResult]:
+        del query, trace
+        return candidates[:-1]
+
+
 def test_none_reranker_preserves_order() -> None:
     candidates = _candidates()
 
@@ -49,6 +60,18 @@ def test_broken_reranker_falls_back() -> None:
     assert list(outcome.results) == candidates
     assert outcome.fallback_used is True
     assert outcome.failure == "TimeoutError: model timeout"
+
+
+def test_reranker_output_contract_failure_falls_back_without_mutating_input() -> None:
+    candidates = _candidates()
+    original = list(candidates)
+
+    outcome = SafeReranker(DroppingReranker()).rerank("query", candidates)
+
+    assert list(outcome.results) == original
+    assert candidates == original
+    assert outcome.fallback_used is True
+    assert outcome.failure == "ValueError: reranker must return every candidate exactly once"
 
 
 def test_reranker_factory_builds_none_and_rejects_unknown() -> None:

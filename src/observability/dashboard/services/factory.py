@@ -7,14 +7,27 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from core.query_engine import (
+    DenseRetriever,
+    HybridSearch,
+    QueryProcessor,
+    ReciprocalRankFusion,
+    SafeReranker,
+    SparseRetriever,
+)
 from ingestion import DocumentManager, create_ingestion_pipeline
 from ingestion.storage import BM25Indexer, ImageStorage, LocalArtifactStorage
+from libs.embedding import EmbeddingFactory
+from libs.evaluator import EvaluatorFactory
 from libs.loader import SQLiteIntegrityChecker
-from libs.vector_store import ChromaStore
+from libs.reranker import RerankerFactory
+from libs.vector_store import ChromaStore, VectorStoreFactory
 from observability.dashboard.services.config_service import ConfigService
 from observability.dashboard.services.data_service import DataService
+from observability.dashboard.services.evaluation_service import EvaluationService
 from observability.dashboard.services.ingestion_service import IngestionService
 from observability.dashboard.services.trace_service import TraceService
+from observability.evaluation import RetrievalBenchmarkRunner
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +98,43 @@ def get_ingestion_service(settings_path: str | None = None) -> IngestionService:
         manager,
         staging_root=staging_root,
         max_upload_bytes=max_upload_mb * 1024 * 1024,
+    )
+
+
+@lru_cache(maxsize=4)
+def get_evaluation_service(settings_path: str | None = None) -> EvaluationService:
+    """Build a lazy benchmark service over the explicitly configured safe dataset."""
+
+    path = settings_path or os.getenv("WMS_CONFIG_PATH", "config/settings.yaml")
+    config = ConfigService.from_path(path)
+    settings = config.settings
+    bm25_path = Path(os.getenv("WMS_BM25_PATH", "data/db/bm25"))
+    report_root = Path(os.getenv("WMS_EVALUATION_REPORT_ROOT", "data/evaluation/dashboard"))
+
+    def build_runner() -> RetrievalBenchmarkRunner:
+        embedding = EmbeddingFactory.create(settings)
+        vector_store = VectorStoreFactory.create(settings)
+        bm25_indexer = BM25Indexer(bm25_path)
+        if vector_store.count() == 0 or bm25_indexer.count() == 0:
+            raise RuntimeError("No retrieval index found; run ingestion first")
+        search = HybridSearch(
+            settings,
+            QueryProcessor(),
+            DenseRetriever(embedding, vector_store),
+            SparseRetriever(bm25_indexer, vector_store),
+            ReciprocalRankFusion(settings.retrieval.rrf_k),
+        )
+        return RetrievalBenchmarkRunner(
+            search,
+            SafeReranker(RerankerFactory.create(settings)),
+            top_k=max(5, settings.retrieval.top_k_final),
+            evaluator=EvaluatorFactory.create(settings),
+        )
+
+    return EvaluationService(
+        build_runner,
+        [settings.evaluation.golden_test_set],
+        report_root,
     )
 
 
