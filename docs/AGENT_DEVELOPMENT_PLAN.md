@@ -212,6 +212,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 2 — 会话 Repository、checkpoint 与 revision
 
+**状态**：已完成（2026-08-27）。
+
 **目标**：提供可持久化、可隔离、可并发保护的业务会话。
 
 **开发内容**：
@@ -225,6 +227,15 @@ Day 1 必须在不实现业务功能的情况下完成：
 **测试**：两会话交替写入、过期 revision 冲突、事务回滚、进程重启、故障/部分写入恢复。
 
 **退出标准**：FR-AGT-002/008/012 的基础存储契约通过，不存在全局业务会话状态。
+
+**完成记录**：
+
+- 新增独立 `SessionRepository`，以 `sessions/revisions/turns/decisions/approvals/exports` 六张表保存业务状态，checkpoint 数据库继续独立存储；
+- 所有写操作使用 WAL、foreign keys、`BEGIN IMMEDIATE`、原子事务和 `expected_revision` 乐观锁；并发 revision 写入测试确认仅一个写入者成功；
+- `SessionService` 提供 create/get/append_turn/update_revision/cancel 用例，不保存模块级或进程级业务会话状态；
+- LangGraph `thread_id` 与显式业务 `session_id` 对齐，关闭并重开 SQLite 后可恢复对应 checkpoint；
+- Agent 数据库、checkpoint 和导出物位于已被 `.gitignore` 覆盖的 `data/` 目录；README 明确将会话内容、决策、审批和导出物视为敏感本地数据；
+- Day 2 定向测试 15 passed；全量回归 326 passed / 1 opt-in skipped，总覆盖率 90.67%，公开检索基准与 Ruff check/format 通过。
 
 ### Day 3 — Supervisor、意图路由与 Requirement Agent
 
