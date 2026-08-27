@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -238,7 +239,17 @@ class LocalLSAEmbedding(BaseEmbedding):
         replace_file_atomically(temporary, self.model_path)
 
     def _load(self) -> None:
-        values = joblib.load(self.model_path)
+        # joblib <= 1.5.3 assigns ndarray.shape while unpickling, which NumPy 2.5
+        # deprecates. Keep the compatibility filter scoped to that exact upstream
+        # warning and remove it once our minimum joblib contains joblib/joblib#1772.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"Setting the shape on a NumPy array has been deprecated in NumPy 2\.5\.",
+                category=DeprecationWarning,
+                module=r"joblib\.numpy_pickle",
+            )
+            values = joblib.load(self.model_path)
         if values.get("model_name") != self.model_name:
             raise RuntimeError("Stored embedding model name does not match configuration")
         if values.get("requested_dimensions") != self.dimensions:

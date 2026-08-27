@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 from libs.embedding import LocalLSAEmbedding
+from libs.embedding import local_lsa_embedding as local_lsa_module
 
 TEXTS = [
     "RF directed putaway configuration controls inventory movement",
@@ -61,3 +64,39 @@ def test_prepared_fit_can_rollback_without_replacing_query_model(tmp_path) -> No
     assert embedding.signature == original_signature
     assert embedding.embed_query("putaway settings") == pytest.approx(original_query)
     assert embedding.model_path.read_bytes() == original_cache
+
+
+def test_local_lsa_load_handles_joblib_numpy_25_shape_deprecation(tmp_path) -> None:
+    embedding = LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path)
+    embedding.fit(TEXTS)
+    reloaded = LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "error",
+            message=r"Setting the shape on a NumPy array has been deprecated in NumPy 2\.5\.",
+            category=DeprecationWarning,
+        )
+        assert reloaded.signature == embedding.signature
+
+
+def test_local_lsa_load_does_not_hide_unrelated_deprecations(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    embedding = LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path)
+    embedding.fit(TEXTS)
+    original_load = local_lsa_module.joblib.load
+
+    def noisy_load(path):
+        warnings.warn("unrelated deprecation", DeprecationWarning, stacklevel=1)
+        return original_load(path)
+
+    monkeypatch.setattr(local_lsa_module.joblib, "load", noisy_load)
+    reloaded = LocalLSAEmbedding(dimensions=3, cache_dir=tmp_path)
+
+    with (
+        pytest.raises(DeprecationWarning, match="unrelated deprecation"),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("error", DeprecationWarning)
+        _ = reloaded.signature
