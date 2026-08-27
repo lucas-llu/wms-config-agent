@@ -159,6 +159,9 @@ runs the committed public benchmark gate.
 - Never commit authorized/private PDFs, processed text, indexes, model caches, traces, `.env`
   files, secrets, or private evaluation reports.
 - Query traces contain the user's query and inferred filters; protect the local `logs/` directory.
+- Agent session databases and exports contain conversation text, confirmed context, decisions,
+  approvals, and configuration drafts. Keep `data/db/agent_checkpoints.db`,
+  `data/db/configuration_sessions.db`, and `data/exports/` local; all remain ignored by Git.
 - MCP structured citations remove absolute host paths. Dashboard trace readers remove known
   credential/body fields and bound the amount of history read.
 - Dashboard file uploads accept PDFs, enforce a size limit, stage atomically, and require an

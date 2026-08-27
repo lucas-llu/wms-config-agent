@@ -12,6 +12,8 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
+from core.settings import AgentSettings
+
 
 class RuntimeProbeState(TypedDict, total=False):
     subject: str
@@ -33,6 +35,26 @@ async def open_async_sqlite_checkpointer(
     path.parent.mkdir(parents=True, exist_ok=True)
     async with AsyncSqliteSaver.from_conn_string(str(path)) as saver:
         await saver.setup()
+        yield saver
+
+
+def session_checkpoint_config(session_id: str) -> dict[str, dict[str, str]]:
+    """Use the durable business session identifier as the LangGraph thread identifier."""
+
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("session_id must be a non-empty string")
+    return {"configurable": {"thread_id": session_id.strip()}}
+
+
+@asynccontextmanager
+async def open_configured_checkpointer(
+    settings: AgentSettings,
+) -> AsyncIterator[AsyncSqliteSaver]:
+    """Open the configured checkpoint store while preserving DB separation."""
+
+    if settings.checkpoint_path == settings.session_db_path:
+        raise ValueError("checkpoint and business session databases must be separate")
+    async with open_async_sqlite_checkpointer(settings.checkpoint_path) as saver:
         yield saver
 
 
