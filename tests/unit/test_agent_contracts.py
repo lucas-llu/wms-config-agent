@@ -91,9 +91,13 @@ def test_state_fingerprint_is_stable_and_ignores_runtime_noise() -> None:
         "updated_at": "2026-08-26T00:00:00Z",
         "trace_id": "trace:one",
         "nodes_executed": 2,
+        "tokens_used": 120,
+        "turn_deadline_epoch": 1000.0,
     }
     second = {
         "nodes_executed": 8,
+        "tokens_used": 900,
+        "turn_deadline_epoch": 2000.0,
         "trace_id": "trace:two",
         "updated_at": "2026-08-26T01:00:00Z",
         "user_goal": "Configure inbound receiving",
@@ -168,6 +172,32 @@ def test_field_ownership_rejects_cross_agent_mutation() -> None:
 
     with pytest.raises(AgentContractError, match="configuration_tasks"):
         validate_state_update(AgentRole.REQUIREMENT, {"configuration_tasks": []})
+
+
+def test_day_three_fields_have_explicit_least_privilege_ownership() -> None:
+    validate_state_update(
+        AgentRole.SUPERVISOR,
+        {
+            "intent_confidence": 0.9,
+            "intent_reason": "explicit configuration goal",
+            "intent_needs_clarification": False,
+            "pause_reason": "",
+            "latest_user_message": "Configure receiving",
+            "latest_turn_id": "turn:one",
+            "recent_turns": [],
+            "tokens_used": 12,
+            "turn_deadline_epoch": 1000.0,
+        },
+    )
+    validate_state_update(
+        AgentRole.REQUIREMENT,
+        {"requirement_summary": "Inbound receiving for DC01"},
+    )
+
+    with pytest.raises(AgentContractError, match="requirement_summary"):
+        validate_state_update(AgentRole.SUPERVISOR, {"requirement_summary": "wrong owner"})
+    with pytest.raises(AgentContractError, match="tokens_used"):
+        validate_state_update(AgentRole.REQUIREMENT, {"tokens_used": 12})
 
 
 def test_configuration_task_rejects_self_dependency() -> None:

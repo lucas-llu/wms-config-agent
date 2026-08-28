@@ -34,6 +34,11 @@ def test_load_project_settings() -> None:
     assert settings.agent.max_nodes_per_turn == 12
     assert settings.agent.approval_required is True
     assert settings.agent.environment_inspector_enabled is False
+    assert settings.agent.max_tokens_per_turn == 12_000
+    assert settings.agent.intent_confidence_threshold == 0.65
+    assert settings.agent.max_questions_per_turn == 3
+    assert settings.agent.intent_prompt_path == Path("config/prompts/agent_intent.txt")
+    assert settings.agent.requirement_prompt_path == Path("config/prompts/agent_requirement.txt")
 
 
 def test_missing_required_field_has_readable_path(tmp_path: Path) -> None:
@@ -149,3 +154,34 @@ def test_agent_self_repair_can_be_disabled(tmp_path: Path) -> None:
     )
 
     assert load_settings(config_path).agent.max_self_repair_rounds == 0
+
+
+@pytest.mark.parametrize(
+    ("source", "replacement", "field"),
+    [
+        (
+            "  intent_confidence_threshold: 0.65",
+            "  intent_confidence_threshold: 1.5",
+            "agent.intent_confidence_threshold",
+        ),
+        (
+            "  max_tokens_per_turn: 12000",
+            "  max_tokens_per_turn: 0",
+            "agent.max_tokens_per_turn",
+        ),
+        (
+            "  max_questions_per_turn: 3",
+            "  max_questions_per_turn: 0",
+            "agent.max_questions_per_turn",
+        ),
+    ],
+)
+def test_agent_day3_limits_fail_fast(
+    tmp_path: Path, source: str, replacement: str, field: str
+) -> None:
+    original = Path("config/settings.yaml").read_text(encoding="utf-8")
+    config_path = tmp_path / "settings.yaml"
+    config_path.write_text(original.replace(source, replacement), encoding="utf-8")
+
+    with pytest.raises(SettingsError, match=field.replace(".", r"\.")):
+        load_settings(config_path)
