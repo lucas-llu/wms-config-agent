@@ -5,6 +5,7 @@ import json
 import pytest
 
 from agents.contracts import IntentType
+from agents.graph import INTENT_ACTIONS
 from agents.llm_json import StructuredLLMError
 from agents.nodes import IntentClassifier
 from libs.llm import ChatResponse
@@ -32,6 +33,15 @@ def _classifier(llm: ScriptedLLM | None = None) -> IntentClassifier:
         max_retries=2,
         prompt_path="config/prompts/agent_intent.txt",
     )
+
+
+def test_every_supported_intent_has_a_concrete_supervisor_action() -> None:
+    assert dict(INTENT_ACTIONS) == {
+        IntentType.ATOMIC_QUERY: "query_knowledge",
+        IntentType.CONFIGURE_GOAL: "extract_requirements",
+        IntentType.INSPECT_DRAFT: "render_current_draft",
+        IntentType.UNSUPPORTED: "bounded_rejection",
+    }
 
 
 @pytest.mark.parametrize(

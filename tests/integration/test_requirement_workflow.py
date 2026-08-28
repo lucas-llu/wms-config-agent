@@ -269,10 +269,10 @@ def test_non_configuration_intents_route_to_terminal_response_paths(tmp_path: Pa
 
     results = asyncio.run(scenario())
 
-    assert [item.values["intent"] for item in results] == [
-        "atomic_query",
-        "inspect_draft",
-        "unsupported",
+    assert [(item.values["intent"], item.values["next_action"]) for item in results] == [
+        ("atomic_query", "query_knowledge"),
+        ("inspect_draft", "render_current_draft"),
+        ("unsupported", "bounded_rejection"),
     ]
     assert all(item.next == () for item in results)
 
