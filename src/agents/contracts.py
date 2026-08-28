@@ -416,6 +416,16 @@ class ConfigurationSessionState(TypedDict, total=False):
     tool_calls_made: int
     retry_count: int
     trace_id: str
+    latest_user_message: str
+    latest_turn_id: str
+    recent_turns: list[dict[str, str]]
+    requirement_summary: str
+    intent_confidence: float
+    intent_reason: str
+    intent_needs_clarification: bool
+    pause_reason: str
+    tokens_used: int
+    turn_deadline_epoch: float
 
 
 SYSTEM_MANAGED_FIELDS = frozenset(

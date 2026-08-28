@@ -137,6 +137,11 @@ class AgentSettings:
     max_context_turns: int
     approval_required: bool
     environment_inspector_enabled: bool
+    max_tokens_per_turn: int = 12_000
+    intent_confidence_threshold: float = 0.65
+    max_questions_per_turn: int = 3
+    intent_prompt_path: Path = Path("config/prompts/agent_intent.txt")
+    requirement_prompt_path: Path = Path("config/prompts/agent_requirement.txt")
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,6 +216,8 @@ def validate_settings(settings: Settings) -> None:
         "agent.max_retrieval_tasks": settings.agent.max_retrieval_tasks,
         "agent.turn_timeout_seconds": settings.agent.turn_timeout_seconds,
         "agent.max_context_turns": settings.agent.max_context_turns,
+        "agent.max_tokens_per_turn": settings.agent.max_tokens_per_turn,
+        "agent.max_questions_per_turn": settings.agent.max_questions_per_turn,
     }
     for field_path, value in positive_values.items():
         if value <= 0:
@@ -240,6 +247,10 @@ def validate_settings(settings: Settings) -> None:
     if settings.agent.checkpoint_path == settings.agent.session_db_path:
         raise SettingsError(
             "Settings agent.checkpoint_path and agent.session_db_path must be different files"
+        )
+    if not 0 < settings.agent.intent_confidence_threshold <= 1:
+        raise SettingsError(
+            "Setting agent.intent_confidence_threshold must be greater than 0 and at most 1"
         )
     if settings.agent.enabled and not settings.agent.approval_required:
         raise SettingsError("Setting agent.approval_required must be true when agent is enabled")
@@ -538,6 +549,33 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
                 agent.get("environment_inspector_enabled"),
                 "agent.environment_inspector_enabled",
                 default=False,
+            ),
+            max_tokens_per_turn=_optional_int(
+                agent.get("max_tokens_per_turn"), "agent.max_tokens_per_turn", default=12_000
+            ),
+            intent_confidence_threshold=_optional_number(
+                agent.get("intent_confidence_threshold"),
+                "agent.intent_confidence_threshold",
+                default=0.65,
+            ),
+            max_questions_per_turn=_optional_int(
+                agent.get("max_questions_per_turn"),
+                "agent.max_questions_per_turn",
+                default=3,
+            ),
+            intent_prompt_path=Path(
+                _optional_non_empty_str(
+                    agent.get("intent_prompt_path"),
+                    "agent.intent_prompt_path",
+                    default="config/prompts/agent_intent.txt",
+                )
+            ),
+            requirement_prompt_path=Path(
+                _optional_non_empty_str(
+                    agent.get("requirement_prompt_path"),
+                    "agent.requirement_prompt_path",
+                    default="config/prompts/agent_requirement.txt",
+                )
             ),
         ),
     )

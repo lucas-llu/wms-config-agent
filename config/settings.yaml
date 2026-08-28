@@ -91,3 +91,8 @@ agent:
   max_context_turns: 8
   approval_required: true
   environment_inspector_enabled: false
+  max_tokens_per_turn: 12000
+  intent_confidence_threshold: 0.65
+  max_questions_per_turn: 3
+  intent_prompt_path: config/prompts/agent_intent.txt
+  requirement_prompt_path: config/prompts/agent_requirement.txt

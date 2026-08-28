@@ -143,9 +143,11 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 1. 开发前从最新 `dev` 创建 `feature/<简短功能描述>`；分支名不使用 `day1`/`day2` 或日期等无法表达交付内容的名称。
 2. 代码、测试与当日文档状态仅提交到 feature branch，禁止直接提交到 `dev`。
-3. 完成定向测试、Ruff、全量 pytest + coverage、V1 公开基准和密钥/隐私检查后，推送 feature branch 并创建以 `dev` 为 base 的 PR。
-4. PR 必须写明需求 ID、范围、关键设计、测试证据、安全边界、已知限制和回滚方式。
-5. 只有当所有必需检查通过且 PR 无未解决阻塞意见时才能 merge；merge 后同步本地 `dev`，下一个 feature 再从新 `dev` 创建。
+3. 测试发现非预期 defect/regression 时，先创建 GitHub issue 记录复现、影响和验收标准；禁止直接在当前 feature 修改。基线问题从 `dev` 创建 `bugfix/<issue号>-<简短描述>` 并以 `dev` 为 PR base；仅属于未合并 feature 的问题从该 feature 创建 bugfix branch，并通过 PR 合回原 feature。
+4. 完成定向测试、Ruff、全量 pytest + coverage、V1 公开基准和密钥/隐私检查后，推送 feature branch 并创建以 `dev` 为 base 的 PR。
+5. PR 必须写明需求 ID、范围、关键设计、测试证据、安全边界、已知限制和回滚方式；PR 创建后追加一条初始验证 comment。
+6. 代码审查和 CI 完成后，必须再追加一条独立的审查完成 comment，记录 review 结论、剩余风险和检查结果，然后才允许 merge。
+7. 只有当所有必需检查通过且 PR 无未解决阻塞意见时才能 merge；merge 后立即删除本地和远端 feature/bugfix branch、同步本地 `dev`，下一个 feature 再从新 `dev` 创建。
 
 建议分支名与对应交付：
 
@@ -239,6 +241,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 3 — Supervisor、意图路由与 Requirement Agent
 
+**状态**：已完成开发与本地验收（2026-08-28），等待用户代码审查后提交。
+
 **目标**：从一句用户目标创建会话，并在需求缺口处可恢复暂停。
 
 **开发内容**：
@@ -252,6 +256,15 @@ Day 1 必须在不实现业务功能的情况下完成：
 **测试**：意图分类数据集、重复字段不追问、假设不写入 confirmed facts、中断恢复、预算超限暂停。
 
 **退出标准**：用 Fake LLM 完成 3 轮需求补全，重启后继续，FR-AGT-001/003/013 通过。
+
+**完成记录**：
+
+- 新增显式 Supervisor StateGraph、状态 reducer 与允许转移表，覆盖 atomic query、configure goal、inspect draft、unsupported 和低置信度澄清路由；
+- Requirement Agent 使用严格 JSON 契约，仅将明确值合并到 confirmed context，推断项以 `confirmed=false` assumption 保存；已确认字段不会重复追问，每轮最多询问 3 个阻塞字段；
+- 多轮流程在 intent/requirement clarification 处使用 LangGraph interrupt，业务状态通过 SessionRepository 生成 immutable revision，checkpoint 与 session ID 对齐；
+- 最近对话按 `max_context_turns` 裁剪并携带上一轮结构化摘要；节点、结构化输出重试、墙钟时间与 Token 预算均可独立触发安全 `PAUSED`，不会无限循环；
+- Fake LLM 三轮需求补全跨三次 SQLite 重开后进入 `planning`，revision 从 1 演进到 4，用户与 assistant turns 完整持久化；
+- Day 3 定向测试 40 passed；全量回归 359 passed / 1 opt-in skipped，总覆盖率 90.91%，公开检索基准、Ruff check/format 和零警告门禁通过。
 
 ### Day 4 — Planning Agent 与配置任务 DAG
 
