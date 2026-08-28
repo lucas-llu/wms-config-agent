@@ -2424,7 +2424,7 @@ V2 的每日任务、依赖、测试方法、退出标准和范围切除顺序�
 
 | 阶段 | 时间 | 状态 | 主要验收 |
 |---|---|---|---|
-| J：Agent 契约、状态图与持久化 | Day 1–3 | [x] | Agent 契约、checkpoint、Session Repository、revision、Supervisor、意图路由、需求补全与预算中断均已完成本地验收；Day 3 待用户审查后提交 PR |
+| J：Agent 契约、状态图与持久化 | Day 1–3 | [x] | Agent 契约、checkpoint、Session Repository、revision、Supervisor、意图路由、需求补全与预算中断均已完成开发、缺陷闭环与合并验收 |
 | K：规划、RAG 证据与冲突验证 | Day 4–6 | [ ] | 无环任务 DAG、引用绑定、冲突/证据缺口阻断 |
 | L：方案修订、审批、导出与 MCP | Day 7–8 | [ ] | 批准门禁、JSON/Markdown 导出、6 个 session tools、V1 兼容 |
 | M：可观测、安全与发布验收 | Day 9–10 | [ ] | Agent Trace/Dashboard、安全测试、golden scenarios、全量回归 |

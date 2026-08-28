@@ -241,7 +241,7 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 3 — Supervisor、意图路由与 Requirement Agent
 
-**状态**：已完成开发与本地验收（2026-08-28），等待用户代码审查后提交。
+**状态**：已完成开发、缺陷闭环与合并验收（2026-08-28）。
 
 **目标**：从一句用户目标创建会话，并在需求缺口处可恢复暂停。
 
@@ -264,7 +264,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 - 多轮流程在 intent/requirement clarification 处使用 LangGraph interrupt，业务状态通过 SessionRepository 生成 immutable revision，checkpoint 与 session ID 对齐；
 - 最近对话按 `max_context_turns` 裁剪并携带上一轮结构化摘要；节点、结构化输出重试、墙钟时间与 Token 预算均可独立触发安全 `PAUSED`，不会无限循环；
 - Fake LLM 三轮需求补全跨三次 SQLite 重开后进入 `planning`，revision 从 1 演进到 4，用户与 assistant turns 完整持久化；
-- Day 3 定向测试 40 passed；全量回归 359 passed / 1 opt-in skipped，总覆盖率 90.91%，公开检索基准、Ruff check/format 和零警告门禁通过。
+- PR 前审查发现的终止意图动作与运行时状态契约问题分别通过 Issue #6/#7、独立 bugfix 分支和 PR #8/#9 闭环；四类意图均暴露具体 Supervisor action，新字段具备最小权限归属，Token/截止时间运行时噪声不再改变默认语义指纹；
+- 扩展后的 Day 3 与缺陷回归定向测试 46 passed；全量回归 361 passed / 1 opt-in skipped，总覆盖率 90.92%，公开检索基准、Ruff check/format、锁文件、依赖一致性和零警告门禁通过。
 
 ### Day 4 — Planning Agent 与配置任务 DAG
 
