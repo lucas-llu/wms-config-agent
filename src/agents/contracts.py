@@ -445,15 +445,31 @@ STATE_FIELD_OWNERS = MappingProxyType(
             {
                 "status",
                 "intent",
+                "intent_confidence",
+                "intent_reason",
+                "intent_needs_clarification",
                 "active_agent",
                 "next_action",
+                "pause_reason",
+                "latest_user_message",
+                "latest_turn_id",
+                "recent_turns",
                 "nodes_executed",
                 "tool_calls_made",
                 "retry_count",
+                "tokens_used",
+                "turn_deadline_epoch",
             }
         ),
         AgentRole.REQUIREMENT: frozenset(
-            {"user_goal", "confirmed_context", "assumptions", "open_questions", "decisions"}
+            {
+                "user_goal",
+                "requirement_summary",
+                "confirmed_context",
+                "assumptions",
+                "open_questions",
+                "decisions",
+            }
         ),
         AgentRole.PLANNING: frozenset({"configuration_tasks", "dependency_edges"}),
         AgentRole.KNOWLEDGE: frozenset({"evidence_registry"}),
@@ -503,6 +519,8 @@ def state_fingerprint(
         payload.pop("nodes_executed", None)
         payload.pop("tool_calls_made", None)
         payload.pop("retry_count", None)
+        payload.pop("tokens_used", None)
+        payload.pop("turn_deadline_epoch", None)
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
