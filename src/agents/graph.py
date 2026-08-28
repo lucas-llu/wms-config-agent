@@ -87,6 +87,15 @@ ALLOWED_TRANSITIONS = MappingProxyType(
     }
 )
 
+INTENT_ACTIONS = MappingProxyType(
+    {
+        IntentType.ATOMIC_QUERY: "query_knowledge",
+        IntentType.CONFIGURE_GOAL: "extract_requirements",
+        IntentType.INSPECT_DRAFT: "render_current_draft",
+        IntentType.UNSUPPORTED: "bounded_rejection",
+    }
+)
+
 
 def transition_status(state: dict[str, Any], target: SessionStatus) -> str:
     current = SessionStatus(str(state.get("status", SessionStatus.CREATED.value)))
@@ -188,7 +197,7 @@ class SupervisorGraph:
                 "intent_reason": result.reason,
                 "intent_needs_clarification": self.classifier.requires_clarification(result),
                 "active_agent": "supervisor",
-                "next_action": "route_intent",
+                "next_action": INTENT_ACTIONS[result.intent],
                 "pause_reason": "",
             }
         )
