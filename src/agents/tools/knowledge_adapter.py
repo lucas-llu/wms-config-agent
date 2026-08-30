@@ -133,7 +133,9 @@ def _evidence_from_citations(citations: tuple[Citation, ...]) -> tuple[Evidence,
 def _safe_source(value: str) -> str:
     windows_source = PureWindowsPath(value)
     posix_source = PurePosixPath(value.replace("\\", "/"))
-    if windows_source.drive or windows_source.is_absolute() or posix_source.is_absolute():
+    if windows_source.drive or windows_source.root:
+        return windows_source.name
+    if posix_source.is_absolute():
         return posix_source.name
     return posix_source.as_posix()
 
