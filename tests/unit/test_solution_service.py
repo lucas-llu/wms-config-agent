@@ -30,35 +30,42 @@ def _state(session_id: str):
     }
 
 
+def _review_ready(repository: SessionRepository, session_id: str) -> None:
+    repository.create_session(session_id=session_id, goal="Configure inbound appointments")
+    repository.update_revision(
+        session_id=session_id,
+        expected_revision=1,
+        state_update=_state(session_id),
+        actor="test",
+        reason="validated",
+    )
+
+
 def test_approval_export_is_deterministic_idempotent_and_revision_safe(tmp_path) -> None:
     repository = SessionRepository(tmp_path / "sessions.db")
-    repository.create_session(
-        session_id="session:solution",
-        goal="Configure inbound appointments",
-        initial_state=_state("session:solution"),
-    )
+    _review_ready(repository, "session:solution")
     service = SolutionService(repository, tmp_path / "exports")
 
     approved = service.review(
         "session:solution",
-        expected_revision=1,
+        expected_revision=2,
         decision=ReviewDecision.APPROVE,
         actor="reviewer",
         comment="Approved",
     )
-    first = service.export("session:solution", expected_revision=2, format="json")
-    second = service.export("session:solution", expected_revision=2, format="json")
-    markdown = service.export("session:solution", expected_revision=2, format="markdown")
+    first = service.export("session:solution", expected_revision=3, format="json")
+    second = service.export("session:solution", expected_revision=3, format="json")
+    markdown = service.export("session:solution", expected_revision=3, format="markdown")
 
     assert approved.state["status"] == "approved"
     assert first == second
     assert len(repository.list_exports("session:solution")) == 2
     assert (
-        json.loads((tmp_path / "exports/session_solution/r2.json").read_text())["goal"]
+        json.loads((tmp_path / "exports/session_solution/r3.json").read_text())["goal"]
         == "Configure inbound appointments"
     )
     assert (
-        (tmp_path / "exports/session_solution/r2.md")
+        (tmp_path / "exports/session_solution/r3.md")
         .read_text()
         .startswith("# Configuration Solution")
     )
@@ -66,7 +73,7 @@ def test_approval_export_is_deterministic_idempotent_and_revision_safe(tmp_path)
     with pytest.raises(SessionRevisionConflict):
         service.review(
             "session:solution",
-            expected_revision=1,
+            expected_revision=2,
             decision=ReviewDecision.APPROVE,
             actor="reviewer",
             comment="stale",
@@ -75,18 +82,14 @@ def test_approval_export_is_deterministic_idempotent_and_revision_safe(tmp_path)
 
 def test_revise_invalidates_outputs_and_pre_validation_export_is_rejected(tmp_path) -> None:
     repository = SessionRepository(tmp_path / "sessions.db")
-    repository.create_session(
-        session_id="session:revise",
-        goal="Configure inbound appointments",
-        initial_state=_state("session:revise"),
-    )
+    _review_ready(repository, "session:revise")
     service = SolutionService(repository, tmp_path / "exports")
 
     with pytest.raises(SolutionStateError, match="approved"):
-        service.export("session:revise", expected_revision=1, format="json")
+        service.export("session:revise", expected_revision=2, format="json")
     revised = service.review(
         "session:revise",
-        expected_revision=1,
+        expected_revision=2,
         decision=ReviewDecision.REVISE,
         actor="reviewer",
         comment="Change the site",
