@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from agents.tools import KnowledgeAdapter, build_scope_filters
 from core.query_engine import QueryProcessor, SafeReranker, SearchOutcome
 from core.response import ResponseBuilder
@@ -17,7 +19,12 @@ class FakeHybridSearch:
         return self.outcome
 
 
-def _outcome(*, sufficient: bool = True, failures=None) -> SearchOutcome:
+def _outcome(
+    *,
+    sufficient: bool = True,
+    failures=None,
+    source_path: str = "D:/private/manuals/capacity.pdf",
+) -> SearchOutcome:
     processed = QueryProcessor().process(
         "appointment capacity configuration",
         {"version": "2024.1", "module": "appointment"},
@@ -27,7 +34,7 @@ def _outcome(*, sufficient: bool = True, failures=None) -> SearchOutcome:
         score=0.91,
         text="Appointment capacity is configured for the receiving schedule.",
         metadata={
-            "source_path": "D:/private/manuals/capacity.pdf",
+            "source_path": source_path,
             "title": "Appointment Capacity",
             "page_start": 4,
             "page_end": 5,
@@ -100,3 +107,24 @@ def test_insufficient_v1_outcome_never_creates_evidence() -> None:
 
     assert result.evidence_sufficient is False
     assert result.evidence == ()
+
+
+@pytest.mark.parametrize(
+    ("source_path", "expected"),
+    [
+        ("D:/private/manuals/capacity.pdf", "capacity.pdf"),
+        (r"D:\private\manuals\capacity.pdf", "capacity.pdf"),
+        (r"D:private\manuals\capacity.pdf", "capacity.pdf"),
+        ("/private/manuals/capacity.pdf", "capacity.pdf"),
+        (r"\\server\share\capacity.pdf", "capacity.pdf"),
+        (r"manuals\capacity.pdf", "manuals/capacity.pdf"),
+    ],
+)
+def test_evidence_source_sanitization_is_independent_of_host_os(
+    source_path: str, expected: str
+) -> None:
+    adapter, _search = _adapter(_outcome(source_path=source_path))
+
+    result = adapter.search("appointment capacity", filters={"module": "appointment"})
+
+    assert result.evidence[0].source == expected

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
 from agents.contracts import Evidence, stable_contract_id
@@ -131,8 +131,13 @@ def _evidence_from_citations(citations: tuple[Citation, ...]) -> tuple[Evidence,
 
 
 def _safe_source(value: str) -> str:
-    source = Path(value)
-    return source.name if source.is_absolute() else source.as_posix()
+    windows_source = PureWindowsPath(value)
+    posix_source = PurePosixPath(value.replace("\\", "/"))
+    if windows_source.drive or windows_source.root:
+        return windows_source.name
+    if posix_source.is_absolute():
+        return posix_source.name
+    return posix_source.as_posix()
 
 
 def _optional_text(value: Any) -> str | None:
