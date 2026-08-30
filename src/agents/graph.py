@@ -12,7 +12,13 @@ from langgraph.types import interrupt
 from agents.budget import TurnBudgetPolicy
 from agents.contracts import IntentType, OpenQuestion, SessionStatus, stable_contract_id
 from agents.llm_json import StructuredLLMError
-from agents.nodes import IntentClassifier, PlanningAgent, RequirementAgent
+from agents.nodes import (
+    IntentClassifier,
+    KnowledgeAgent,
+    KnowledgeCollectionError,
+    PlanningAgent,
+    RequirementAgent,
+)
 from core.settings import AgentSettings
 
 
@@ -58,6 +64,9 @@ class AgentGraphState(TypedDict, total=False):
     dependency_edges: list[dict[str, Any]]
     planning_baseline_fingerprint: str
     invalidated_task_ids: list[str]
+    evidence_registry: list[dict[str, Any]]
+    task_evidence_bindings: list[dict[str, Any]]
+    knowledge_fingerprint: str
     nodes_executed: int
     retry_count: int
     tokens_used: int
@@ -91,6 +100,9 @@ ALLOWED_TRANSITIONS = MappingProxyType(
         SessionStatus.PLANNING: frozenset(
             {SessionStatus.RETRIEVING, SessionStatus.PAUSED, SessionStatus.FAILED}
         ),
+        SessionStatus.RETRIEVING: frozenset(
+            {SessionStatus.VALIDATING, SessionStatus.PAUSED, SessionStatus.FAILED}
+        ),
     }
 )
 
@@ -123,12 +135,14 @@ class SupervisorGraph:
         classifier: IntentClassifier,
         requirement_agent: RequirementAgent,
         planning_agent: PlanningAgent,
+        knowledge_agent: KnowledgeAgent | None,
         budget: TurnBudgetPolicy,
     ) -> None:
         self.settings = settings
         self.classifier = classifier
         self.requirement_agent = requirement_agent
         self.planning_agent = planning_agent
+        self.knowledge_agent = knowledge_agent
         self.budget = budget
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
@@ -141,6 +155,8 @@ class SupervisorGraph:
         builder.add_node("await_requirements", self._await_requirements)
         builder.add_node("complete_requirements", self._complete_requirements)
         builder.add_node("plan_tasks", self._plan_tasks)
+        if self.knowledge_agent is not None:
+            builder.add_node("retrieve_evidence", self._retrieve_evidence)
         builder.add_edge(START, "classify_intent")
         builder.add_conditional_edges(
             "classify_intent",
@@ -179,7 +195,11 @@ class SupervisorGraph:
             {"continue": "extract_requirements", "end": END},
         )
         builder.add_edge("complete_requirements", "plan_tasks")
-        builder.add_edge("plan_tasks", END)
+        if self.knowledge_agent is None:
+            builder.add_edge("plan_tasks", END)
+        else:
+            builder.add_edge("plan_tasks", "retrieve_evidence")
+            builder.add_edge("retrieve_evidence", END)
         return builder.compile(checkpointer=checkpointer, name="configuration-supervisor")
 
     def _classify_intent(self, state: AgentGraphState) -> dict[str, Any]:
@@ -374,6 +394,38 @@ class SupervisorGraph:
             }
         )
         return update
+
+    def _retrieve_evidence(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "knowledge")
+        if not entered.allowed:
+            return entered.update
+        if self.knowledge_agent is None:
+            raise RuntimeError("knowledge agent is not configured")
+        try:
+            result = self.knowledge_agent.collect(
+                tasks=list(state.get("configuration_tasks", [])),
+                confirmed_context=dict(state.get("confirmed_context", {})),
+                existing_evidence=list(state.get("evidence_registry", [])),
+            )
+        except KnowledgeCollectionError:
+            return {
+                **entered.update,
+                "status": SessionStatus.PAUSED.value,
+                "active_agent": "knowledge",
+                "pause_reason": "knowledge_contract_invalid",
+                "next_action": "repair_task_plan",
+            }
+        return {
+            **entered.update,
+            "status": transition_status(state, SessionStatus.VALIDATING),
+            "active_agent": "knowledge",
+            "evidence_registry": [item.to_dict() for item in result.evidence],
+            "task_evidence_bindings": [item.to_dict() for item in result.bindings],
+            "knowledge_fingerprint": result.knowledge_fingerprint,
+            "tool_calls_made": int(state.get("tool_calls_made", 0)) + result.tool_calls_made,
+            "next_action": "analyze_dependencies_and_conflicts",
+            "pause_reason": "",
+        }
 
     def _structured_failure(
         self,

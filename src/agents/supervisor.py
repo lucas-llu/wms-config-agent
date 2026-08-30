@@ -11,10 +11,11 @@ from langgraph.types import Command
 
 from agents.budget import TurnBudgetPolicy
 from agents.graph import AgentGraphState, SupervisorGraph
-from agents.nodes import IntentClassifier, PlanningAgent, RequirementAgent
+from agents.nodes import IntentClassifier, KnowledgeAgent, PlanningAgent, RequirementAgent
 from agents.repositories import RevisionRecord, SessionRecord
 from agents.runtime import session_checkpoint_config
 from agents.services import SessionService
+from agents.tools import KnowledgeAdapter
 from core.settings import AgentSettings
 from libs.llm import BaseLLM
 
@@ -34,6 +35,7 @@ class Supervisor:
         *,
         llm: BaseLLM,
         settings: AgentSettings,
+        knowledge_adapter: KnowledgeAdapter | None = None,
         clock: Any = time.time,
     ) -> None:
         self.settings = settings
@@ -55,11 +57,20 @@ class Supervisor:
             prompt_path=settings.planning_prompt_path,
             template_path=settings.planning_template_path,
         )
+        self.knowledge_agent = (
+            KnowledgeAgent(
+                knowledge_adapter,
+                max_retrieval_tasks=settings.max_retrieval_tasks,
+            )
+            if knowledge_adapter is not None
+            else None
+        )
         self.graph = SupervisorGraph(
             settings=settings,
             classifier=self.classifier,
             requirement_agent=self.requirement_agent,
             planning_agent=self.planning_agent,
+            knowledge_agent=self.knowledge_agent,
             budget=TurnBudgetPolicy(settings, clock=clock),
         )
 
@@ -111,6 +122,8 @@ class RequirementSessionRunner:
             "configuration_tasks": [],
             "dependency_edges": [],
             "invalidated_task_ids": [],
+            "evidence_registry": [],
+            "task_evidence_bindings": [],
             "nodes_executed": 0,
             "retry_count": 0,
             "tokens_used": 0,
