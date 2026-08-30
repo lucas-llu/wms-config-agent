@@ -1,0 +1,60 @@
+{
+  "template_id": "inbound_appointment_receiving_v1",
+  "description": "Sanitized planning hints for an inbound appointment and receiving scenario. These hints require evidence before becoming configuration instructions.",
+  "applicability": {
+    "business_process_terms": [
+      "inbound appointment",
+      "receiving"
+    ],
+    "module_terms": [
+      "inbound",
+      "appointment",
+      "receiving"
+    ]
+  },
+  "task_hints": [
+    {
+      "task_key": "confirm_receiving_scope",
+      "module": "inbound",
+      "goal": "Confirm the receiving flow, site scope, and target environment before selecting configuration details.",
+      "depends_on": [],
+      "evidence_requirements": [
+        "Product-version documentation describing the supported inbound receiving flow"
+      ]
+    },
+    {
+      "task_key": "define_appointment_capacity",
+      "module": "appointment",
+      "goal": "Define the required appointment capacity behavior without assuming product-specific keys or values.",
+      "depends_on": [
+        "confirm_receiving_scope"
+      ],
+      "evidence_requirements": [
+        "Version-matched documentation for appointment capacity and schedule behavior"
+      ]
+    },
+    {
+      "task_key": "align_receiving_integration",
+      "module": "integration",
+      "goal": "Identify integration touchpoints affected by the appointment and receiving design.",
+      "depends_on": [
+        "confirm_receiving_scope"
+      ],
+      "evidence_requirements": [
+        "Documentation for the confirmed integration interfaces and receiving event flow"
+      ]
+    },
+    {
+      "task_key": "validate_inbound_flow",
+      "module": "inbound",
+      "goal": "Validate the planned appointment-to-receiving flow and its rollback boundaries.",
+      "depends_on": [
+        "define_appointment_capacity",
+        "align_receiving_integration"
+      ],
+      "evidence_requirements": [
+        "Documented validation and rollback guidance for each planned configuration area"
+      ]
+    }
+  ]
+}

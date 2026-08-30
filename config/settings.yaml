@@ -96,3 +96,5 @@ agent:
   max_questions_per_turn: 3
   intent_prompt_path: config/prompts/agent_intent.txt
   requirement_prompt_path: config/prompts/agent_requirement.txt
+  planning_prompt_path: config/prompts/agent_planning.txt
+  planning_template_path: config/templates/inbound_appointment_receiving.json

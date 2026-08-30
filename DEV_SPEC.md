@@ -1177,8 +1177,11 @@ load_or_create_session
 
 - `task_id`、`title`、`module`、`goal`、`status`、`depends_on[]`；
 - `preconditions[]`、`parameters[]`、`steps[]`、`validation_steps[]`、`rollback_steps[]`；
-- `evidence_ids[]`、`assumption_ids[]`、`risk_level`、`open_questions[]`；
+- `evidence_requirements[]`、`evidence_ids[]`、`assumption_ids[]`、`risk_level`、`open_questions[]`；
+- `baseline_fingerprint`、可选 `invalidation_reason`；需求基线变化时必须标记受影响的旧任务；
 - `evidence_status`: `unsupported | partial | supported | environment_verified`。
+
+`dependency_edges[]` 使用明确的 `upstream_task_id`、`downstream_task_id` 和 `reason`，必须与任务的 `depends_on[]` 一致；稳定 ID、缺失依赖、去重、拓扑排序和环检测由确定性代码执行，不接受 LLM 自报“无环”。
 
 **证据注册表约束**：
 

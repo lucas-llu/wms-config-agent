@@ -65,9 +65,42 @@ def _requirement_outputs() -> tuple[dict[str, object], ...]:
     )
 
 
+def _planning_output() -> dict[str, object]:
+    return {
+        "tasks": [
+            {
+                "task_key": "confirm_scope",
+                "title": "Confirm inbound appointment scope",
+                "module": "inbound",
+                "goal": "Confirm the site and environment scope",
+                "depends_on": [],
+                "preconditions": [],
+                "steps": ["Review the confirmed inbound requirement baseline"],
+                "validation_steps": ["Confirm DC01 and test are explicit"],
+                "rollback_steps": ["Return the task to draft"],
+                "evidence_requirements": ["Version-matched inbound flow documentation"],
+                "risk_level": "low",
+            },
+            {
+                "task_key": "plan_capacity",
+                "title": "Plan appointment capacity",
+                "module": "appointment",
+                "goal": "Define appointment capacity behavior",
+                "depends_on": ["confirm_scope"],
+                "preconditions": ["Inbound scope confirmed"],
+                "steps": ["Describe the required capacity behavior"],
+                "validation_steps": ["Verify behavior against the confirmed goal"],
+                "rollback_steps": ["Restore the previous capacity plan"],
+                "evidence_requirements": ["Appointment capacity documentation"],
+                "risk_level": "medium",
+            },
+        ]
+    }
+
+
 def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
     settings = _settings(tmp_path / "agent", max_context_turns=2)
-    llm = ScriptedLLM(*_requirement_outputs())
+    llm = ScriptedLLM(*_requirement_outputs(), _planning_output())
 
     async def start_turn():
         sessions = SessionService(SessionRepository(settings.session_db_path))
@@ -103,8 +136,8 @@ def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
     assert "volume_profile" not in first.state["confirmed_context"]
     second_reasons = {item["reason"] for item in second.state["open_questions"]}
     assert "required_context_missing:product_version" not in second_reasons
-    assert third.state["status"] == "planning"
-    assert third.state["next_action"] == "plan_tasks"
+    assert third.state["status"] == "retrieving"
+    assert third.state["next_action"] == "retrieve_evidence"
     assert third.state["confirmed_context"] == {
         "business_process": "Inbound appointment",
         "modules": ["inbound"],
@@ -113,6 +146,19 @@ def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
         "environment": "test",
     }
     assert len(third.state["recent_turns"]) == 2
+    assert [task["title"] for task in third.state["configuration_tasks"]] == [
+        "Confirm inbound appointment scope",
+        "Plan appointment capacity",
+    ]
+    assert (
+        third.state["dependency_edges"][0]["upstream_task_id"]
+        == third.state["configuration_tasks"][0]["task_id"]
+    )
+    assert (
+        third.state["dependency_edges"][0]["downstream_task_id"]
+        == third.state["configuration_tasks"][1]["task_id"]
+    )
+    assert third.state["planning_baseline_fingerprint"].startswith("baseline:")
     assert third.session.current_revision == 4
     assert [item.revision for item in repository.list_revisions("session:three-turn")] == [
         1,

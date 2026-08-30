@@ -12,6 +12,7 @@ from agents import (
     ConfigurationSolution,
     ConfigurationTask,
     ConfirmedContext,
+    DependencyEdge,
     Evidence,
     EvidenceStatus,
     FindingSeverity,
@@ -73,6 +74,25 @@ def test_agent_contracts_serialize_enums_and_nested_dataclasses_deterministicall
     assert payload["parameters"][0]["value"] == 10
     assert json.loads(task.to_json()) == payload
     assert task.fingerprint() == _task().fingerprint()
+
+
+def test_planning_contracts_preserve_evidence_needs_and_dependency_direction() -> None:
+    task = ConfigurationTask(
+        task_id="task:capacity",
+        title="Plan appointment capacity",
+        module="appointment",
+        goal="Define capacity behavior",
+        evidence_requirements=("Version-matched capacity documentation",),
+        baseline_fingerprint="baseline:one",
+    )
+    edge = DependencyEdge(
+        upstream_task_id="task:scope",
+        downstream_task_id=task.task_id,
+        reason="scope must be confirmed first",
+    )
+
+    assert task.to_dict()["evidence_requirements"] == ["Version-matched capacity documentation"]
+    assert edge.to_dict()["downstream_task_id"] == task.task_id
 
 
 def test_stable_ids_ignore_dictionary_insertion_order() -> None:
@@ -198,6 +218,20 @@ def test_day_three_fields_have_explicit_least_privilege_ownership() -> None:
         validate_state_update(AgentRole.SUPERVISOR, {"requirement_summary": "wrong owner"})
     with pytest.raises(AgentContractError, match="tokens_used"):
         validate_state_update(AgentRole.REQUIREMENT, {"tokens_used": 12})
+
+
+def test_planning_fields_are_owned_only_by_planning_agent() -> None:
+    update = {
+        "configuration_tasks": [],
+        "dependency_edges": [],
+        "planning_baseline_fingerprint": "baseline:one",
+        "invalidated_task_ids": [],
+    }
+
+    validate_state_update(AgentRole.PLANNING, update)
+
+    with pytest.raises(AgentContractError, match="configuration_tasks"):
+        validate_state_update(AgentRole.SUPERVISOR, update)
 
 
 def test_configuration_task_rejects_self_dependency() -> None:
