@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from agents import ReviewDecision
+from agents import AgentContractError, ReviewDecision
 from agents.repositories import SessionRepository, SessionRevisionConflict
 from agents.services import SolutionService, SolutionStateError
 
@@ -99,6 +99,20 @@ def test_approval_export_is_deterministic_idempotent_and_revision_safe(tmp_path)
             actor="reviewer",
             comment="stale",
         )
+    assert len(repository.list_approvals("session:solution")) == 1
+
+    with pytest.raises(AgentContractError):
+        repository.apply_review_transition(
+            session_id="session:solution",
+            expected_revision=3,
+            decision=ReviewDecision.REJECT,
+            state_update={"unsafe": object()},  # type: ignore[typeddict-item]
+            actor="reviewer",
+            comment="must roll back",
+            approval_id="approval:rollback",
+        )
+    assert repository.get_session("session:solution").current_revision == 3
+    assert len(repository.list_approvals("session:solution")) == 1
 
 
 def test_revise_invalidates_outputs_and_pre_validation_export_is_rejected(tmp_path) -> None:

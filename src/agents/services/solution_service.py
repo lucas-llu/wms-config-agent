@@ -67,17 +67,6 @@ class SolutionService:
         state = dict(record.state)
         if state.get("status") != SessionStatus.REVIEW_REQUIRED.value:
             raise SolutionStateError("only review_required revisions can be reviewed")
-        self.repository.record_approval(
-            session_id=session_id,
-            expected_revision=expected_revision,
-            decision=decision,
-            actor=actor,
-            comment=comment,
-            approval_id=stable_contract_id(
-                "approval",
-                {"session_id": session_id, "revision": expected_revision, "decision": decision},
-            ),
-        )
         update: dict[str, Any] = {"review_decision": decision.value}
         if decision is ReviewDecision.APPROVE:
             update["status"] = SessionStatus.APPROVED.value
@@ -97,12 +86,17 @@ class SolutionService:
                     "draft_version": int(state.get("draft_version", 1)) + 1,
                 }
             )
-        return self.repository.update_revision(
+        return self.repository.apply_review_transition(
             session_id=session_id,
             expected_revision=expected_revision,
+            decision=decision,
             state_update=update,
             actor=actor,
-            reason=f"review:{decision.value}",
+            comment=comment,
+            approval_id=stable_contract_id(
+                "approval",
+                {"session_id": session_id, "revision": expected_revision, "decision": decision},
+            ),
         )
 
     def export(self, session_id: str, *, expected_revision: int, format: str) -> ExportArtifact:
