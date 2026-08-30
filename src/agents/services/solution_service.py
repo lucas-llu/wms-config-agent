@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 from typing import Any
 
@@ -146,7 +145,7 @@ class SolutionService:
 
     @staticmethod
     def _markdown(payload: dict[str, Any]) -> str:
-        lines = [f"# Configuration Solution", "", f"Goal: {payload['goal']}", "", "## Tasks", ""]
+        lines = ["# Configuration Solution", "", f"Goal: {payload['goal']}", "", "## Tasks", ""]
         for task in payload["tasks"]:
             lines.extend([f"### {task['title']}", task["goal"], ""])
         lines.extend(["## Evidence", ""])
