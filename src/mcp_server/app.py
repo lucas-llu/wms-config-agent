@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agents.repositories import SessionRepository
+from agents.services import SessionService, SolutionService, ValidationService
+from agents.supervisor import RequirementSessionRunner, Supervisor
+from agents.tools import KnowledgeAdapter
 from core.query_engine import (
     DenseRetriever,
     HybridSearch,
@@ -17,6 +21,7 @@ from core.settings import load_settings
 from core.trace import TraceCollector
 from ingestion.storage import BM25Indexer
 from libs.embedding import EmbeddingFactory
+from libs.llm import LLMFactory
 from libs.reranker import RerankerFactory
 from libs.vector_store import VectorStoreFactory
 from mcp_server.catalog import CorpusCatalog
@@ -24,6 +29,8 @@ from mcp_server.protocol_handler import ProtocolHandler
 from mcp_server.tool_registry import ToolRegistry
 from mcp_server.tools import (
     GetDocumentSummaryTool,
+    ConfigurationSessionApplication,
+    ConfigurationSessionTools,
     ListCollectionsTool,
     QueryKnowledgeHubTool,
 )
@@ -58,21 +65,38 @@ def create_protocol_handler(
             Path("data/corpus/processed/images"),
         ]
     )
+    reranker = SafeReranker(RerankerFactory.create(settings))
+    response_builder = ResponseBuilder()
     query_tool = QueryKnowledgeHubTool(
         hybrid_search,
-        SafeReranker(RerankerFactory.create(settings)),
-        ResponseBuilder(),
+        reranker,
+        response_builder,
         assembler,
         TraceCollector(
             settings.observability.trace_file,
             enabled=settings.observability.enabled,
         ),
     )
-    registry = ToolRegistry(
-        [
-            query_tool.definition(),
-            ListCollectionsTool(catalog).definition(),
-            GetDocumentSummaryTool(catalog).definition(),
-        ]
-    )
+    tools = [
+        query_tool.definition(),
+        ListCollectionsTool(catalog).definition(),
+        GetDocumentSummaryTool(catalog).definition(),
+    ]
+    if settings.agent.enabled:
+        repository = SessionRepository(settings.agent.session_db_path)
+        sessions = SessionService(repository)
+        supervisor = Supervisor(
+            llm=LLMFactory.create(settings),
+            settings=settings.agent,
+            knowledge_adapter=KnowledgeAdapter(hybrid_search, reranker, response_builder),
+        )
+        application = ConfigurationSessionApplication(
+            runner=RequirementSessionRunner(supervisor=supervisor, sessions=sessions),
+            repository=repository,
+            validation=ValidationService(),
+            solutions=SolutionService(repository, settings.agent.export_root),
+            settings=settings.agent,
+        )
+        tools.extend(ConfigurationSessionTools(application).definitions())
+    registry = ToolRegistry(tools)
     return ProtocolHandler(registry)
