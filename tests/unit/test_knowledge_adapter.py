@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from agents.tools import KnowledgeAdapter, build_scope_filters
 from core.query_engine import QueryProcessor, SafeReranker, SearchOutcome
 from core.response import ResponseBuilder
 from core.types import RetrievalResult
 from libs.reranker import NoneReranker
-
-from agents.tools import KnowledgeAdapter, build_scope_filters
 
 
 class FakeHybridSearch:
