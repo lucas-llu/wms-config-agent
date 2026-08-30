@@ -114,6 +114,7 @@ def test_insufficient_v1_outcome_never_creates_evidence() -> None:
     [
         ("D:/private/manuals/capacity.pdf", "capacity.pdf"),
         (r"D:\private\manuals\capacity.pdf", "capacity.pdf"),
+        (r"D:private\manuals\capacity.pdf", "capacity.pdf"),
         ("/private/manuals/capacity.pdf", "capacity.pdf"),
         (r"\\server\share\capacity.pdf", "capacity.pdf"),
         (r"manuals\capacity.pdf", "manuals/capacity.pdf"),
