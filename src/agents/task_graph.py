@@ -39,9 +39,7 @@ class TaskDraft:
 
     def __post_init__(self) -> None:
         if not _TASK_KEY.fullmatch(self.task_key):
-            raise TaskGraphError(
-                "task_key must be lowercase snake_case and at most 64 characters"
-            )
+            raise TaskGraphError("task_key must be lowercase snake_case and at most 64 characters")
         for field_name in ("title", "module", "goal"):
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
@@ -58,15 +56,11 @@ class TaskDraft:
             if not isinstance(values, tuple) or any(
                 not isinstance(item, str) or not item.strip() for item in values
             ):
-                raise TaskGraphError(
-                    f"TaskDraft.{field_name} must be a tuple of non-empty strings"
-                )
+                raise TaskGraphError(f"TaskDraft.{field_name} must be a tuple of non-empty strings")
         if not isinstance(self.risk_level, RiskLevel):
             raise TaskGraphError("TaskDraft.risk_level must be a RiskLevel")
         if len(self.depends_on) != len(set(self.depends_on)):
-            raise TaskGraphError(
-                f"task {self.task_key!r} contains duplicate dependencies"
-            )
+            raise TaskGraphError(f"task {self.task_key!r} contains duplicate dependencies")
         if self.task_key in self.depends_on:
             raise TaskGraphError(f"task {self.task_key!r} cannot depend on itself")
 
@@ -101,9 +95,7 @@ def build_task_plan(
         semantic_key = (_normalize(draft.module), _normalize(draft.goal))
         duplicate = semantic_keys.get(semantic_key)
         if duplicate is not None:
-            raise TaskGraphError(
-                f"duplicate semantic task: {duplicate} and {draft.task_key}"
-            )
+            raise TaskGraphError(f"duplicate semantic task: {duplicate} and {draft.task_key}")
         by_key[draft.task_key] = draft
         semantic_keys[semantic_key] = draft.task_key
 
@@ -111,8 +103,7 @@ def build_task_plan(
         missing = sorted(set(draft.depends_on) - set(by_key))
         if missing:
             raise TaskGraphError(
-                f"task {draft.task_key!r} references missing dependencies: "
-                f"{', '.join(missing)}"
+                f"task {draft.task_key!r} references missing dependencies: {', '.join(missing)}"
             )
 
     ordered_keys = _stable_topological_order(by_key)

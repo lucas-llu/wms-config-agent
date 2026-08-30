@@ -131,9 +131,7 @@ def _parse_draft(value: Any, index: int) -> TaskDraft:
         raise TaskGraphError(f"tasks[{index}] must be a JSON object")
     unknown = sorted(set(value) - _TASK_FIELDS)
     if unknown:
-        raise TaskGraphError(
-            f"tasks[{index}] contains unsupported fields: {', '.join(unknown)}"
-        )
+        raise TaskGraphError(f"tasks[{index}] contains unsupported fields: {', '.join(unknown)}")
 
     text = {
         field: _required_text(value, field, index)
@@ -163,9 +161,7 @@ def _required_text(value: dict[str, Any], field: str, index: int) -> str:
     return item.strip()
 
 
-def _string_tuple(
-    value: Any, field: str, index: int, *, required: bool
-) -> tuple[str, ...]:
+def _string_tuple(value: Any, field: str, index: int, *, required: bool) -> tuple[str, ...]:
     if not isinstance(value, list) or any(
         not isinstance(item, str) or not item.strip() for item in value
     ):

@@ -143,9 +143,7 @@ class AgentSettings:
     intent_prompt_path: Path = Path("config/prompts/agent_intent.txt")
     requirement_prompt_path: Path = Path("config/prompts/agent_requirement.txt")
     planning_prompt_path: Path = Path("config/prompts/agent_planning.txt")
-    planning_template_path: Path = Path(
-        "config/templates/inbound_appointment_receiving.json"
-    )
+    planning_template_path: Path = Path("config/templates/inbound_appointment_receiving.json")
 
 
 @dataclass(frozen=True, slots=True)

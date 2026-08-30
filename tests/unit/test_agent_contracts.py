@@ -91,9 +91,7 @@ def test_planning_contracts_preserve_evidence_needs_and_dependency_direction() -
         reason="scope must be confirmed first",
     )
 
-    assert task.to_dict()["evidence_requirements"] == [
-        "Version-matched capacity documentation"
-    ]
+    assert task.to_dict()["evidence_requirements"] == ["Version-matched capacity documentation"]
     assert edge.to_dict()["downstream_task_id"] == task.task_id
 
 

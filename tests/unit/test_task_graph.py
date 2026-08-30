@@ -45,9 +45,7 @@ def test_task_ids_and_topological_order_are_stable_across_input_order() -> None:
     forward = _plan(first, second)
     reverse = _plan(second, first)
 
-    assert [task.task_id for task in forward.tasks] == [
-        task.task_id for task in reverse.tasks
-    ]
+    assert [task.task_id for task in forward.tasks] == [task.task_id for task in reverse.tasks]
     assert [task.title for task in forward.tasks] == [
         "Confirm Scope",
         "Configure Capacity",
