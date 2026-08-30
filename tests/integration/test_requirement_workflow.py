@@ -150,12 +150,14 @@ def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
         "Confirm inbound appointment scope",
         "Plan appointment capacity",
     ]
-    assert third.state["dependency_edges"][0]["upstream_task_id"] == third.state[
-        "configuration_tasks"
-    ][0]["task_id"]
-    assert third.state["dependency_edges"][0]["downstream_task_id"] == third.state[
-        "configuration_tasks"
-    ][1]["task_id"]
+    assert (
+        third.state["dependency_edges"][0]["upstream_task_id"]
+        == third.state["configuration_tasks"][0]["task_id"]
+    )
+    assert (
+        third.state["dependency_edges"][0]["downstream_task_id"]
+        == third.state["configuration_tasks"][1]["task_id"]
+    )
     assert third.state["planning_baseline_fingerprint"].startswith("baseline:")
     assert third.session.current_revision == 4
     assert [item.revision for item in repository.list_revisions("session:three-turn")] == [
