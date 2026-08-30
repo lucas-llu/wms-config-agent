@@ -19,6 +19,7 @@ from agents.nodes import (
     PlanningAgent,
     RequirementAgent,
 )
+from agents.services import ValidationService
 from core.settings import AgentSettings
 
 
@@ -67,6 +68,11 @@ class AgentGraphState(TypedDict, total=False):
     evidence_registry: list[dict[str, Any]]
     task_evidence_bindings: list[dict[str, Any]]
     knowledge_fingerprint: str
+    conflicts: list[dict[str, Any]]
+    validation_findings: list[dict[str, Any]]
+    targeted_retrieval_requirements: dict[str, list[str]]
+    targeted_retrieval_rounds: int
+    validation_fingerprint: str
     nodes_executed: int
     retry_count: int
     tokens_used: int
@@ -83,6 +89,7 @@ ALLOWED_TRANSITIONS = MappingProxyType(
         SessionStatus.COLLECTING_REQUIREMENTS: frozenset(
             {
                 SessionStatus.COLLECTING_REQUIREMENTS,
+                SessionStatus.VALIDATING,
                 SessionStatus.PAUSED,
                 SessionStatus.PLANNING,
                 SessionStatus.CANCELLED,
@@ -102,6 +109,14 @@ ALLOWED_TRANSITIONS = MappingProxyType(
         ),
         SessionStatus.RETRIEVING: frozenset(
             {SessionStatus.VALIDATING, SessionStatus.PAUSED, SessionStatus.FAILED}
+        ),
+        SessionStatus.VALIDATING: frozenset(
+            {
+                SessionStatus.VALIDATING,
+                SessionStatus.REVIEW_REQUIRED,
+                SessionStatus.PAUSED,
+                SessionStatus.FAILED,
+            }
         ),
     }
 )
@@ -136,6 +151,7 @@ class SupervisorGraph:
         requirement_agent: RequirementAgent,
         planning_agent: PlanningAgent,
         knowledge_agent: KnowledgeAgent | None,
+        validation_service: ValidationService,
         budget: TurnBudgetPolicy,
     ) -> None:
         self.settings = settings
@@ -143,6 +159,7 @@ class SupervisorGraph:
         self.requirement_agent = requirement_agent
         self.planning_agent = planning_agent
         self.knowledge_agent = knowledge_agent
+        self.validation_service = validation_service
         self.budget = budget
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
@@ -157,6 +174,12 @@ class SupervisorGraph:
         builder.add_node("plan_tasks", self._plan_tasks)
         if self.knowledge_agent is not None:
             builder.add_node("retrieve_evidence", self._retrieve_evidence)
+            builder.add_node("analyze_conflicts", self._analyze_conflicts)
+            builder.add_node("validate_draft", self._validate_draft)
+            builder.add_node("targeted_retrieval", self._targeted_retrieval)
+            builder.add_node("pause_validation", self._pause_validation)
+            builder.add_node("await_validation", self._await_validation)
+            builder.add_node("complete_validation", self._complete_validation)
         builder.add_edge(START, "classify_intent")
         builder.add_conditional_edges(
             "classify_intent",
@@ -199,7 +222,21 @@ class SupervisorGraph:
             builder.add_edge("plan_tasks", END)
         else:
             builder.add_edge("plan_tasks", "retrieve_evidence")
-            builder.add_edge("retrieve_evidence", END)
+            builder.add_edge("retrieve_evidence", "analyze_conflicts")
+            builder.add_edge("analyze_conflicts", "validate_draft")
+            builder.add_conditional_edges(
+                "validate_draft",
+                self._route_after_validation,
+                {
+                    "retry": "targeted_retrieval",
+                    "pause": "pause_validation",
+                    "review": "complete_validation",
+                },
+            )
+            builder.add_edge("targeted_retrieval", "analyze_conflicts")
+            builder.add_edge("pause_validation", "await_validation")
+            builder.add_edge("await_validation", END)
+            builder.add_edge("complete_validation", END)
         return builder.compile(checkpointer=checkpointer, name="configuration-supervisor")
 
     def _classify_intent(self, state: AgentGraphState) -> dict[str, Any]:
@@ -426,6 +463,129 @@ class SupervisorGraph:
             "next_action": "analyze_dependencies_and_conflicts",
             "pause_reason": "",
         }
+
+    def _analyze_conflicts(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "conflict")
+        if not entered.allowed:
+            return entered.update
+        report = self._validation_report(state)
+        return {
+            **entered.update,
+            "active_agent": "conflict",
+            "conflicts": [item.to_dict() for item in report.conflicts],
+            "next_action": "validate_draft",
+        }
+
+    def _validate_draft(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "validation")
+        if not entered.allowed:
+            return entered.update
+        report = self._validation_report(state)
+        return {
+            **entered.update,
+            "active_agent": "validation",
+            "conflicts": [item.to_dict() for item in report.conflicts],
+            "validation_findings": [item.to_dict() for item in report.findings],
+            "targeted_retrieval_requirements": {
+                key: list(value) for key, value in report.targeted_requirements.items()
+            },
+            "validation_fingerprint": report.fingerprint,
+            "next_action": "evaluate_validation",
+        }
+
+    def _targeted_retrieval(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "knowledge")
+        if not entered.allowed:
+            return entered.update
+        if self.knowledge_agent is None:
+            raise RuntimeError("knowledge agent is not configured")
+        result = self.knowledge_agent.collect_targeted(
+            tasks=list(state.get("configuration_tasks", [])),
+            confirmed_context=dict(state.get("confirmed_context", {})),
+            existing_evidence=list(state.get("evidence_registry", [])),
+            existing_bindings=list(state.get("task_evidence_bindings", [])),
+            requirements=dict(state.get("targeted_retrieval_requirements", {})),
+        )
+        return {
+            **entered.update,
+            "status": SessionStatus.VALIDATING.value,
+            "active_agent": "knowledge",
+            "evidence_registry": [item.to_dict() for item in result.evidence],
+            "task_evidence_bindings": [item.to_dict() for item in result.bindings],
+            "knowledge_fingerprint": result.knowledge_fingerprint,
+            "tool_calls_made": int(state.get("tool_calls_made", 0)) + result.tool_calls_made,
+            "targeted_retrieval_rounds": int(state.get("targeted_retrieval_rounds", 0)) + 1,
+            "next_action": "analyze_dependencies_and_conflicts",
+        }
+
+    def _pause_validation(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "supervisor")
+        if not entered.allowed:
+            return entered.update
+        return {
+            **entered.update,
+            "status": transition_status(state, SessionStatus.PAUSED),
+            "active_agent": "supervisor",
+            "pause_reason": "validation_blocked",
+            "next_action": "ask_user",
+        }
+
+    def _await_validation(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "supervisor")
+        if not entered.allowed:
+            return entered.update
+        response = interrupt(
+            {
+                "kind": "validation_blocked",
+                "conflicts": state.get("conflicts", []),
+                "findings": state.get("validation_findings", []),
+            }
+        )
+        message, turn_id = _resume_message(response)
+        return {
+            **entered.update,
+            "latest_user_message": message,
+            "latest_turn_id": turn_id,
+            "recent_turns": _append_recent_turn(
+                state.get("recent_turns", []), message, self.settings.max_context_turns
+            ),
+            "next_action": "revise_requirements_or_scope",
+        }
+
+    def _complete_validation(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "supervisor")
+        if not entered.allowed:
+            return entered.update
+        return {
+            **entered.update,
+            "status": transition_status(state, SessionStatus.REVIEW_REQUIRED),
+            "active_agent": "supervisor",
+            "next_action": "compose_draft",
+            "pause_reason": "",
+        }
+
+    def _validation_report(self, state: AgentGraphState):
+        return self.validation_service.validate(
+            tasks=list(state.get("configuration_tasks", [])),
+            dependency_edges=list(state.get("dependency_edges", [])),
+            evidence_registry=list(state.get("evidence_registry", [])),
+            bindings=list(state.get("task_evidence_bindings", [])),
+            confirmed_context=dict(state.get("confirmed_context", {})),
+            invalidated_task_ids=list(state.get("invalidated_task_ids", [])),
+        )
+
+    def _route_after_validation(self, state: AgentGraphState) -> str:
+        blocking = bool(state.get("conflicts")) or any(
+            str(item.get("severity")) == "blocking" for item in state.get("validation_findings", [])
+        )
+        if not blocking:
+            return "review"
+        retryable = bool(state.get("targeted_retrieval_requirements")) and not state.get(
+            "conflicts"
+        )
+        if retryable and int(state.get("targeted_retrieval_rounds", 0)) < 2:
+            return "retry"
+        return "pause"
 
     def _structured_failure(
         self,

@@ -289,6 +289,22 @@ def test_knowledge_binding_rejects_unsupported_promotion_and_environment_claims(
         )
 
 
+def test_conflict_and_validation_fields_have_separate_owners() -> None:
+    validate_state_update(AgentRole.CONFLICT, {"conflicts": []})
+    validate_state_update(
+        AgentRole.VALIDATION,
+        {
+            "validation_findings": [],
+            "targeted_retrieval_requirements": {},
+            "validation_fingerprint": "validation:one",
+        },
+    )
+    validate_state_update(AgentRole.SUPERVISOR, {"targeted_retrieval_rounds": 1})
+
+    with pytest.raises(AgentContractError, match="conflicts"):
+        validate_state_update(AgentRole.VALIDATION, {"conflicts": []})
+
+
 def test_configuration_task_rejects_self_dependency() -> None:
     with pytest.raises(AgentContractError, match="depend on itself"):
         ConfigurationTask(

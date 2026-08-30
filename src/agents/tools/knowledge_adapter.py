@@ -125,6 +125,8 @@ def _evidence_from_citations(citations: tuple[Citation, ...]) -> tuple[Evidence,
                 citation.metadata.get("version") or citation.metadata.get("product_version")
             ),
             module=_optional_text(citation.metadata.get("module")),
+            site=_optional_text(citation.metadata.get("site")),
+            environment=_optional_text(citation.metadata.get("environment")),
             collection=_optional_text(citation.metadata.get("collection")),
         )
     return tuple(registry[key] for key in sorted(registry))

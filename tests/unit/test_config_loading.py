@@ -31,7 +31,7 @@ def test_load_project_settings() -> None:
     assert settings.agent.enabled is False
     assert settings.agent.runtime == "langgraph"
     assert settings.agent.checkpoint_path == Path("data/db/agent_checkpoints.db")
-    assert settings.agent.max_nodes_per_turn == 12
+    assert settings.agent.max_nodes_per_turn == 16
     assert settings.agent.approval_required is True
     assert settings.agent.environment_inspector_enabled is False
     assert settings.agent.max_tokens_per_turn == 12_000
@@ -126,7 +126,7 @@ def test_agent_limits_fail_fast(tmp_path: Path) -> None:
     original = Path("config/settings.yaml").read_text(encoding="utf-8")
     config_path = tmp_path / "settings.yaml"
     config_path.write_text(
-        original.replace("  max_nodes_per_turn: 12", "  max_nodes_per_turn: 0"),
+        original.replace("  max_nodes_per_turn: 16", "  max_nodes_per_turn: 0"),
         encoding="utf-8",
     )
 
