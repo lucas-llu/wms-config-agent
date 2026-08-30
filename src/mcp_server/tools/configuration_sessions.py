@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Coroutine
+from typing import Any
 
 from agents import ReviewDecision, SessionStatus
 from agents.repositories import SessionRepository, SessionRevisionConflict
@@ -29,7 +30,10 @@ class ConfigurationSessionApplication:
         message = (
             goal
             if not context
-            else f"{goal}\nConfirmed context: {json.dumps(context, ensure_ascii=False, sort_keys=True)}"
+            else (
+                f"{goal}\nConfirmed context: "
+                f"{json.dumps(context, ensure_ascii=False, sort_keys=True)}"
+            )
         )
 
         async def operation():
@@ -267,7 +271,10 @@ def _state_payload(state, *, event_type, interrupts=None):
         "status": state.get("status"),
         "state": state,
         "interrupts": interrupts or [],
-        "markdown": f"Session `{state['session_id']}` revision {state['revision']} is `{state.get('status')}`.",
+        "markdown": (
+            f"Session `{state['session_id']}` revision {state['revision']} "
+            f"is `{state.get('status')}`."
+        ),
     }
 
 

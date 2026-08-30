@@ -28,9 +28,9 @@ from mcp_server.catalog import CorpusCatalog
 from mcp_server.protocol_handler import ProtocolHandler
 from mcp_server.tool_registry import ToolRegistry
 from mcp_server.tools import (
-    GetDocumentSummaryTool,
     ConfigurationSessionApplication,
     ConfigurationSessionTools,
+    GetDocumentSummaryTool,
     ListCollectionsTool,
     QueryKnowledgeHubTool,
 )
