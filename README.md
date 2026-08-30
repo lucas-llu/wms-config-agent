@@ -2,65 +2,87 @@
 
 **Ask questions about WMS / JDA configuration documentation and get answers backed by source citations.**
 
-WMS Config Agent is a local-first, citation-first retrieval agent for authorized warehouse-management and enterprise configuration documents. It combines hybrid retrieval, MCP tools, a local operations dashboard, and deterministic evaluation so teams can query complex manuals without turning unsupported guesses into configuration advice.
+A local-first, citation-first knowledge assistant for warehouse-management and enterprise configuration documentation.
 
-> Private by default. No cloud required for the default workflow. If the evidence is not strong enough, the agent refuses instead of inventing an answer.
+> **Private by default. No cloud required for the default workflow. If the evidence is not strong enough, the agent refuses instead of inventing an answer.**
 
-## Why this project exists
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![RAG](https://img.shields.io/badge/RAG-Hybrid%20Retrieval-blueviolet.svg)](#how-it-works)
+[![MCP](https://img.shields.io/badge/MCP-Ready-success.svg)](#mcp-server)
+[![Local First](https://img.shields.io/badge/Privacy-Local--First-brightgreen.svg)](#privacy-and-safety)
 
-Enterprise configuration documentation is often large, fragmented, highly domain-specific, and difficult to search reliably. In WMS environments, a plausible-sounding but unsupported answer can be worse than no answer at all.
+## See it in action
 
-This project is designed around a stricter workflow:
+![WMS Config Agent dashboard showing grounded answers with source citations, retrieved evidence, diagnostics, and evaluation metrics.](docs/assets/dashboard-demo.svg)
 
-```text
-Authorized PDFs
-     |
-     v
-Document processing
-     |
-     +--> BM25 lexical index
-     |
-     +--> Chroma vector index
-              |
-              v
-      Reciprocal Rank Fusion
-              |
-              v
-       Evidence + citations
-              |
-       +------+------+
-       |             |
-       v             v
-   MCP tools      Dashboard
-```
+*Illustrative dashboard preview: ask a warehouse configuration question and get a grounded answer with citations, retrieved evidence, local-first diagnostics, and evaluation metrics.*
 
-The result is a practical reference implementation for **private enterprise RAG + MCP**, using WMS/JDA documentation as the primary vertical use case.
+## Why WMS Config Agent?
+
+Warehouse configuration knowledge is often buried across hundreds or thousands of pages of manuals, implementation notes, operating procedures, and internal documentation.
+
+Traditional search can find keywords, but it does not reliably answer questions such as:
+
+> How should replenishment be configured for fast-moving SKUs?
+>
+> Which putaway rule applies to this storage profile?
+>
+> Where is this configuration behavior documented?
+
+WMS Config Agent combines **vector retrieval + BM25 search + reciprocal-rank fusion** to retrieve relevant evidence and return answers tied back to their original sources.
+
+The goal is not simply to generate an answer. The goal is to generate an answer you can **verify**.
 
 ## What you get
 
 - **Citation-first answers** — retrieval results carry source/page evidence instead of unsupported instructions.
 - **Hybrid search** — BM25 and Chroma vector retrieval are aligned and fused with reciprocal-rank fusion.
 - **Local-first defaults** — the default ingestion/query path does not require an API key.
+- **Evidence-aware refusal** — insufficient evidence results in a refusal rather than unsupported instructions.
 - **Read-only MCP tools** — expose WMS knowledge safely to MCP-compatible desktop hosts.
 - **Six-page Streamlit dashboard** — inspect data, ingestion traces, query diagnostics, lifecycle operations, and evaluation.
 - **Deterministic evaluation** — run a committed public benchmark without private documents.
 - **Privacy and safety controls** — local artifacts stay out of Git and risky lifecycle operations require explicit confirmation.
+- **Enterprise RAG reference architecture** — adapt the same architecture beyond WMS documentation.
 
-## Example use case
-
-Instead of manually searching hundreds of pages of configuration documentation:
+## How it works
 
 ```text
-Question:
-How is putaway configuration for SWL.I.11.04 defined?
-
-Agent:
-Returns the best available evidence from the indexed manuals,
-including source/page citations and relevant metadata.
-
-If the indexed evidence is insufficient, the agent refuses
-rather than inventing a configuration instruction.
+Authorized documents
+        |
+        v
+Ingestion & chunking
+        |
+        +--> BM25 lexical index
+        |
+        +--> Chroma vector index
+                 |
+                 v
+        Reciprocal Rank Fusion
+                 |
+                 v
+          Evidence + citations
+                 |
+          +------+------+
+          |             |
+          v             v
+      MCP tools      Dashboard
 ```
+
+The result is a practical reference implementation for **private enterprise RAG + MCP**, using WMS/JDA documentation as the primary vertical use case.
+
+## Use it beyond WMS
+
+Although the project started as a WMS / JDA configuration assistant, the architecture is intentionally reusable. You can fork it and adapt the same pipeline for:
+
+- ERP configuration documentation
+- SAP implementation manuals
+- internal SOPs and work instructions
+- compliance and policy documentation
+- network or infrastructure runbooks
+- product and engineering documentation
+- enterprise knowledge assistants
 
 ## Quick start
 
@@ -247,22 +269,6 @@ GitHub Actions additionally scans the event, complete Git history, and working t
 - Deletion requires the exact displayed confirmation phrase and coordinates cleanup across Chroma, BM25, images, history, and allowlisted artifacts.
 - The product is local and single-user. It has no production WMS write path, network auth, or multi-tenant isolation.
 
-## Use it beyond WMS
-
-Although the project is built around WMS/JDA configuration documentation, the architecture can be adapted to other private documentation domains:
-
-```text
-WMS / JDA manuals
-        |
-        +--> ERP configuration docs
-        +--> internal SOPs
-        +--> network operations docs
-        +--> compliance manuals
-        +--> technical support knowledge bases
-```
-
-Forking the repository and replacing the domain-specific corpus, metadata rules, and evaluation set is a practical way to turn this into a private documentation agent for another enterprise domain.
-
 ## Project status
 
 Days 1–10 are implemented on `develop`:
@@ -298,7 +304,7 @@ See [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) for the detailed delive
 
 ## Contributing
 
-Issues, experiments, documentation improvements, retrieval ideas, MCP integrations, and domain adaptations are welcome.
+Issues, experiments, documentation improvements, retrieval ideas, MCP integrations, and domain adaptations are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and contribution guidelines.
 
 Good contribution areas include:
 
