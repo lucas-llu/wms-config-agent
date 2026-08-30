@@ -204,7 +204,11 @@ def _conflict(
     expected: str | None,
     actual: set[str],
 ) -> ConfigurationConflict:
-    summary = f"Evidence scope conflict for {dimension}: expected={expected or 'unspecified'}, actual={','.join(sorted(actual)) or 'unspecified'}"
+    expected_label = expected or "unspecified"
+    actual_label = ",".join(sorted(actual)) or "unspecified"
+    summary = (
+        f"Evidence scope conflict for {dimension}: expected={expected_label}, actual={actual_label}"
+    )
     return ConfigurationConflict(
         conflict_id=stable_contract_id(
             "conflict",
