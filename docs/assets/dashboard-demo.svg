@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">WMS Config Agent dashboard preview</title>
+  <desc id="desc">A product preview showing citation-backed warehouse documentation answers, retrieved evidence, local-first privacy, diagnostics, and evaluation.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="18" flood-opacity="0.10"/></filter>
+    <style>
+      .bg{fill:#f5f7fb}.panel{fill:#fff;stroke:#e5e7eb;stroke-width:1.4}.muted{fill:#64748b;font-family:Inter,Segoe UI,Arial,sans-serif}.text{fill:#111827;font-family:Inter,Segoe UI,Arial,sans-serif}.blue{fill:#2563eb}.green{fill:#16a34a}.softblue{fill:#eff6ff}.softgreen{fill:#f0fdf4}.line{stroke:#e5e7eb;stroke-width:1}.title{font-size:29px;font-weight:700}.h2{font-size:21px;font-weight:700}.body{font-size:16px}.small{font-size:13px}.tiny{font-size:12px}.bold{font-weight:650}
+    </style>
+  </defs>
+  <rect class="bg" width="1600" height="900"/>
+  <g filter="url(#shadow)">
+    <rect x="34" y="28" width="1532" height="844" rx="20" class="panel"/>
+  </g>
+  <rect x="34" y="28" width="1532" height="62" rx="20" fill="#f8fafc"/>
+  <circle cx="64" cy="59" r="7" fill="#ef4444"/><circle cx="86" cy="59" r="7" fill="#f59e0b"/><circle cx="108" cy="59" r="7" fill="#22c55e"/>
+  <rect x="142" y="43" width="300" height="32" rx="10" fill="#fff" stroke="#e5e7eb"/><text x="160" y="64" class="text small bold">WMS Config Agent</text>
+  <rect x="475" y="43" width="850" height="32" rx="16" fill="#fff" stroke="#e5e7eb"/><text x="500" y="64" class="muted small">http://localhost:8501</text>
+
+  <line x1="365" y1="90" x2="365" y2="872" class="line"/><line x1="1195" y1="90" x2="1195" y2="872" class="line"/>
+
+  <!-- left sidebar -->
+  <rect x="56" y="115" width="42" height="42" rx="10" class="softblue"/><path d="M67 127h20v18H67z" fill="none" stroke="#2563eb" stroke-width="2"/><path d="M67 133l10 6 10-6" fill="none" stroke="#2563eb" stroke-width="2"/>
+  <text x="112" y="138" class="text title">WMS Config Agent</text><text x="112" y="158" class="muted small">Warehouse Knowledge Assistant</text>
+  <rect x="55" y="188" width="286" height="42" rx="9" class="softblue"/><text x="78" y="214" class="blue body bold">●  Chat</text>
+  <text x="78" y="260" class="text body">▣  Knowledge Base</text><text x="78" y="303" class="text body">▤  Sources</text><text x="78" y="346" class="text body">⌁  MCP</text><text x="78" y="389" class="text body">▥  Evaluation</text>
+  <line x1="55" y1="414" x2="341" y2="414" class="line"/>
+  <text x="65" y="451" class="text h2">Knowledge Base</text><rect x="281" y="430" width="60" height="28" rx="14" class="softgreen"/><text x="298" y="449" class="green tiny bold">Ready</text>
+  <text x="65" y="481" class="muted small">4 documents • 12,842 chunks</text><text x="65" y="503" class="muted tiny">Local indexes aligned</text>
+  <g class="body text"><text x="67" y="548">📄  capacity.pdf</text><text x="67" y="604">📄  wave-planning.pdf</text><text x="67" y="660">📄  slotting-guide.pdf</text><text x="67" y="716">▤  putaway-rules.md</text></g>
+  <g class="muted tiny"><text x="93" y="568">3,201 chunks • PDF</text><text x="93" y="624">3,532 chunks • PDF</text><text x="93" y="680">3,145 chunks • PDF</text><text x="93" y="736">2,964 chunks • Markdown</text></g>
+  <g class="green body"><text x="313" y="548">✓</text><text x="313" y="604">✓</text><text x="313" y="660">✓</text><text x="313" y="716">✓</text></g>
+
+  <!-- main -->
+  <text x="398" y="136" class="text h2">Chat</text><text x="398" y="160" class="muted small">Ask questions about warehouse configuration and operations</text>
+  <rect x="398" y="187" width="765" height="58" rx="11" class="panel"/><circle cx="427" cy="216" r="14" fill="#2563eb"/><text x="454" y="222" class="text body">What is the recommended replenishment threshold for fast-moving SKUs?</text>
+  <rect x="398" y="261" width="765" height="260" rx="12" class="panel"/>
+  <rect x="416" y="280" width="30" height="30" rx="8" fill="#2563eb"/><text x="424" y="301" fill="#fff" font-family="Arial" font-size="16">AI</text>
+  <text x="462" y="303" class="text body bold">For fast-moving SKUs, the recommended replenishment approach is:</text>
+  <text x="470" y="344" class="text body">• Maintain inventory between 1.5× and 2.0× the 3-day average demand.</text><text x="990" y="344" class="blue small">[capacity.pdf p.12]</text>
+  <text x="470" y="383" class="text body">• Replenish when pick-face on-hand falls below 1.5× average demand.</text><text x="1008" y="383" class="blue small">[slotting-guide.pdf p.4]</text>
+  <text x="470" y="422" class="text body">• Use the closest open locations in-zone and follow FEFO.</text><text x="986" y="422" class="blue small">[putaway-rules.md §3]</text>
+  <text x="462" y="464" class="text body">Summary: trigger at 1.5× demand, top up toward 2.0×, and preserve FEFO.</text>
+  <rect x="1020" y="479" width="116" height="28" rx="8" fill="#f8fafc" stroke="#e5e7eb"/><text x="1050" y="498" class="muted small">Copy answer</text>
+
+  <text x="398" y="558" class="text body bold">Retrieved Evidence</text><rect x="550" y="541" width="78" height="25" rx="12" fill="#f1f5f9"/><text x="567" y="558" class="muted tiny">3 sources</text>
+  <g>
+    <rect x="398" y="580" width="765" height="66" rx="10" class="panel"/><text x="420" y="604" class="text small bold">capacity.pdf — Page 12</text><text x="420" y="628" class="muted small">“… maintain inventory between 1.5× and 2.0× the 3-day average demand …”</text><text x="1080" y="605" class="green tiny bold">0.92</text>
+    <rect x="398" y="658" width="765" height="66" rx="10" class="panel"/><text x="420" y="682" class="text small bold">slotting-guide.pdf — Page 4</text><text x="420" y="706" class="muted small">“… trigger replenishment when pick-face inventory falls below 1.5× …”</text><text x="1080" y="683" class="green tiny bold">0.88</text>
+    <rect x="398" y="736" width="765" height="66" rx="10" class="panel"/><text x="420" y="760" class="text small bold">putaway-rules.md — §3</text><text x="420" y="784" class="muted small">“… choose closest open locations in the same zone and follow FEFO …”</text><text x="1080" y="761" class="green tiny bold">0.78</text>
+  </g>
+  <rect x="398" y="820" width="765" height="38" rx="10" fill="#f8fafc" stroke="#e5e7eb"/><text x="420" y="844" class="muted small">Ask a question about WMS configuration, operations, or best practices…</text>
+
+  <!-- right -->
+  <text x="1225" y="136" class="text h2">Session</text>
+  <g>
+    <rect x="1220" y="165" width="148" height="92" rx="12" class="panel"/><text x="1238" y="190" class="text small bold">Model</text><text x="1238" y="218" class="muted small">local / configurable</text><text x="1238" y="241" class="blue tiny">local-first</text>
+    <rect x="1385" y="165" width="148" height="92" rx="12" class="panel"/><text x="1403" y="190" class="text small bold">Retrieval</text><text x="1403" y="218" class="muted small">hybrid</text><text x="1403" y="241" class="blue tiny">BM25 + Vector</text>
+    <rect x="1220" y="273" width="148" height="92" rx="12" class="panel"/><text x="1238" y="298" class="text small bold">Latency</text><text x="1238" y="333" class="text h2">1.4s</text>
+    <rect x="1385" y="273" width="148" height="92" rx="12" class="panel"/><text x="1403" y="298" class="text small bold">Privacy</text><text x="1403" y="329" class="green body bold">local-first</text><text x="1403" y="350" class="muted tiny">no cloud by default</text>
+  </g>
+  <rect x="1220" y="387" width="313" height="190" rx="12" class="panel"/><text x="1238" y="416" class="text body bold">Session Diagnostics</text><rect x="1462" y="397" width="55" height="24" rx="12" class="softgreen"/><text x="1474" y="413" class="green tiny bold">Healthy</text>
+  <g class="muted small"><text x="1238" y="454">Retrieved chunks</text><text x="1238" y="483">Rerank top-k</text><text x="1238" y="512">Time to first token</text><text x="1238" y="541">Total latency</text></g>
+  <g class="text small bold" text-anchor="end"><text x="1510" y="454">12</text><text x="1510" y="483">5</text><text x="1510" y="512">0.62s</text><text x="1510" y="541">1.40s</text></g>
+  <rect x="1220" y="594" width="313" height="185" rx="12" class="panel"/><text x="1238" y="624" class="text body bold">Evaluation</text><rect x="1466" y="606" width="51" height="24" rx="12" class="softgreen"/><text x="1480" y="622" class="green tiny bold">Pass</text>
+  <circle cx="1285" cy="690" r="44" fill="none" stroke="#dcfce7" stroke-width="12"/><path d="M1285 646 A44 44 0 1 1 1255 723" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round"/><text x="1263" y="697" class="text h2">92%</text>
+  <text x="1350" y="666" class="muted small">Answer faithfulness</text><text x="1508" y="666" class="green small bold" text-anchor="end">92% ✓</text><text x="1350" y="697" class="muted small">Context relevance</text><text x="1508" y="697" class="green small bold" text-anchor="end">90% ✓</text><text x="1350" y="728" class="muted small">Citation coverage</text><text x="1508" y="728" class="green small bold" text-anchor="end">95% ✓</text>
+  <text x="1225" y="830" class="green tiny">● Local mode</text><text x="1300" y="830" class="muted tiny">All data stays on this machine by default.</text>
+</svg>
