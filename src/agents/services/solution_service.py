@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -145,10 +146,35 @@ class SolutionService:
 
     @staticmethod
     def _markdown(payload: dict[str, Any]) -> str:
-        lines = ["# Configuration Solution", "", f"Goal: {payload['goal']}", "", "## Tasks", ""]
-        for task in payload["tasks"]:
-            lines.extend([f"### {task['title']}", task["goal"], ""])
-        lines.extend(["## Evidence", ""])
-        for item in payload["evidence"]:
-            lines.append(f"- {item['source']}: {item['excerpt']}")
+        lines = [
+            "# Configuration Solution",
+            "",
+            f"- Session: `{payload['session_id']}`",
+            f"- Revision: `{payload['revision']}`",
+            f"- Goal: {payload['goal']}",
+            f"- Knowledge fingerprint: `{payload['knowledge_fingerprint']}`",
+            f"- Validation fingerprint: `{payload['validation_fingerprint']}`",
+            "",
+        ]
+        sections = (
+            ("Confirmed Context", "confirmed_context"),
+            ("Assumptions", "assumptions"),
+            ("Decisions", "decisions"),
+            ("Tasks", "tasks"),
+            ("Task Evidence Bindings", "task_evidence_bindings"),
+            ("Evidence", "evidence"),
+            ("Conflicts", "conflicts"),
+            ("Validation Findings", "validation_findings"),
+        )
+        for title, key in sections:
+            lines.extend(
+                [
+                    f"## {title}",
+                    "",
+                    "```json",
+                    json.dumps(payload[key], ensure_ascii=False, indent=2, sort_keys=True),
+                    "```",
+                    "",
+                ]
+            )
         return "\n".join(lines).rstrip() + "\n"

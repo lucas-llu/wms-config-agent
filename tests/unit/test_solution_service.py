@@ -70,6 +70,27 @@ def test_approval_export_is_deterministic_idempotent_and_revision_safe(tmp_path)
         .startswith("# Configuration Solution")
     )
     assert markdown.fingerprint != first.fingerprint
+    markdown_text = (tmp_path / "exports/session_solution/r3.md").read_text()
+    json_payload = json.loads((tmp_path / "exports/session_solution/r3.json").read_text())
+    for key in (
+        "session_id",
+        "revision",
+        "goal",
+        "knowledge_fingerprint",
+        "validation_fingerprint",
+    ):
+        assert str(json_payload[key]) in markdown_text
+    for heading in (
+        "Confirmed Context",
+        "Assumptions",
+        "Decisions",
+        "Tasks",
+        "Task Evidence Bindings",
+        "Evidence",
+        "Conflicts",
+        "Validation Findings",
+    ):
+        assert f"## {heading}" in markdown_text
     with pytest.raises(SessionRevisionConflict):
         service.review(
             "session:solution",
