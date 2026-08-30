@@ -502,6 +502,94 @@ class SessionRepository:
             self._touch_session(connection, session_id, expected_revision, timestamp)
         return ExportRecord(export_id, session_id, expected_revision, artifact, timestamp)
 
+    def apply_review_transition(
+        self,
+        *,
+        session_id: str,
+        expected_revision: int,
+        decision: ReviewDecision,
+        state_update: ConfigurationSessionState,
+        actor: str,
+        comment: str,
+        approval_id: str,
+    ) -> RevisionRecord:
+        """Persist approval and its resulting revision in one transaction."""
+
+        session_id = _required_text(session_id, "session_id")
+        _validate_revision(expected_revision)
+        actor = _required_text(actor, "actor")
+        comment = _required_text(comment, "comment")
+        approval_id = _required_text(approval_id, "approval_id")
+        if not isinstance(decision, ReviewDecision):
+            raise ValueError("decision must be a ReviewDecision")
+        timestamp = self._timestamp()
+        with self._write_transaction() as connection:
+            session = self._require_expected_revision(
+                connection, session_id, expected_revision, allow_terminal=False
+            )
+            current = self._select_revision(connection, session_id, expected_revision)
+            current_state = _decode_json_object(current["state_json"], "revision.state_json")
+            next_revision = expected_revision + 1
+            next_state = {**current_state, **dict(state_update)}
+            next_state.update(
+                {
+                    "session_id": session_id,
+                    "revision": next_revision,
+                    "created_at": current_state["created_at"],
+                    "updated_at": timestamp,
+                }
+            )
+            status = _session_status(next_state.get("status", session["status"]))
+            next_state["status"] = status.value
+            goal = _required_text(next_state.get("user_goal", session["goal"]), "user_goal")
+            connection.execute(
+                """
+                INSERT INTO approvals (
+                    approval_id, session_id, revision, decision, actor, comment, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    approval_id,
+                    session_id,
+                    expected_revision,
+                    decision.value,
+                    actor,
+                    comment,
+                    timestamp,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO revisions (
+                    session_id, revision, status, state_json, state_fingerprint,
+                    actor, reason, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    next_revision,
+                    status.value,
+                    canonical_json(next_state),
+                    state_fingerprint(next_state),
+                    actor,
+                    f"review:{decision.value}",
+                    timestamp,
+                ),
+            )
+            cursor = connection.execute(
+                """
+                UPDATE sessions
+                SET goal = ?, status = ?, current_revision = ?, updated_at = ?
+                WHERE session_id = ? AND current_revision = ?
+                """,
+                (goal, status.value, next_revision, timestamp, session_id, expected_revision),
+            )
+            if cursor.rowcount != 1:
+                actual = self._select_session(connection, session_id)["current_revision"]
+                raise SessionRevisionConflict(session_id, expected_revision, int(actual))
+            row = self._select_revision(connection, session_id, next_revision)
+        return _revision_from_row(row)
+
     def list_turns(self, session_id: str) -> tuple[TurnRecord, ...]:
         with self._read_connection() as connection:
             self._select_session(connection, session_id)
