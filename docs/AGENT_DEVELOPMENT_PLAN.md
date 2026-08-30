@@ -296,6 +296,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 5 — Knowledge Agent 与 V1 RAG 证据适配
 
+**状态**：已完成开发与本地验收（2026-08-30），等待用户代码审查。
+
 **目标**：让每个配置任务使用现有 RAG 获取可审计证据。
 
 **开发内容**：
@@ -309,6 +311,15 @@ Day 1 必须在不实现业务功能的情况下完成：
 **测试**：过滤传递、指代消歧、引用映射、证据去重、空结果、单路检索失败、并行稳定合并。
 
 **退出标准**：每个任务都具有 supported/partial/unsupported 证据状态，FR-AGT-005/006 通过；运行全量 V1 门禁。
+
+**完成记录**：
+
+- `KnowledgeAdapter` 复用现有 HybridSearch、SafeReranker 与 ResponseBuilder，将 Citation 映射为稳定、去重的 Evidence Registry；
+- Knowledge Agent 从任务目标、证据需求和已确认范围构造 standalone query，强制将 `product_version` 映射为 V1 `version` filter，并注入 module/site/environment；
+- 任务证据使用独立 `TaskEvidenceBinding` 保存 queries、evidence IDs、supported/partial/unsupported 和显式 gap，不覆盖 Planning Agent 拥有的任务结构；
+- 检索请求受 `max_retrieval_tasks` 限制，可有界并行执行，并按 task ID/requirement 稳定合并；空结果、单路失败和预算截断均保持为证据缺口；
+- Evidence source 对 Windows absolute/drive-relative/rooted/UNC、POSIX absolute 和相对路径进行跨平台隐私归一化，不允许主机绝对路径进入 Agent 状态；
+- 静态与跨平台问题通过 Issue #14/#16/#18、独立嵌套 bugfix 分支和 PR #15/#17/#19 闭环；Day 5 与受影响 V1 定向测试 51 passed，全量回归 386 passed / 1 opt-in skipped，总覆盖率 90.81%；公开 benchmark 4/4、全部阈值、Ruff check/format、锁文件、依赖一致性和 diff 门禁通过。
 
 ### Day 6 — 依赖/冲突与确定性 Validation
 
