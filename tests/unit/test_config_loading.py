@@ -126,7 +126,7 @@ def test_agent_limits_fail_fast(tmp_path: Path) -> None:
     original = Path("config/settings.yaml").read_text(encoding="utf-8")
     config_path = tmp_path / "settings.yaml"
     config_path.write_text(
-        original.replace("  max_nodes_per_turn: 12", "  max_nodes_per_turn: 0"),
+        original.replace("  max_nodes_per_turn: 16", "  max_nodes_per_turn: 0"),
         encoding="utf-8",
     )
 
