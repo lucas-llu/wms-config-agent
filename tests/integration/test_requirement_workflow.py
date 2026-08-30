@@ -8,10 +8,12 @@ from pathlib import Path
 
 from langgraph.types import Command
 
+from agents import Evidence
 from agents.repositories import SessionRepository
 from agents.runtime import open_configured_checkpointer, session_checkpoint_config
 from agents.services import SessionService
 from agents.supervisor import RequirementSessionRunner, Supervisor
+from agents.tools import KnowledgeSearchResult
 from core.settings import AgentSettings, load_settings
 from libs.llm import ChatResponse
 
@@ -30,6 +32,25 @@ class ScriptedLLM:
         return ChatResponse(
             content, model=self.model, metadata={"usage": {"total_tokens": self.tokens}}
         )
+
+
+class FakeKnowledgeAdapter:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def search(self, query, *, filters, top_k=5, trace=None):
+        del trace
+        self.calls.append((query, filters, top_k))
+        evidence = Evidence(
+            evidence_id=f"evidence:{len(self.calls)}",
+            chunk_id=f"chunk:{len(self.calls)}",
+            source="sanitized/inbound.pdf",
+            excerpt="Version-matched inbound configuration evidence.",
+            score=0.9,
+            product_version="2024.1",
+            module=filters["module"],
+        )
+        return KnowledgeSearchResult(query, filters, (evidence,), True, ())
 
 
 def _settings(root: Path, **changes) -> AgentSettings:
@@ -173,6 +194,55 @@ def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
         "assistant",
         "user",
     ]
+
+
+def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path) -> None:
+    settings = _settings(tmp_path / "knowledge")
+    llm = ScriptedLLM(
+        {
+            "confirmed_context": {
+                "business_process": "Inbound appointment",
+                "modules": ["inbound", "appointment"],
+                "product_version": "2024.1",
+                "site": "DC01",
+                "environment": "test",
+            },
+            "assumptions": [],
+            "summary": "Complete inbound scope",
+        },
+        _planning_output(),
+    )
+    adapter = FakeKnowledgeAdapter()
+
+    async def scenario():
+        sessions = SessionService(SessionRepository(settings.session_db_path))
+        runner = RequirementSessionRunner(
+            supervisor=Supervisor(
+                llm=llm,
+                settings=settings,
+                knowledge_adapter=adapter,  # type: ignore[arg-type]
+            ),
+            sessions=sessions,
+        )
+        async with open_configured_checkpointer(settings) as checkpointer:
+            return await runner.start(
+                "Build a complete inbound appointment configuration plan",
+                checkpointer=checkpointer,
+                session_id="session:knowledge",
+            )
+
+    result = asyncio.run(scenario())
+
+    assert result.state["status"] == "validating"
+    assert result.state["next_action"] == "analyze_dependencies_and_conflicts"
+    assert result.state["knowledge_fingerprint"].startswith("knowledge:")
+    assert [item["evidence_status"] for item in result.state["task_evidence_bindings"]] == [
+        "supported",
+        "supported",
+    ]
+    assert len(result.state["evidence_registry"]) == 2
+    assert result.state["tool_calls_made"] == 2
+    assert all(call[1]["version"] == "2024.1" for call in adapter.calls)
 
 
 def test_low_confidence_intent_interrupts_and_resumes(tmp_path: Path) -> None:

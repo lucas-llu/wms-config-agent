@@ -14,9 +14,11 @@ from agents import (
     ConfirmedContext,
     DependencyEdge,
     Evidence,
+    EvidenceQuery,
     EvidenceStatus,
     FindingSeverity,
     RiskLevel,
+    TaskEvidenceBinding,
     TaskStatus,
     ValidationFinding,
     canonical_json,
@@ -232,6 +234,59 @@ def test_planning_fields_are_owned_only_by_planning_agent() -> None:
 
     with pytest.raises(AgentContractError, match="configuration_tasks"):
         validate_state_update(AgentRole.SUPERVISOR, update)
+
+
+def test_knowledge_bindings_preserve_task_ownership_and_evidence_gaps() -> None:
+    query = EvidenceQuery(
+        requirement="Version-matched appointment capacity documentation",
+        query="Appointment capacity for inbound receiving",
+        filters={"version": "2024.1", "module": "appointment"},
+    )
+    supported = TaskEvidenceBinding(
+        task_id="task:capacity",
+        queries=(query,),
+        evidence_ids=("evidence:capacity",),
+        evidence_status=EvidenceStatus.SUPPORTED,
+    )
+    unsupported = TaskEvidenceBinding(
+        task_id="task:unknown",
+        queries=(query,),
+        evidence_ids=(),
+        evidence_status=EvidenceStatus.UNSUPPORTED,
+        gap_reasons=("insufficient_evidence",),
+    )
+
+    assert supported.to_dict()["evidence_status"] == "supported"
+    assert unsupported.to_dict()["gap_reasons"] == ["insufficient_evidence"]
+    validate_state_update(
+        AgentRole.KNOWLEDGE,
+        {
+            "evidence_registry": [],
+            "task_evidence_bindings": [supported.to_dict()],
+            "knowledge_fingerprint": "knowledge:one",
+        },
+    )
+    with pytest.raises(AgentContractError, match="configuration_tasks"):
+        validate_state_update(AgentRole.KNOWLEDGE, {"configuration_tasks": []})
+
+
+def test_knowledge_binding_rejects_unsupported_promotion_and_environment_claims() -> None:
+    query = EvidenceQuery("requirement", "standalone query", {})
+
+    with pytest.raises(AgentContractError, match="requires gaps"):
+        TaskEvidenceBinding(
+            task_id="task:unsupported",
+            queries=(query,),
+            evidence_ids=(),
+            evidence_status=EvidenceStatus.UNSUPPORTED,
+        )
+    with pytest.raises(AgentContractError, match="environment_verified"):
+        TaskEvidenceBinding(
+            task_id="task:environment",
+            queries=(query,),
+            evidence_ids=("evidence:one",),
+            evidence_status=EvidenceStatus.ENVIRONMENT_VERIFIED,
+        )
 
 
 def test_configuration_task_rejects_self_dependency() -> None:

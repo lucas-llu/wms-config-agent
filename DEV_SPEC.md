@@ -1121,7 +1121,8 @@ ConfigurationSessionState
 │   └── customizations / constraints / risk_tolerance
 ├── assumptions[] / open_questions[] / decisions[]
 ├── configuration_tasks[] / dependency_edges[]
-├── evidence_registry[] / conflicts[] / validation_findings[]
+├── evidence_registry[] / task_evidence_bindings[] / knowledge_fingerprint
+├── conflicts[] / validation_findings[]
 ├── draft_version / approval_state / export_artifacts[]
 └── turn_budget / tool_budget / retry_count / trace_id
 ```
@@ -1189,6 +1190,8 @@ load_or_create_session
 - 方案中的命令、表名、配置键、默认值、步骤和回滚结论必须分别引用，不得用一条引用笼统覆盖整章；
 - 多来源冲突时同时保留证据，记录差异维度，要求用户选择或标记为阻塞项；
 - `environment_verified` 只能来自已审计的只读环境工具调用，不能由 LLM 自行设置。
+- Planning Agent 保持对 `configuration_tasks[]` 的唯一所有权；Knowledge Agent 通过独立 `task_evidence_bindings[]` 记录每个任务的 standalone queries、filters、evidence IDs、有效证据状态和 gap reasons，不得整体覆盖任务结构。
+- Agent 内部 Evidence source 不保存主机绝对路径；Windows drive/UNC 与 POSIX absolute path 必须跨平台归一化后再进入状态。
 
 **`ConfigurationSolution` 导出结构**：
 

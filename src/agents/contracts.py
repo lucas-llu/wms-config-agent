@@ -306,6 +306,67 @@ class Evidence(SerializableAgentContract):
 
 
 @dataclass(frozen=True, slots=True)
+class EvidenceQuery(SerializableAgentContract):
+    requirement: str
+    query: str
+    filters: dict[str, str | int | float | bool]
+
+    def __post_init__(self) -> None:
+        _validate_text(self.requirement, "EvidenceQuery.requirement")
+        _validate_text(self.query, "EvidenceQuery.query")
+        if not isinstance(self.filters, dict):
+            raise AgentContractError("EvidenceQuery.filters must be a dictionary")
+        for key, value in self.filters.items():
+            _validate_identifier(key, "EvidenceQuery.filters key")
+            if not isinstance(value, str | int | float | bool):
+                raise AgentContractError("EvidenceQuery.filters values must be JSON scalars")
+
+
+@dataclass(frozen=True, slots=True)
+class TaskEvidenceBinding(SerializableAgentContract):
+    task_id: str
+    queries: tuple[EvidenceQuery, ...]
+    evidence_ids: tuple[str, ...]
+    evidence_status: EvidenceStatus
+    gap_reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.task_id, "TaskEvidenceBinding.task_id")
+        _validate_contract_tuple(
+            self.queries,
+            EvidenceQuery,
+            "TaskEvidenceBinding.queries",
+        )
+        if not self.queries:
+            raise AgentContractError("TaskEvidenceBinding.queries must not be empty")
+        _validate_identifiers(self.evidence_ids, "TaskEvidenceBinding.evidence_ids")
+        _validate_enum(
+            self.evidence_status,
+            EvidenceStatus,
+            "TaskEvidenceBinding.evidence_status",
+        )
+        _validate_non_empty_items(self.gap_reasons, "TaskEvidenceBinding.gap_reasons")
+        if self.evidence_status is EvidenceStatus.ENVIRONMENT_VERIFIED:
+            raise AgentContractError(
+                "TaskEvidenceBinding cannot mark RAG evidence as environment_verified"
+            )
+        if self.evidence_status is EvidenceStatus.SUPPORTED and (
+            not self.evidence_ids or self.gap_reasons
+        ):
+            raise AgentContractError("supported TaskEvidenceBinding requires evidence and no gaps")
+        if self.evidence_status is EvidenceStatus.PARTIAL and (
+            not self.evidence_ids or not self.gap_reasons
+        ):
+            raise AgentContractError("partial TaskEvidenceBinding requires evidence and gaps")
+        if self.evidence_status is EvidenceStatus.UNSUPPORTED and (
+            self.evidence_ids or not self.gap_reasons
+        ):
+            raise AgentContractError(
+                "unsupported TaskEvidenceBinding requires gaps and no evidence IDs"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ConfigurationConflict(SerializableAgentContract):
     conflict_id: str
     summary: str
@@ -439,6 +500,8 @@ class ConfigurationSessionState(TypedDict, total=False):
     planning_baseline_fingerprint: str
     invalidated_task_ids: list[str]
     evidence_registry: list[dict[str, Any]]
+    task_evidence_bindings: list[dict[str, Any]]
+    knowledge_fingerprint: str
     conflicts: list[dict[str, Any]]
     validation_findings: list[dict[str, Any]]
     draft_version: int
@@ -511,7 +574,13 @@ STATE_FIELD_OWNERS = MappingProxyType(
                 "invalidated_task_ids",
             }
         ),
-        AgentRole.KNOWLEDGE: frozenset({"evidence_registry"}),
+        AgentRole.KNOWLEDGE: frozenset(
+            {
+                "evidence_registry",
+                "task_evidence_bindings",
+                "knowledge_fingerprint",
+            }
+        ),
         AgentRole.CONFLICT: frozenset({"conflicts"}),
         AgentRole.VALIDATION: frozenset({"validation_findings"}),
         AgentRole.COMPOSER: frozenset({"draft_version", "review_decision", "export_artifacts"}),
