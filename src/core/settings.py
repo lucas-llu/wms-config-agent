@@ -528,7 +528,7 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
                 )
             ),
             max_nodes_per_turn=_optional_int(
-                agent.get("max_nodes_per_turn"), "agent.max_nodes_per_turn", default=12
+                agent.get("max_nodes_per_turn"), "agent.max_nodes_per_turn", default=16
             ),
             max_self_repair_rounds=_optional_int(
                 agent.get("max_self_repair_rounds"),

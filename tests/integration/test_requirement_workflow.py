@@ -53,6 +53,13 @@ class FakeKnowledgeAdapter:
         return KnowledgeSearchResult(query, filters, (evidence,), True, ())
 
 
+class UnsupportedKnowledgeAdapter(FakeKnowledgeAdapter):
+    def search(self, query, *, filters, top_k=5, trace=None):
+        del trace
+        self.calls.append((query, filters, top_k))
+        return KnowledgeSearchResult(query, filters, (), False, ())
+
+
 def _settings(root: Path, **changes) -> AgentSettings:
     base = replace(
         load_settings().agent,
@@ -233,8 +240,8 @@ def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path)
 
     result = asyncio.run(scenario())
 
-    assert result.state["status"] == "validating"
-    assert result.state["next_action"] == "analyze_dependencies_and_conflicts"
+    assert result.state["status"] == "review_required"
+    assert result.state["next_action"] == "compose_draft"
     assert result.state["knowledge_fingerprint"].startswith("knowledge:")
     assert [item["evidence_status"] for item in result.state["task_evidence_bindings"]] == [
         "supported",
@@ -242,7 +249,58 @@ def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path)
     ]
     assert len(result.state["evidence_registry"]) == 2
     assert result.state["tool_calls_made"] == 2
+    assert result.state["conflicts"] == []
+    assert result.state["validation_findings"] == []
     assert all(call[1]["version"] == "2024.1" for call in adapter.calls)
+
+
+def test_evidence_gaps_retry_twice_then_interrupt_before_review(tmp_path: Path) -> None:
+    settings = _settings(tmp_path / "validation-gap")
+    llm = ScriptedLLM(
+        {
+            "confirmed_context": {
+                "business_process": "Inbound appointment",
+                "modules": ["inbound", "appointment"],
+                "product_version": "2024.1",
+                "site": "DC01",
+                "environment": "test",
+            },
+            "assumptions": [],
+            "summary": "Complete inbound scope",
+        },
+        _planning_output(),
+    )
+    adapter = UnsupportedKnowledgeAdapter()
+
+    async def scenario():
+        sessions = SessionService(SessionRepository(settings.session_db_path))
+        runner = RequirementSessionRunner(
+            supervisor=Supervisor(
+                llm=llm,
+                settings=settings,
+                knowledge_adapter=adapter,  # type: ignore[arg-type]
+            ),
+            sessions=sessions,
+        )
+        async with open_configured_checkpointer(settings) as checkpointer:
+            return await runner.start(
+                "Build a complete inbound appointment configuration plan",
+                checkpointer=checkpointer,
+                session_id="session:validation-gap",
+            )
+
+    result = asyncio.run(scenario())
+
+    assert result.state["status"] == "paused"
+    assert result.state["pause_reason"] == "validation_blocked"
+    assert result.state["targeted_retrieval_rounds"] == 2
+    assert result.state["next_action"] == "ask_user"
+    assert result.next_nodes == ("await_validation",)
+    assert len(result.interrupts) == 1
+    assert len(adapter.calls) == 6
+    assert all(
+        item["evidence_status"] == "unsupported" for item in result.state["task_evidence_bindings"]
+    )
 
 
 def test_low_confidence_intent_interrupts_and_resumes(tmp_path: Path) -> None:

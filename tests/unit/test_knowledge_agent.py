@@ -113,3 +113,31 @@ def test_retrieval_budget_creates_explicit_gap_and_counts_only_real_calls() -> N
     assert len(adapter.calls) == 1
     assert binding.evidence_status is EvidenceStatus.PARTIAL
     assert binding.gap_reasons == ("retrieval_budget_exceeded:second evidence",)
+
+
+def test_targeted_retrieval_replaces_resolved_gap_without_losing_prior_binding() -> None:
+    adapter = FakeAdapter(unsupported={"missing documentation"})
+    agent = KnowledgeAgent(adapter, max_retrieval_tasks=4)
+    tasks = [_task("task:targeted", "supported documentation", "missing documentation")]
+    first = agent.collect(
+        tasks=tasks,
+        confirmed_context={"product_version": "2024.1"},
+        existing_evidence=[],
+    )
+    adapter.unsupported.clear()
+
+    second = agent.collect_targeted(
+        tasks=tasks,
+        confirmed_context={"product_version": "2024.1"},
+        existing_evidence=[item.to_dict() for item in first.evidence],
+        existing_bindings=[item.to_dict() for item in first.bindings],
+        requirements={"task:targeted": ["missing documentation"]},
+    )
+
+    binding = second.bindings[0]
+    assert binding.evidence_status is EvidenceStatus.SUPPORTED
+    assert binding.gap_reasons == ()
+    assert {item.requirement for item in binding.queries} == {
+        "supported documentation",
+        "missing documentation",
+    }

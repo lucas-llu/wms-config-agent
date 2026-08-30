@@ -84,7 +84,7 @@ agent:
   checkpoint_path: data/db/agent_checkpoints.db
   session_db_path: data/db/configuration_sessions.db
   export_root: data/exports
-  max_nodes_per_turn: 12
+  max_nodes_per_turn: 16
   max_self_repair_rounds: 2
   max_retrieval_tasks: 8
   turn_timeout_seconds: 60

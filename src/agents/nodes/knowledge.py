@@ -209,6 +209,35 @@ class KnowledgeAgent:
                 results.append(_RequestResult(request, search, gap))
         return results
 
+    def collect_targeted(
+        self,
+        *,
+        tasks: list[dict[str, Any]],
+        confirmed_context: dict[str, Any],
+        existing_evidence: list[dict[str, Any]],
+        existing_bindings: list[dict[str, Any]],
+        requirements: dict[str, list[str]],
+    ) -> KnowledgeCollection:
+        targeted_tasks = []
+        for task in tasks:
+            task_id = str(task.get("task_id", ""))
+            selected = requirements.get(task_id)
+            if not selected:
+                continue
+            targeted_tasks.append({**task, "evidence_requirements": list(selected)})
+        refreshed = self.collect(
+            tasks=targeted_tasks,
+            confirmed_context=confirmed_context,
+            existing_evidence=existing_evidence,
+        )
+        bindings = _merge_bindings(existing_bindings, refreshed.bindings)
+        return KnowledgeCollection(
+            evidence=refreshed.evidence,
+            bindings=bindings,
+            knowledge_fingerprint=refreshed.knowledge_fingerprint,
+            tool_calls_made=refreshed.tool_calls_made,
+        )
+
 
 def _task_scope(value: dict[str, Any]) -> _TaskScope:
     try:
@@ -260,6 +289,54 @@ def _evidence_status(supported: int, total: int) -> EvidenceStatus:
     if supported:
         return EvidenceStatus.PARTIAL
     return EvidenceStatus.UNSUPPORTED
+
+
+def _merge_bindings(
+    existing: list[dict[str, Any]],
+    refreshed: tuple[TaskEvidenceBinding, ...],
+) -> tuple[TaskEvidenceBinding, ...]:
+    merged = {_binding_from_state(value).task_id: _binding_from_state(value) for value in existing}
+    for new in refreshed:
+        old = merged.get(new.task_id)
+        if old is None:
+            merged[new.task_id] = new
+            continue
+        refreshed_requirements = {item.requirement for item in new.queries}
+        queries = {item.requirement: item for item in old.queries}
+        queries.update({item.requirement: item for item in new.queries})
+        gaps = [
+            gap
+            for gap in old.gap_reasons
+            if not any(requirement in gap for requirement in refreshed_requirements)
+        ]
+        gaps.extend(new.gap_reasons)
+        evidence_ids = tuple(sorted(set(old.evidence_ids).union(new.evidence_ids)))
+        unique_gaps = tuple(dict.fromkeys(gaps))
+        status = (
+            EvidenceStatus.PARTIAL
+            if evidence_ids and unique_gaps
+            else EvidenceStatus.SUPPORTED
+            if evidence_ids
+            else EvidenceStatus.UNSUPPORTED
+        )
+        merged[new.task_id] = TaskEvidenceBinding(
+            task_id=new.task_id,
+            queries=tuple(queries[key] for key in sorted(queries)),
+            evidence_ids=evidence_ids,
+            evidence_status=status,
+            gap_reasons=unique_gaps,
+        )
+    return tuple(merged[key] for key in sorted(merged))
+
+
+def _binding_from_state(value: dict[str, Any]) -> TaskEvidenceBinding:
+    return TaskEvidenceBinding(
+        task_id=str(value["task_id"]),
+        queries=tuple(EvidenceQuery(**item) for item in value.get("queries", [])),
+        evidence_ids=tuple(str(item) for item in value.get("evidence_ids", [])),
+        evidence_status=EvidenceStatus(str(value["evidence_status"])),
+        gap_reasons=tuple(str(item) for item in value.get("gap_reasons", [])),
+    )
 
 
 def _required_text(value: Any, field: str) -> str:

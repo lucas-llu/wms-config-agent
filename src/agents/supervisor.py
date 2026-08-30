@@ -14,7 +14,7 @@ from agents.graph import AgentGraphState, SupervisorGraph
 from agents.nodes import IntentClassifier, KnowledgeAgent, PlanningAgent, RequirementAgent
 from agents.repositories import RevisionRecord, SessionRecord
 from agents.runtime import session_checkpoint_config
-from agents.services import SessionService
+from agents.services import SessionService, ValidationService
 from agents.tools import KnowledgeAdapter
 from core.settings import AgentSettings
 from libs.llm import BaseLLM
@@ -71,6 +71,7 @@ class Supervisor:
             requirement_agent=self.requirement_agent,
             planning_agent=self.planning_agent,
             knowledge_agent=self.knowledge_agent,
+            validation_service=ValidationService(),
             budget=TurnBudgetPolicy(settings, clock=clock),
         )
 
@@ -124,6 +125,10 @@ class RequirementSessionRunner:
             "invalidated_task_ids": [],
             "evidence_registry": [],
             "task_evidence_bindings": [],
+            "conflicts": [],
+            "validation_findings": [],
+            "targeted_retrieval_requirements": {},
+            "targeted_retrieval_rounds": 0,
             "nodes_executed": 0,
             "retry_count": 0,
             "tokens_used": 0,

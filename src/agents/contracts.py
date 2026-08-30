@@ -275,6 +275,8 @@ class Evidence(SerializableAgentContract):
     page_end: int | None = None
     product_version: str | None = None
     module: str | None = None
+    site: str | None = None
+    environment: str | None = None
     collection: str | None = None
 
     def __post_init__(self) -> None:
@@ -302,6 +304,8 @@ class Evidence(SerializableAgentContract):
             raise AgentContractError("Evidence.page_end must not precede page_start")
         _validate_optional_text(self.product_version, "Evidence.product_version")
         _validate_optional_text(self.module, "Evidence.module")
+        _validate_optional_text(self.site, "Evidence.site")
+        _validate_optional_text(self.environment, "Evidence.environment")
         _validate_optional_text(self.collection, "Evidence.collection")
 
 
@@ -504,6 +508,9 @@ class ConfigurationSessionState(TypedDict, total=False):
     knowledge_fingerprint: str
     conflicts: list[dict[str, Any]]
     validation_findings: list[dict[str, Any]]
+    targeted_retrieval_requirements: dict[str, list[str]]
+    targeted_retrieval_rounds: int
+    validation_fingerprint: str
     draft_version: int
     review_decision: str
     export_artifacts: list[dict[str, Any]]
@@ -552,6 +559,7 @@ STATE_FIELD_OWNERS = MappingProxyType(
                 "nodes_executed",
                 "tool_calls_made",
                 "retry_count",
+                "targeted_retrieval_rounds",
                 "tokens_used",
                 "turn_deadline_epoch",
             }
@@ -582,7 +590,13 @@ STATE_FIELD_OWNERS = MappingProxyType(
             }
         ),
         AgentRole.CONFLICT: frozenset({"conflicts"}),
-        AgentRole.VALIDATION: frozenset({"validation_findings"}),
+        AgentRole.VALIDATION: frozenset(
+            {
+                "validation_findings",
+                "targeted_retrieval_requirements",
+                "validation_fingerprint",
+            }
+        ),
         AgentRole.COMPOSER: frozenset({"draft_version", "review_decision", "export_artifacts"}),
     }
 )
