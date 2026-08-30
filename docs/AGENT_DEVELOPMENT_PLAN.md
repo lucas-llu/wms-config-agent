@@ -323,6 +323,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 6 — 依赖/冲突与确定性 Validation
 
+**状态**：已完成开发与本地验收（2026-08-30），等待用户代码审查。
+
 **目标**：阻止带冲突、无引用或不可回滚的草案进入审查。
 
 **开发内容**：
@@ -336,6 +338,15 @@ Day 1 必须在不实现业务功能的情况下完成：
 **测试**：冲突来源保留、版本错配、无引用命令、缺回滚、定向检索上限、相同草案重跑稳定。
 
 **退出标准**：FR-AGT-007/009/013 通过；无证据或有阻塞冲突的草案 100% 不进入 review。
+
+**完成记录**：
+
+- `ValidationService` 确定性检查版本、模块、站点和环境证据范围，冲突保留全部 task/evidence 来源并生成稳定 ID；
+- DAG 缺失前置、边不一致、循环、失效任务，以及步骤、验证、回滚、风险和证据覆盖规则均生成稳定 blocking findings，重复运行指纹一致；
+- 仅证据缺口允许最多 2 轮定向重检索，结果与原绑定稳定合并；冲突或重试耗尽后进入 `validation_blocked` interrupt，绝不进入 review；
+- 无冲突且无 blocking finding 的状态才转为 `REVIEW_REQUIRED / compose_draft`；RAG 证据仍不能升级为环境已验证；
+- 为容纳两轮检索、重验和可恢复暂停，将每轮节点预算从 12 调整为 16，重试次数仍固定为 2；
+- 静态与配置测试问题通过 Issue #22/#23、独立嵌套 bugfix 分支和 PR #24/#25 闭环；Day 6 定向测试 49 passed，全量回归 393 passed / 1 opt-in skipped，总覆盖率 90.88%，ValidationService 覆盖率 95%；公开 benchmark 4/4、全部阈值、Ruff check/format、锁文件、依赖一致性和 diff 门禁通过。
 
 ### Day 7 — Solution Composer、修订、审批与导出
 
