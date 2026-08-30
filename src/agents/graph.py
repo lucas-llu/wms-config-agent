@@ -12,7 +12,7 @@ from langgraph.types import interrupt
 from agents.budget import TurnBudgetPolicy
 from agents.contracts import IntentType, OpenQuestion, SessionStatus, stable_contract_id
 from agents.llm_json import StructuredLLMError
-from agents.nodes import IntentClassifier, RequirementAgent
+from agents.nodes import IntentClassifier, PlanningAgent, RequirementAgent
 from core.settings import AgentSettings
 
 
@@ -54,6 +54,10 @@ class AgentGraphState(TypedDict, total=False):
     confirmed_context: Annotated[dict[str, Any], merge_context]
     assumptions: Annotated[list[dict[str, Any]], merge_assumptions]
     open_questions: list[dict[str, Any]]
+    configuration_tasks: list[dict[str, Any]]
+    dependency_edges: list[dict[str, Any]]
+    planning_baseline_fingerprint: str
+    invalidated_task_ids: list[str]
     nodes_executed: int
     retry_count: int
     tokens_used: int
@@ -83,6 +87,9 @@ ALLOWED_TRANSITIONS = MappingProxyType(
                 SessionStatus.CANCELLED,
                 SessionStatus.FAILED,
             }
+        ),
+        SessionStatus.PLANNING: frozenset(
+            {SessionStatus.RETRIEVING, SessionStatus.PAUSED, SessionStatus.FAILED}
         ),
     }
 )
@@ -115,11 +122,13 @@ class SupervisorGraph:
         settings: AgentSettings,
         classifier: IntentClassifier,
         requirement_agent: RequirementAgent,
+        planning_agent: PlanningAgent,
         budget: TurnBudgetPolicy,
     ) -> None:
         self.settings = settings
         self.classifier = classifier
         self.requirement_agent = requirement_agent
+        self.planning_agent = planning_agent
         self.budget = budget
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
@@ -131,6 +140,7 @@ class SupervisorGraph:
         builder.add_node("pause_requirements", self._pause_requirements)
         builder.add_node("await_requirements", self._await_requirements)
         builder.add_node("complete_requirements", self._complete_requirements)
+        builder.add_node("plan_tasks", self._plan_tasks)
         builder.add_edge(START, "classify_intent")
         builder.add_conditional_edges(
             "classify_intent",
@@ -168,7 +178,8 @@ class SupervisorGraph:
             self._route_after_await,
             {"continue": "extract_requirements", "end": END},
         )
-        builder.add_edge("complete_requirements", END)
+        builder.add_edge("complete_requirements", "plan_tasks")
+        builder.add_edge("plan_tasks", END)
         return builder.compile(checkpointer=checkpointer, name="configuration-supervisor")
 
     def _classify_intent(self, state: AgentGraphState) -> dict[str, Any]:
@@ -324,6 +335,45 @@ class SupervisorGraph:
             "next_action": "plan_tasks",
             "pause_reason": "",
         }
+
+    def _plan_tasks(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "planning")
+        if not entered.allowed:
+            return entered.update
+        try:
+            result = self.planning_agent.plan(
+                user_goal=state["user_goal"],
+                confirmed_context=dict(state.get("confirmed_context", {})),
+                assumptions=list(state.get("assumptions", [])),
+                previous_tasks=list(state.get("configuration_tasks", [])),
+            )
+        except StructuredLLMError as exc:
+            return self._structured_failure(
+                state, entered.update, exc, "planning_output_invalid", "planning"
+            )
+        accounted = self.budget.account_llm(
+            state,
+            retries=result.retries,
+            tokens_used=result.tokens_used,
+            node_name="planning",
+        )
+        update = {**entered.update, **accounted.update}
+        if not accounted.allowed:
+            return update
+        plan = result.plan
+        update.update(
+            {
+                "status": transition_status(state, SessionStatus.RETRIEVING),
+                "active_agent": "planning",
+                "configuration_tasks": [task.to_dict() for task in plan.tasks],
+                "dependency_edges": [edge.to_dict() for edge in plan.edges],
+                "planning_baseline_fingerprint": plan.baseline_fingerprint,
+                "invalidated_task_ids": list(plan.invalidated_task_ids),
+                "next_action": "retrieve_evidence",
+                "pause_reason": "",
+            }
+        )
+        return update
 
     def _structured_failure(
         self,

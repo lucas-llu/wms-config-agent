@@ -199,11 +199,14 @@ class ConfigurationTask(SerializableAgentContract):
     steps: tuple[str, ...] = ()
     validation_steps: tuple[str, ...] = ()
     rollback_steps: tuple[str, ...] = ()
+    evidence_requirements: tuple[str, ...] = ()
     evidence_ids: tuple[str, ...] = ()
     assumption_ids: tuple[str, ...] = ()
     risk_level: RiskLevel = RiskLevel.MEDIUM
     open_question_ids: tuple[str, ...] = ()
     evidence_status: EvidenceStatus = EvidenceStatus.UNSUPPORTED
+    baseline_fingerprint: str = ""
+    invalidation_reason: str | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.task_id, "ConfigurationTask.task_id")
@@ -227,11 +230,38 @@ class ConfigurationTask(SerializableAgentContract):
         _validate_non_empty_items(self.steps, "ConfigurationTask.steps")
         _validate_non_empty_items(self.validation_steps, "ConfigurationTask.validation_steps")
         _validate_non_empty_items(self.rollback_steps, "ConfigurationTask.rollback_steps")
+        _validate_non_empty_items(
+            self.evidence_requirements,
+            "ConfigurationTask.evidence_requirements",
+        )
         _validate_identifiers(self.evidence_ids, "ConfigurationTask.evidence_ids")
         _validate_identifiers(self.assumption_ids, "ConfigurationTask.assumption_ids")
         _validate_identifiers(self.open_question_ids, "ConfigurationTask.open_question_ids")
+        if self.baseline_fingerprint:
+            _validate_identifier(
+                self.baseline_fingerprint,
+                "ConfigurationTask.baseline_fingerprint",
+            )
+        _validate_optional_text(
+            self.invalidation_reason,
+            "ConfigurationTask.invalidation_reason",
+        )
         if self.task_id in self.depends_on:
             raise AgentContractError("ConfigurationTask cannot depend on itself")
+
+
+@dataclass(frozen=True, slots=True)
+class DependencyEdge(SerializableAgentContract):
+    upstream_task_id: str
+    downstream_task_id: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.upstream_task_id, "DependencyEdge.upstream_task_id")
+        _validate_identifier(self.downstream_task_id, "DependencyEdge.downstream_task_id")
+        _validate_text(self.reason, "DependencyEdge.reason")
+        if self.upstream_task_id == self.downstream_task_id:
+            raise AgentContractError("DependencyEdge cannot reference the same task twice")
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,6 +436,8 @@ class ConfigurationSessionState(TypedDict, total=False):
     decisions: list[dict[str, Any]]
     configuration_tasks: list[dict[str, Any]]
     dependency_edges: list[dict[str, Any]]
+    planning_baseline_fingerprint: str
+    invalidated_task_ids: list[str]
     evidence_registry: list[dict[str, Any]]
     conflicts: list[dict[str, Any]]
     validation_findings: list[dict[str, Any]]
@@ -471,7 +503,14 @@ STATE_FIELD_OWNERS = MappingProxyType(
                 "decisions",
             }
         ),
-        AgentRole.PLANNING: frozenset({"configuration_tasks", "dependency_edges"}),
+        AgentRole.PLANNING: frozenset(
+            {
+                "configuration_tasks",
+                "dependency_edges",
+                "planning_baseline_fingerprint",
+                "invalidated_task_ids",
+            }
+        ),
         AgentRole.KNOWLEDGE: frozenset({"evidence_registry"}),
         AgentRole.CONFLICT: frozenset({"conflicts"}),
         AgentRole.VALIDATION: frozenset({"validation_findings"}),

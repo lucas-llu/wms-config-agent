@@ -39,6 +39,10 @@ def test_load_project_settings() -> None:
     assert settings.agent.max_questions_per_turn == 3
     assert settings.agent.intent_prompt_path == Path("config/prompts/agent_intent.txt")
     assert settings.agent.requirement_prompt_path == Path("config/prompts/agent_requirement.txt")
+    assert settings.agent.planning_prompt_path == Path("config/prompts/agent_planning.txt")
+    assert settings.agent.planning_template_path == Path(
+        "config/templates/inbound_appointment_receiving.json"
+    )
 
 
 def test_missing_required_field_has_readable_path(tmp_path: Path) -> None:

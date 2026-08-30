@@ -142,6 +142,10 @@ class AgentSettings:
     max_questions_per_turn: int = 3
     intent_prompt_path: Path = Path("config/prompts/agent_intent.txt")
     requirement_prompt_path: Path = Path("config/prompts/agent_requirement.txt")
+    planning_prompt_path: Path = Path("config/prompts/agent_planning.txt")
+    planning_template_path: Path = Path(
+        "config/templates/inbound_appointment_receiving.json"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,6 +579,20 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
                     agent.get("requirement_prompt_path"),
                     "agent.requirement_prompt_path",
                     default="config/prompts/agent_requirement.txt",
+                )
+            ),
+            planning_prompt_path=Path(
+                _optional_non_empty_str(
+                    agent.get("planning_prompt_path"),
+                    "agent.planning_prompt_path",
+                    default="config/prompts/agent_planning.txt",
+                )
+            ),
+            planning_template_path=Path(
+                _optional_non_empty_str(
+                    agent.get("planning_template_path"),
+                    "agent.planning_template_path",
+                    default="config/templates/inbound_appointment_receiving.json",
                 )
             ),
         ),

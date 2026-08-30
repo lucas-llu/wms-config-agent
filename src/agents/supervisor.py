@@ -11,7 +11,7 @@ from langgraph.types import Command
 
 from agents.budget import TurnBudgetPolicy
 from agents.graph import AgentGraphState, SupervisorGraph
-from agents.nodes import IntentClassifier, RequirementAgent
+from agents.nodes import IntentClassifier, PlanningAgent, RequirementAgent
 from agents.repositories import RevisionRecord, SessionRecord
 from agents.runtime import session_checkpoint_config
 from agents.services import SessionService
@@ -49,10 +49,17 @@ class Supervisor:
             max_questions=settings.max_questions_per_turn,
             prompt_path=settings.requirement_prompt_path,
         )
+        self.planning_agent = PlanningAgent(
+            llm,
+            max_retries=settings.max_self_repair_rounds,
+            prompt_path=settings.planning_prompt_path,
+            template_path=settings.planning_template_path,
+        )
         self.graph = SupervisorGraph(
             settings=settings,
             classifier=self.classifier,
             requirement_agent=self.requirement_agent,
+            planning_agent=self.planning_agent,
             budget=TurnBudgetPolicy(settings, clock=clock),
         )
 
@@ -101,6 +108,9 @@ class RequirementSessionRunner:
             "confirmed_context": {},
             "assumptions": [],
             "open_questions": [],
+            "configuration_tasks": [],
+            "dependency_edges": [],
+            "invalidated_task_ids": [],
             "nodes_executed": 0,
             "retry_count": 0,
             "tokens_used": 0,
