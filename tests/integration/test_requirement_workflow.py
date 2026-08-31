@@ -15,7 +15,9 @@ from agents.services import SessionService
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from agents.tools import KnowledgeSearchResult
 from core.settings import AgentSettings, load_settings
+from core.trace import TraceCollector
 from libs.llm import ChatResponse
+from observability.dashboard.services import TraceService
 
 
 class ScriptedLLM:
@@ -205,6 +207,7 @@ def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
 
 def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path) -> None:
     settings = _settings(tmp_path / "knowledge")
+    trace_path = tmp_path / "knowledge" / "agent-traces.jsonl"
     llm = ScriptedLLM(
         {
             "confirmed_context": {
@@ -230,6 +233,7 @@ def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path)
                 knowledge_adapter=adapter,  # type: ignore[arg-type]
             ),
             sessions=sessions,
+            trace_collector=TraceCollector(trace_path),
         )
         async with open_configured_checkpointer(settings) as checkpointer:
             return await runner.start(
@@ -252,6 +256,19 @@ def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path)
     assert result.state["conflicts"] == []
     assert result.state["validation_findings"] == []
     assert all(call[1]["version"] == "2024.1" for call in adapter.calls)
+    trace = TraceService(trace_path).list_traces("agent").records[0]
+    events = TraceService.agent_events(trace)
+    nodes = {item["Node"] for item in events if item["Event"] == "node_update"}
+    assert {
+        "classify_intent",
+        "extract_requirements",
+        "plan_tasks",
+        "retrieve_evidence",
+        "analyze_conflicts",
+        "validate_draft",
+        "complete_validation",
+    } <= nodes
+    assert any(item["Event"] == "checkpoint" for item in events)
 
 
 def test_evidence_gaps_retry_twice_then_interrupt_before_review(tmp_path: Path) -> None:

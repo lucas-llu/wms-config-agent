@@ -207,6 +207,16 @@ class SessionRepository:
             row = self._select_session(connection, session_id)
         return _session_from_row(row)
 
+    def list_sessions(self, *, limit: int = 100) -> tuple[SessionRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than 0")
+        with self._read_connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM sessions ORDER BY updated_at DESC, session_id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return tuple(_session_from_row(row) for row in rows)
+
     def get_revision(self, session_id: str, revision: int | None = None) -> RevisionRecord:
         session_id = _required_text(session_id, "session_id")
         with self._read_connection() as connection:

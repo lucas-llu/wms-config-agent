@@ -49,6 +49,34 @@ class TraceContext:
         with self._lock:
             self._stages.append(stage)
 
+    def record_agent_event(
+        self,
+        event: str,
+        *,
+        session_id: str,
+        revision: int,
+        graph: str | None = None,
+        node: str | None = None,
+        tool: str | None = None,
+        interrupt: str | None = None,
+        approval: str | None = None,
+        budget: dict[str, Any] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        payload = {
+            "event": event,
+            "session_id": session_id,
+            "revision": revision,
+            "graph": graph,
+            "node": node,
+            "tool": tool,
+            "interrupt": interrupt,
+            "approval": approval,
+            "budget": budget or {},
+            **(details or {}),
+        }
+        self.record_stage("agent_event", 0.0, details=payload)
+
     def finish(self, *, status: str = "ok", error: str | None = None) -> None:
         finished: dict[str, Any] = {
             "finished_at": datetime.now(UTC).isoformat(),

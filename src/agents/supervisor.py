@@ -17,6 +17,7 @@ from agents.runtime import session_checkpoint_config
 from agents.services import SessionService, ValidationService
 from agents.tools import KnowledgeAdapter
 from core.settings import AgentSettings
+from core.trace import TraceCollector, TraceContext
 from libs.llm import BaseLLM
 
 
@@ -87,10 +88,12 @@ class RequirementSessionRunner:
         *,
         supervisor: Supervisor,
         sessions: SessionService,
+        trace_collector: TraceCollector | None = None,
         clock: Any = time.time,
     ) -> None:
         self.supervisor = supervisor
         self.sessions = sessions
+        self.trace_collector = trace_collector
         self.clock = clock
 
     async def start(
@@ -135,9 +138,10 @@ class RequirementSessionRunner:
             "tool_calls_made": 0,
             "turn_deadline_epoch": self.clock() + self.supervisor.settings.turn_timeout_seconds,
         }
-        async for _event in graph.astream(initial, config, stream_mode="updates"):
-            pass
-        return await self._persist_result(graph, config, session.current_revision)
+        trace = await self._run_graph(
+            graph, initial, config, session.session_id, session.current_revision
+        )
+        return await self._persist_result(graph, config, session.current_revision, trace)
 
     async def continue_session(
         self,
@@ -166,12 +170,54 @@ class RequirementSessionRunner:
                 "turn_deadline_epoch": self.clock() + self.supervisor.settings.turn_timeout_seconds,
             },
         )
-        async for _event in graph.astream(command, config, stream_mode="updates"):
-            pass
-        return await self._persist_result(graph, config, session.current_revision)
+        trace = await self._run_graph(graph, command, config, session_id, session.current_revision)
+        return await self._persist_result(graph, config, session.current_revision, trace)
+
+    async def _run_graph(
+        self, graph: Any, input_value: Any, config: dict[str, Any], session_id: str, revision: int
+    ) -> TraceContext | None:
+        trace = (
+            self.trace_collector.start(
+                "agent",
+                {
+                    "session_id": session_id,
+                    "revision": revision,
+                    "graph": "configuration-supervisor",
+                },
+            )
+            if self.trace_collector
+            else None
+        )
+        async for event in graph.astream(input_value, config, stream_mode="updates"):
+            if trace and isinstance(event, dict):
+                for node, update in sorted(event.items()):
+                    update_mapping = update if isinstance(update, dict) else {}
+                    trace.record_agent_event(
+                        "node_update",
+                        session_id=session_id,
+                        revision=revision,
+                        graph="configuration-supervisor",
+                        node=str(node),
+                        budget={
+                            key: update_mapping[key]
+                            for key in (
+                                "nodes_executed",
+                                "retry_count",
+                                "tokens_used",
+                                "tool_calls_made",
+                            )
+                            if key in update_mapping
+                        },
+                        details={"updated_fields": sorted(update_mapping)},
+                    )
+        return trace
 
     async def _persist_result(
-        self, graph: Any, config: dict[str, dict[str, str]], expected_revision: int
+        self,
+        graph: Any,
+        config: dict[str, dict[str, str]],
+        expected_revision: int,
+        trace: TraceContext | None = None,
     ) -> WorkflowResult:
         snapshot = await graph.aget_state(config)
         values = dict(snapshot.values)
@@ -185,6 +231,22 @@ class RequirementSessionRunner:
         state = dict(values)
         state["revision"] = revision.revision
         interrupts = tuple(item.value for item in getattr(snapshot, "interrupts", ()))
+        if trace:
+            trace.record_agent_event(
+                "checkpoint",
+                session_id=values["session_id"],
+                revision=revision.revision,
+                graph="configuration-supervisor",
+                interrupt=str(values.get("pause_reason") or "") if interrupts else None,
+                budget={
+                    key: values.get(key, 0)
+                    for key in ("nodes_executed", "retry_count", "tokens_used", "tool_calls_made")
+                },
+                details={"status": values.get("status"), "next_nodes": list(snapshot.next)},
+            )
+            trace.finish(status="paused" if interrupts else "ok")
+            if self.trace_collector:
+                self.trace_collector.collect(trace)
         if values.get("status") == "paused" and values.get("open_questions"):
             question_text = "\n".join(
                 str(item.get("text", "")).strip()
