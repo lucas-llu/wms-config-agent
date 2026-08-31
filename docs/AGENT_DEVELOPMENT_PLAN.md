@@ -370,6 +370,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 8 — MCP Session Tools 与 V1 兼容
 
+**状态**：已完成开发、缺陷闭环与本地验收（2026-08-31），等待用户代码审查。
+
 **目标**：通过现有 MCP Server 对外提供完整会话用例。
 
 **开发内容**：
@@ -383,6 +385,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 **测试**：tools/list 顺序/Schema snapshot、会话 E2E、错误映射、stdout 不污染、两会话交替调用、V1 MCP E2E。
 
 **退出标准**：FR-AGT-002/014 通过，一个本地 MCP Client 可继续同一会话并导出批准方案。
+
+**完成记录**：新增 start/continue/get/validate/review/export 六个粗粒度工具、完整 Schema/annotations、结构化事件与 Markdown 降级；同步 stdio handler 可安全桥接异步 LangGraph，应用组装仅在 Agent enabled 时注入 V2 服务，V1 三工具保持不变。Issue #36 / PR #37 已闭环。Day 8/V1/会话定向测试 24 passed，全量 398 passed / 1 opt-in skipped，总覆盖率 90.85%，session tools 覆盖率 92%；Ruff、格式、锁文件、依赖和公开 benchmark 门禁通过。
 
 ### Day 9 — Agent Trace、Dashboard 与安全加固
 
