@@ -390,6 +390,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 9 — Agent Trace、Dashboard 与安全加固
 
+**状态**：已完成开发、缺陷闭环与本地验收（2026-08-31），等待用户代码审查。
+
 **目标**：使 Agent 每个决策和工具调用可审计，并验证默认只读边界。
 
 **开发内容**：
@@ -403,6 +405,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 **测试**：Trace 完整/脱敏、Dashboard AppTest、未授权工具阻断、审批绕过阻断、会话数据不入 Git。
 
 **退出标准**：FR-AGT-015 通过，高危安全测试拦截率 100%。
+
+**完成记录**：TraceContext 新增 session/revision/graph/node/tool/interrupt/approval/budget Agent 事件；TraceService 支持有界、容错、脱敏的 agent trace；Dashboard 新增 Agent Sessions 页，展示状态、任务 DAG、证据覆盖、冲突、暂停和审批历史。MCP 六工具写入本地 Agent audit trace；安全测试覆盖 prompt/credential 脱敏、敏感 key 删除、无 destructive/open-world/environment 工具、审批门禁及业务数据 Git 隔离。Issue #39/#40 与 PR #41/#42 已闭环。Day 9 定向测试 28 passed，全量 402 passed / 1 opt-in skipped，总覆盖率 90.71%，TraceService 93%、AgentSessionService 100%；公开 benchmark 4/4 和全部质量门禁通过。
 
 ### Day 10 — 端到端验收、Agent 评估与发布收口
 
