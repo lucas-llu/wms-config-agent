@@ -30,7 +30,7 @@ def test_agent_trace_is_complete_and_redacts_sensitive_bodies(tmp_path) -> None:
     record = TraceService(path).list_traces("agent").records[0]
     events = TraceService.agent_events(record)
 
-    assert record.attributes["api_key"] == "[REDACTED]"
+    assert "api_key" not in record.attributes
     assert events[0]["Session"] == "session:one"
     assert events[0]["Budget"] == {"nodes": 4, "tokens": 120}
     assert "ignore approval" not in str(record)
