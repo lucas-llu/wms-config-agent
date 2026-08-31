@@ -374,7 +374,7 @@ def test_data_browser_filters_collections_and_previews_managed_image(
     assert len(app.image) == 0
 
 
-def test_dashboard_navigation_reaches_all_six_pages(tmp_path: Path, monkeypatch) -> None:
+def test_dashboard_navigation_reaches_all_seven_pages(tmp_path: Path, monkeypatch) -> None:
     _configure_fixture(tmp_path, monkeypatch, include_document=False)
     app_path = _PROJECT_ROOT / "src" / "observability" / "dashboard" / "app.py"
     app = AppTest.from_file(str(app_path)).run(timeout=20)
@@ -384,6 +384,7 @@ def test_dashboard_navigation_reaches_all_six_pages(tmp_path: Path, monkeypatch)
         ("pages/ingestion_manager.py", "Ingestion"),
         ("pages/ingestion_traces.py", "Ingestion traces"),
         ("pages/query_traces.py", "Query traces"),
+        ("pages/agent_sessions.py", "Agent Sessions"),
         ("pages/evaluation.py", "Evaluation"),
     ]
 

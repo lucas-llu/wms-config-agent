@@ -15,6 +15,7 @@ from agents.runtime import open_configured_checkpointer
 from agents.services import SolutionService, SolutionStateError, ValidationService
 from agents.supervisor import RequirementSessionRunner
 from core.settings import AgentSettings
+from core.trace import TraceCollector
 from mcp_server.tool_registry import MCPTool, ToolInputError
 
 
@@ -25,6 +26,7 @@ class ConfigurationSessionApplication:
     validation: ValidationService
     solutions: SolutionService
     settings: AgentSettings
+    trace_collector: TraceCollector | None = None
 
     def start(self, goal: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         message = (
@@ -40,7 +42,9 @@ class ConfigurationSessionApplication:
             async with open_configured_checkpointer(self.settings) as checkpointer:
                 return await self.runner.start(message, checkpointer=checkpointer)
 
-        return _workflow_payload(_run(operation()))
+        payload = _workflow_payload(_run(operation()))
+        self._audit("start", payload["session_id"], payload["revision"], payload)
+        return payload
 
     def continue_session(
         self, session_id: str, message: str, expected_revision: int
@@ -53,11 +57,15 @@ class ConfigurationSessionApplication:
                     session_id, message, checkpointer=checkpointer
                 )
 
-        return _workflow_payload(_run(operation()))
+        payload = _workflow_payload(_run(operation()))
+        self._audit("continue", session_id, payload["revision"], payload)
+        return payload
 
     def get(self, session_id: str, revision: int | None = None) -> dict[str, Any]:
         record = self.repository.get_revision(session_id, revision)
-        return _state_payload(dict(record.state), event_type="draft")
+        payload = _state_payload(dict(record.state), event_type="draft")
+        self._audit("get", session_id, payload["revision"], payload)
+        return payload
 
     def validate(self, session_id: str, expected_revision: int) -> dict[str, Any]:
         self._require_revision(session_id, expected_revision)
@@ -89,9 +97,11 @@ class ConfigurationSessionApplication:
             actor="validation",
             reason="explicit_validation",
         )
-        return _state_payload(
+        payload = _state_payload(
             dict(revision.state), event_type="interrupt" if report.blocking else "draft"
         )
+        self._audit("validate", session_id, payload["revision"], payload)
+        return payload
 
     def review(
         self,
@@ -111,27 +121,53 @@ class ConfigurationSessionApplication:
             actor="mcp_user",
             comment=comment,
         )
-        return _state_payload(
+        payload = _state_payload(
             dict(revision.state),
             event_type="final" if review_decision is not ReviewDecision.REVISE else "draft",
         )
+        self._audit("review", session_id, payload["revision"], {**payload, "approval": decision})
+        return payload
 
     def export(self, session_id: str, expected_revision: int, format: str) -> dict[str, Any]:
         artifact = self.solutions.export(
             session_id, expected_revision=expected_revision, format=format
         )
-        return {
+        payload = {
             "event": "final",
             "session_id": session_id,
             "revision": expected_revision,
             "artifact": artifact.to_dict(),
             "markdown": f"Exported `{format}` solution with fingerprint `{artifact.fingerprint}`.",
         }
+        self._audit("export", session_id, expected_revision, payload)
+        return payload
 
     def _require_revision(self, session_id: str, expected_revision: int) -> None:
         actual = self.repository.get_session(session_id).current_revision
         if actual != expected_revision:
             raise SessionRevisionConflict(session_id, expected_revision, actual)
+
+    def _audit(
+        self, operation: str, session_id: str, revision: int, details: dict[str, Any]
+    ) -> None:
+        if self.trace_collector is None:
+            return
+        trace = self.trace_collector.start(
+            "agent", {"session_id": session_id, "revision": revision, "operation": operation}
+        )
+        if trace is None:
+            return
+        trace.record_agent_event(
+            operation,
+            session_id=session_id,
+            revision=revision,
+            tool=f"{operation}_configuration_session",
+            interrupt=str(details.get("event")) if details.get("event") == "interrupt" else None,
+            approval=str(details.get("approval")) if details.get("approval") else None,
+            details={"status": details.get("status")},
+        )
+        trace.finish()
+        self.trace_collector.collect(trace)
 
 
 class ConfigurationSessionTools:

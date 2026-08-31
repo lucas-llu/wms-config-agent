@@ -1,5 +1,6 @@
 """Dashboard data services."""
 
+from observability.dashboard.services.agent_session_service import AgentSessionService
 from observability.dashboard.services.config_service import ComponentConfig, ConfigService
 from observability.dashboard.services.data_service import DataService
 from observability.dashboard.services.evaluation_service import (
@@ -23,6 +24,7 @@ from observability.dashboard.services.trace_service import (
 )
 
 __all__ = [
+    "AgentSessionService",
     "ComponentConfig",
     "ConfigService",
     "DashboardServices",

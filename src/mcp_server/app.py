@@ -67,15 +67,16 @@ def create_protocol_handler(
     )
     reranker = SafeReranker(RerankerFactory.create(settings))
     response_builder = ResponseBuilder()
+    trace_collector = TraceCollector(
+        settings.observability.trace_file,
+        enabled=settings.observability.enabled,
+    )
     query_tool = QueryKnowledgeHubTool(
         hybrid_search,
         reranker,
         response_builder,
         assembler,
-        TraceCollector(
-            settings.observability.trace_file,
-            enabled=settings.observability.enabled,
-        ),
+        trace_collector,
     )
     tools = [
         query_tool.definition(),
@@ -96,6 +97,7 @@ def create_protocol_handler(
             validation=ValidationService(),
             solutions=SolutionService(repository, settings.agent.export_root),
             settings=settings.agent,
+            trace_collector=trace_collector,
         )
         tools.extend(ConfigurationSessionTools(application).definitions())
     registry = ToolRegistry(tools)
