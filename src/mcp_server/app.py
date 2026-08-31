@@ -92,7 +92,11 @@ def create_protocol_handler(
             knowledge_adapter=KnowledgeAdapter(hybrid_search, reranker, response_builder),
         )
         application = ConfigurationSessionApplication(
-            runner=RequirementSessionRunner(supervisor=supervisor, sessions=sessions),
+            runner=RequirementSessionRunner(
+                supervisor=supervisor,
+                sessions=sessions,
+                trace_collector=trace_collector,
+            ),
             repository=repository,
             validation=ValidationService(),
             solutions=SolutionService(repository, settings.agent.export_root),
