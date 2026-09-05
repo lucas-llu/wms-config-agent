@@ -54,18 +54,19 @@ class AgentGoldenDataset:
 @dataclass(frozen=True, slots=True)
 class AgentScenarioResult:
     scenario_id: str
-    intent_correct: bool = True
-    required_fields_complete: bool = True
-    duplicate_question_free: bool = True
-    dag_valid: bool = True
-    task_coverage: float = 1.0
-    citation_coverage: float = 1.0
-    citation_support: float = 1.0
-    conflict_detected: bool = True
-    evidence_gap_blocked: bool = True
-    solution_complete: float = 1.0
-    recovery_success: bool = True
-    session_isolated: bool = True
+    intent_correct: bool | None = None
+    required_fields_complete: bool | None = None
+    duplicate_question_free: bool | None = None
+    dag_valid: bool | None = None
+    task_coverage: float | None = None
+    citation_coverage: float | None = None
+    citation_support: float | None = None
+    conflict_detected: bool | None = None
+    evidence_gap_blocked: bool | None = None
+    invalidation_correct: bool | None = None
+    solution_complete: float | None = None
+    recovery_success: bool | None = None
+    session_isolated: bool | None = None
     unauthorized_tool_calls: int = 0
 
 
@@ -104,6 +105,7 @@ class AgentEvaluationRunner:
             "citation_support": _average(item.citation_support for item in ordered),
             "conflict_detection": _mean(item.conflict_detected for item in ordered),
             "evidence_gap_blocking": _mean(item.evidence_gap_blocked for item in ordered),
+            "invalidation_accuracy": _mean(item.invalidation_correct for item in ordered),
             "solution_completeness": _average(item.solution_complete for item in ordered),
             "recovery_success": _mean(item.recovery_success for item in ordered),
             "session_isolation": _mean(item.session_isolated for item in ordered),
@@ -120,17 +122,7 @@ class AgentEvaluationRunner:
         failed = tuple(
             item.scenario_id
             for item in ordered
-            if item.unauthorized_tool_calls
-            or not all(
-                (
-                    item.intent_correct,
-                    item.required_fields_complete,
-                    item.dag_valid,
-                    item.evidence_gap_blocked,
-                    item.recovery_success,
-                    item.session_isolated,
-                )
-            )
+            if item.unauthorized_tool_calls or _scenario_failed(item)
         )
         return AgentEvaluationReport(
             dataset.name,
@@ -144,10 +136,25 @@ class AgentEvaluationRunner:
 
 
 def _mean(values) -> float:
-    materialized = list(values)
+    materialized = [item for item in values if item is not None]
+    if not materialized:
+        raise ValueError("agent metric has no applicable golden scenarios")
     return round(sum(bool(item) for item in materialized) / len(materialized), 6)
 
 
 def _average(values) -> float:
-    materialized = list(values)
+    materialized = [item for item in values if item is not None]
+    if not materialized:
+        raise ValueError("agent metric has no applicable golden scenarios")
     return round(sum(float(item) for item in materialized) / len(materialized), 6)
+
+
+def _scenario_failed(item: AgentScenarioResult) -> bool:
+    values = asdict(item)
+    values.pop("scenario_id")
+    values.pop("unauthorized_tool_calls")
+    return any(
+        value is False or isinstance(value, float) and value < 1.0
+        for value in values.values()
+        if value is not None
+    )

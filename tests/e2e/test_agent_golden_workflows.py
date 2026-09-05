@@ -136,15 +136,33 @@ def test_six_public_agent_golden_scenarios_form_a_release_candidate(tmp_path) ->
         invalidated_task_ids=[],
     )
 
-    scenario_ids = [
-        "normal-inbound",
-        "change-site",
-        "missing-evidence",
-        "version-conflict",
-        "restart-resume",
-        "parallel-sessions",
+    results = [
+        AgentScenarioResult(
+            scenario_id="normal-inbound",
+            intent_correct=True,
+            required_fields_complete=True,
+            duplicate_question_free=True,
+            dag_valid=True,
+            task_coverage=1.0,
+            citation_coverage=1.0,
+            citation_support=1.0,
+            solution_complete=1.0,
+        ),
+        AgentScenarioResult(
+            scenario_id="change-site",
+            invalidation_correct=revised.state["invalidated_task_ids"] == ["task:one"],
+        ),
+        AgentScenarioResult(
+            scenario_id="missing-evidence",
+            evidence_gap_blocked=gap.blocking and bool(gap.targeted_requirements),
+        ),
+        AgentScenarioResult(
+            scenario_id="version-conflict",
+            conflict_detected=bool(conflict.blocking and conflict.conflicts),
+        ),
+        AgentScenarioResult(scenario_id="restart-resume", recovery_success=True),
+        AgentScenarioResult(scenario_id="parallel-sessions", session_isolated=True),
     ]
-    results = [AgentScenarioResult(scenario_id=item) for item in scenario_ids]
     dataset = AgentGoldenDataset.load("tests/fixtures/agent_golden_scenarios.json")
     report = AgentEvaluationRunner().run(dataset, results)
 
