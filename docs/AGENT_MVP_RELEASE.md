@@ -15,6 +15,18 @@ review, revisioned drafts, JSON/Markdown export, MCP tools, audit traces, and Da
 - Unauthorized tool calls must remain zero; evidence gaps and blocking conflicts must never reach
   review.
 
+## Candidate result — 2026-09-05
+
+- Full test suite: 405 passed, 2 explicit real-provider tests skipped.
+- Source coverage: 90.74% (minimum 90%).
+- V1 sanitized retrieval benchmark: 4/4 cases passed; every quality/latency threshold passed.
+- V2 Agent golden scenarios: 6/6 passed.
+- Agent metrics: all 14 thresholds passed, including invalidation, evidence-gap blocking,
+  conflict detection, recovery, isolation, solution completeness, and zero unauthorized calls.
+- Ruff check/format, dependency compatibility, diff hygiene, and local secret-pattern checks passed.
+- The Agent real-provider acceptance was not enabled (`WMS_AGENT_LIVE` unset); this is recorded as
+  an opt-in acceptance limitation, not silently treated as a passing real-provider run.
+
 ## Default feature state
 
 `agent.enabled` remains `false`. Enabling requires an authorized, aligned local corpus, configured

@@ -2434,7 +2434,7 @@ V2 的每日任务、依赖、测试方法、退出标准和范围切除顺序�
 | J：Agent 契约、状态图与持久化 | Day 1–3 | [x] | Agent 契约、checkpoint、Session Repository、revision、Supervisor、意图路由、需求补全与预算中断均已完成开发、缺陷闭环与合并验收 |
 | K：规划、RAG 证据与冲突验证 | Day 4–6 | [x] | 无环任务 DAG、引用绑定、冲突/证据缺口阻断均已完成并合并 |
 | L：方案修订、审批、导出与 MCP | Day 7–8 | [x] | 批准门禁、JSON/Markdown 导出、6 个 session tools、V1 兼容均已完成并合并 |
-| M：可观测、安全与发布验收 | Day 9–10 | [~] | Day 9 已完成；Agent golden scenarios、综合评估和发布报告正在 Day 10 收口 |
+| M：可观测、安全与发布验收 | Day 9–10 | [x] | Agent Trace/Dashboard、安全门禁、六类 golden scenarios、综合评估和发布报告均已完成公开验收 |
 
 > V1 进度表保持原统计口径；V2 单独跟踪，不因新需求把“V1 MVP 完成度 100%”重新解读为未完成。
 
