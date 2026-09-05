@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from core.settings import load_settings
 from mcp_server.tool_registry import MCPTool, ToolInputError
 from mcp_server.tools import AgentCapabilitiesTool
-from core.settings import load_settings
 
 
 def _registered_tool() -> MCPTool:
