@@ -11,6 +11,7 @@
     "citation_support_min": 0.95,
     "conflict_detection_min": 0.95,
     "evidence_gap_blocking_min": 1.0,
+    "invalidation_accuracy_min": 1.0,
     "solution_completeness_min": 0.95,
     "recovery_success_min": 1.0,
     "session_isolation_min": 1.0,
