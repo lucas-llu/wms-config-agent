@@ -5,6 +5,13 @@ from observability.evaluation.baseline_comparator import (
     BaselineComparisonError,
     BenchmarkComparison,
 )
+from observability.evaluation.agent_evaluation import (
+    AgentEvaluationReport,
+    AgentEvaluationRunner,
+    AgentGoldenDataset,
+    AgentGoldenScenario,
+    AgentScenarioResult,
+)
 from observability.evaluation.benchmark import (
     BenchmarkCase,
     BenchmarkDataset,
@@ -18,6 +25,11 @@ from observability.evaluation.retrieval_benchmark import (
 )
 
 __all__ = [
+    "AgentEvaluationReport",
+    "AgentEvaluationRunner",
+    "AgentGoldenDataset",
+    "AgentGoldenScenario",
+    "AgentScenarioResult",
     "BenchmarkCase",
     "BenchmarkCaseResult",
     "BenchmarkDataset",
