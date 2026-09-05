@@ -1,0 +1,8 @@
+[
+  {"scenario_id":"normal-inbound","intent_correct":true,"required_fields_complete":true,"duplicate_question_free":true,"dag_valid":true,"task_coverage":1.0,"citation_coverage":1.0,"citation_support":1.0,"solution_complete":1.0,"unauthorized_tool_calls":0},
+  {"scenario_id":"change-site","invalidation_correct":true,"unauthorized_tool_calls":0},
+  {"scenario_id":"missing-evidence","evidence_gap_blocked":true,"unauthorized_tool_calls":0},
+  {"scenario_id":"version-conflict","conflict_detected":true,"unauthorized_tool_calls":0},
+  {"scenario_id":"restart-resume","recovery_success":true,"unauthorized_tool_calls":0},
+  {"scenario_id":"parallel-sessions","session_isolated":true,"unauthorized_tool_calls":0}
+]

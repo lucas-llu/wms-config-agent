@@ -370,7 +370,7 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 8 — MCP Session Tools 与 V1 兼容
 
-**状态**：已完成开发、缺陷闭环与本地验收（2026-08-31），等待用户代码审查。
+**状态**：已完成开发、缺陷闭环、审查与合并（2026-08-31）。
 
 **目标**：通过现有 MCP Server 对外提供完整会话用例。
 
@@ -410,6 +410,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 
 ### Day 10 — 端到端验收、Agent 评估与发布收口
 
+**状态**：已完成开发、缺陷闭环与确定性公开验收（2026-09-05），等待用户代码审查。
+
 **目标**：证明从业务目标到批准方案的闭环可复现，且不损害 V1。
 
 **开发内容**：
@@ -423,6 +425,8 @@ Day 1 必须在不实现业务功能的情况下完成：
 **测试**：ruff check/format、全量 pytest + coverage ≥ 90%、V1 公开检索基准、V1 MCP/Dashboard E2E、V2 Agent E2E、隐私和密钥扫描。
 
 **退出标准**：15 个 FR-AGT 中所有 P0 通过；Agent golden scenarios 通过；V1 无回归；已知限制和延期项有书面记录。
+
+**完成记录**：新增六类脱敏 Agent golden scenarios、按适用场景计算的 14 项 Agent 指标、确定性 release runner、真实 Provider opt-in 入口和发布候选报告；README、V2 阶段状态、七页 Dashboard、MCP/隐私/恢复/默认开关文档已收口。Issue #46/#48 与 PR #47/#49 已闭环。全量 405 passed / 2 opt-in skipped，覆盖率 90.74%；V1 benchmark 4/4、Agent golden 6/6、全部阈值、Ruff、格式、依赖、diff 和密钥模式门禁通过。真实 Agent Provider 因 `WMS_AGENT_LIVE` 未启用而按设计跳过，`agent.enabled` 保持默认关闭。
 
 ## 6. 每日质量门禁
 

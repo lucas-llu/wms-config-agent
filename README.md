@@ -188,20 +188,50 @@ runs the committed public benchmark gate.
 - **Live provider test skipped** — this is expected for offline development. Enable it only after
   reading the provider/privacy instructions and setting the required key.
 
+## V2 configuration Agent
+
+The opt-in V2 Agent manages a durable configuration workflow on top of the V1 citation-first RAG
+core. Set `agent.enabled: true` only in an authorized local environment with aligned Chroma and
+BM25 indexes and a configured text LLM. The default remains `false` until a real provider and
+customer-authorized corpus complete acceptance.
+
+Six MCP tools expose the workflow:
+
+- `start_configuration_session` — create a session and collect missing requirements;
+- `continue_configuration_session` — resume an interrupt using `session_id` and
+  `expected_revision`;
+- `get_configuration_session` — inspect the current or an immutable historical revision;
+- `validate_configuration_draft` — rerun deterministic DAG/evidence/conflict gates;
+- `review_configuration_draft` — explicitly revise, reject, or approve a review-ready revision;
+- `export_configuration_solution` — idempotently export an approved JSON or Markdown solution.
+
+Every mutation uses optimistic revision protection. Evidence gaps and conflicts pause instead of
+being guessed away; approval is explicit and does not authorize execution in a WMS environment.
+Interrupted sessions resume from the configured SQLite checkpoint after process restart.
+
+Run the deterministic Agent release gate with no private corpus or provider credentials:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_agent_release.py --enforce-thresholds
+```
+
+The optional real-provider intent acceptance remains disabled unless `WMS_AGENT_LIVE=1` and the
+configured provider key is present.
+
 ## MVP status
 
-Days 1–10 are implemented on `develop`: offline ingestion, hybrid retrieval, cited MCP delivery,
-document enrichment and lifecycle hardening, six-page operations/trace Dashboard, deterministic
+V1 Days 1–10 and V2 Agent Days 1–10 are implemented on `dev`: offline ingestion, hybrid retrieval,
+cited MCP delivery, document enrichment and lifecycle hardening, seven-page Dashboard, deterministic
 evaluation UI, contract coverage, and sanitized release acceptance. Ollama/hosted embeddings,
 cross-encoder or LLM rerankers, Azure Vision, and Ragas remain explicitly deferred provider work.
 
 The detailed delivery record is [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md).
 
-## V2 multi-agent roadmap
+## V2 multi-agent architecture
 
-The next planned phase evolves the citation-first RAG core into a stateful configuration assistant:
-it will clarify a business goal over multiple turns, decompose it into dependent configuration
-tasks, gather evidence for each task, surface version or scope conflicts, validate a versioned
+The citation-first RAG core now includes a stateful configuration assistant. It clarifies a
+business goal over multiple turns, decomposes it into dependent configuration
+tasks, gathers evidence for each task, surfaces version or scope conflicts, validates a versioned
 draft, and require explicit human approval before exporting a configuration solution. V2 remains
 read-only with respect to real WMS environments.
 
