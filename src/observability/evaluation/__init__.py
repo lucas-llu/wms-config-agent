@@ -1,16 +1,16 @@
 """RAG evaluation orchestration."""
 
-from observability.evaluation.baseline_comparator import (
-    BaselineComparator,
-    BaselineComparisonError,
-    BenchmarkComparison,
-)
 from observability.evaluation.agent_evaluation import (
     AgentEvaluationReport,
     AgentEvaluationRunner,
     AgentGoldenDataset,
     AgentGoldenScenario,
     AgentScenarioResult,
+)
+from observability.evaluation.baseline_comparator import (
+    BaselineComparator,
+    BaselineComparisonError,
+    BenchmarkComparison,
 )
 from observability.evaluation.benchmark import (
     BenchmarkCase,
