@@ -195,7 +195,7 @@ core. Set `agent.enabled: true` only in an authorized local environment with ali
 BM25 indexes and a configured text LLM. The default remains `false` until a real provider and
 customer-authorized corpus complete acceptance.
 
-Six MCP tools expose the workflow:
+Six session MCP tools expose the workflow:
 
 - `start_configuration_session` — create a session and collect missing requirements;
 - `continue_configuration_session` — resume an interrupt using `session_id` and
@@ -204,6 +204,12 @@ Six MCP tools expose the workflow:
 - `validate_configuration_draft` — rerun deterministic DAG/evidence/conflict gates;
 - `review_configuration_draft` — explicitly revise, reject, or approve a review-ready revision;
 - `export_configuration_solution` — idempotently export an approved JSON or Markdown solution.
+
+When the Agent is enabled, `get_agent_capabilities` provides a strict, read-only discovery
+contract for product/contract versions, stdio authentication semantics, feature flags, provider
+availability, supported ingestion types/modules, budgets, exports, tools and safety guarantees.
+It returns only a credential-availability boolean—never keys, values, private content or internal
+provider URLs.
 
 Every mutation uses optimistic revision protection. Evidence gaps and conflicts pause instead of
 being guessed away; approval is explicit and does not authorize execution in a WMS environment.
