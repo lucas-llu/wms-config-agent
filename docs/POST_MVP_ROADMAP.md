@@ -30,6 +30,15 @@ Capabilities ──► Workspace ──► Knowledge catalog ──► Actions c
 All previous gates ───────────────────────────────────────────────► Product release
 ```
 
+## Completion record
+
+- **Day 11 — completed 2026-09-05:** `get_agent_capabilities` now publishes a strict versioned
+  schema covering product/contract versions, stdio/host-process authentication semantics,
+  Agent/provider feature state, sanitized knowledge modules, budgets, exports, registered tool
+  annotations and safety guarantees. It never exposes credential values, environment-variable
+  names, private content or provider URLs. Issue #51 / PR #52 closed; 20 targeted and 408 full
+  tests passed, coverage remained 90.74%, and V1/Agent release gates remained green.
+
 ## Deferred after this schedule
 
 - Customer-authorized real-provider and real-corpus evaluation expansion.

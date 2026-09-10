@@ -28,6 +28,7 @@ from mcp_server.catalog import CorpusCatalog
 from mcp_server.protocol_handler import ProtocolHandler
 from mcp_server.tool_registry import ToolRegistry
 from mcp_server.tools import (
+    AgentCapabilitiesTool,
     ConfigurationSessionApplication,
     ConfigurationSessionTools,
     GetDocumentSummaryTool,
@@ -104,5 +105,6 @@ def create_protocol_handler(
             trace_collector=trace_collector,
         )
         tools.extend(ConfigurationSessionTools(application).definitions())
+        tools.append(AgentCapabilitiesTool(settings, tools).definition())
     registry = ToolRegistry(tools)
     return ProtocolHandler(registry)
