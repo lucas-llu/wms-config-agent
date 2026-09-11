@@ -29,7 +29,6 @@ from libs.vector_store import VectorStoreFactory
 from mcp_server.catalog import CorpusCatalog
 from mcp_server.protocol_handler import ProtocolHandler
 from mcp_server.tool_registry import ToolRegistry
-from mcp_server.tools.action_catalog import ActionCatalogTool
 from mcp_server.tools import (
     AgentCapabilitiesTool,
     ConfigurationSessionApplication,
@@ -39,6 +38,7 @@ from mcp_server.tools import (
     ListCollectionsTool,
     QueryKnowledgeHubTool,
 )
+from mcp_server.tools.action_catalog import ActionCatalogTool
 
 
 def create_protocol_handler(
