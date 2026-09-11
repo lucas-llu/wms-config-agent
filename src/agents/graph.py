@@ -20,6 +20,7 @@ from agents.nodes import (
     RequirementAgent,
 )
 from agents.services import ValidationService
+from agents.workspace import Workspace, WorkspaceScopeError
 from core.settings import AgentSettings
 
 
@@ -41,6 +42,7 @@ def merge_assumptions(
 
 
 class AgentGraphState(TypedDict, total=False):
+    workspace_id: str
     session_id: str
     revision: int
     status: str
@@ -153,6 +155,7 @@ class SupervisorGraph:
         knowledge_agent: KnowledgeAgent | None,
         validation_service: ValidationService,
         budget: TurnBudgetPolicy,
+        workspace: Workspace | None = None,
     ) -> None:
         self.settings = settings
         self.classifier = classifier
@@ -161,6 +164,7 @@ class SupervisorGraph:
         self.knowledge_agent = knowledge_agent
         self.validation_service = validation_service
         self.budget = budget
+        self.workspace = workspace
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
         builder = StateGraph(AgentGraphState)
@@ -221,8 +225,16 @@ class SupervisorGraph:
         if self.knowledge_agent is None:
             builder.add_edge("plan_tasks", END)
         else:
-            builder.add_edge("plan_tasks", "retrieve_evidence")
-            builder.add_edge("retrieve_evidence", "analyze_conflicts")
+            builder.add_conditional_edges(
+                "plan_tasks",
+                self._route_after_await,
+                {"continue": "retrieve_evidence", "end": END},
+            )
+            builder.add_conditional_edges(
+                "retrieve_evidence",
+                self._route_after_await,
+                {"continue": "analyze_conflicts", "end": END},
+            )
             builder.add_edge("analyze_conflicts", "validate_draft")
             builder.add_conditional_edges(
                 "validate_draft",
@@ -326,6 +338,16 @@ class SupervisorGraph:
             return self._structured_failure(
                 state, entered.update, exc, "requirement_output_invalid", "requirement"
             )
+        if self.workspace is not None:
+            try:
+                self.workspace.validate_state({"confirmed_context": result.confirmed_context})
+            except WorkspaceScopeError:
+                return {
+                    **entered.update,
+                    "status": "paused",
+                    "pause_reason": "workspace_scope_invalid",
+                    "next_action": "provide_allowed_scope",
+                }
         accounted = self.budget.account_llm(
             state,
             retries=result.retries,
@@ -418,6 +440,18 @@ class SupervisorGraph:
         if not accounted.allowed:
             return update
         plan = result.plan
+        if self.workspace is not None:
+            try:
+                self.workspace.validate_state(
+                    {"configuration_tasks": [t.to_dict() for t in plan.tasks]}
+                )
+            except WorkspaceScopeError:
+                return {
+                    **update,
+                    "status": "paused",
+                    "pause_reason": "workspace_scope_invalid",
+                    "next_action": "provide_allowed_scope",
+                }
         update.update(
             {
                 "status": transition_status(state, SessionStatus.RETRIEVING),

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from agents.repositories import SessionRepository
 from agents.services import SessionService, SolutionService, ValidationService
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from agents.tools import KnowledgeAdapter
+from agents.tools.workspace_search import WorkspaceSearch
 from core.query_engine import (
     DenseRetriever,
     HybridSearch,
@@ -32,6 +34,7 @@ from mcp_server.tools import (
     ConfigurationSessionApplication,
     ConfigurationSessionTools,
     GetDocumentSummaryTool,
+    GetKnowledgeCatalogTool,
     ListCollectionsTool,
     QueryKnowledgeHubTool,
 )
@@ -42,10 +45,14 @@ def create_protocol_handler(
     settings_path: str | Path = "config/settings.yaml",
     bm25_path: str | Path = "data/db/bm25",
     chunks_path: str | Path = "data/corpus/processed/chunks",
+    history_path: str | Path | None = None,
     image_roots: list[str | Path] | None = None,
 ) -> ProtocolHandler:
     """Wire configured retrieval services into MCP tools."""
     settings = load_settings(settings_path)
+    history_path = Path(
+        history_path or os.environ.get("WMS_INGESTION_HISTORY_PATH", "data/db/ingestion_history.db")
+    )
     vector_store = VectorStoreFactory.create(settings)
     bm25_indexer = BM25Indexer(bm25_path)
     if vector_store.count() == 0 or bm25_indexer.count() == 0:
@@ -58,7 +65,21 @@ def create_protocol_handler(
         SparseRetriever(bm25_indexer, vector_store),
         ReciprocalRankFusion(settings.retrieval.rrf_k),
     )
-    catalog = CorpusCatalog(chunks_path)
+    repository = None
+    workspace = None
+    if settings.agent.enabled or settings.agent.workspace_id != "workspace:legacy":
+        repository = SessionRepository(
+            settings.agent.session_db_path, workspace_id=settings.agent.workspace_id
+        )
+        workspace = repository.workspace
+        hybrid_search = WorkspaceSearch(hybrid_search, workspace)
+    catalog = CorpusCatalog(
+        chunks_path,
+        workspace=workspace,
+        dense_index=vector_store,
+        sparse_index=bm25_indexer,
+        history_path=history_path,
+    )
     assembler = MultimodalAssembler(
         image_roots
         or [
@@ -83,14 +104,16 @@ def create_protocol_handler(
         query_tool.definition(),
         ListCollectionsTool(catalog).definition(),
         GetDocumentSummaryTool(catalog).definition(),
+        GetKnowledgeCatalogTool(catalog).definition(),
     ]
     if settings.agent.enabled:
-        repository = SessionRepository(settings.agent.session_db_path)
+        assert repository is not None
         sessions = SessionService(repository)
         supervisor = Supervisor(
             llm=LLMFactory.create(settings),
             settings=settings.agent,
             knowledge_adapter=KnowledgeAdapter(hybrid_search, reranker, response_builder),
+            workspace=workspace,
         )
         application = ConfigurationSessionApplication(
             runner=RequirementSessionRunner(

@@ -21,7 +21,12 @@ def test_capability_payload_is_versioned_scoped_and_secret_free(monkeypatch) -> 
 
     payload = tool.payload()
 
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
+    assert payload["workspace"] == {
+        "workspace_id": "workspace:legacy",
+        "scope_enforced": False,
+        "policy_mode": "immutable_allowlist",
+    }
     assert payload["product"]["version"] == "0.1.0"
     assert payload["transport"] == {
         "kind": "stdio",

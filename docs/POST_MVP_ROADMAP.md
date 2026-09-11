@@ -32,6 +32,26 @@ All previous gates ────────────────────�
 
 ## Completion record
 
+- **Day 13 — implementation ready for review (2026-09-11):** added the privacy-safe
+  `get_wms_knowledge_catalog` MCP read model with collection/module/scope/freshness filters,
+  bounded pagination, document version and scope completeness, source freshness, and index
+  health. Restricted Workspaces filter records before grouping and report index health as
+  `unverified` without exposing global Dense/BM25 counts. Absolute and traversal source
+  references are sanitized, and catalog records never include document bodies. Four new catalog
+  tests cover missing scope, stale/unknown freshness, strict schemas, pagination, Workspace
+  exclusion and privacy. Full regression: 420 passed, 2 opt-in provider skips, source coverage
+  90.86%; V1 public benchmark 4/4, Ruff/format and dependency checks passed. See
+  [Knowledge catalog contract](KNOWLEDGE_CATALOG.md). Changes await review.
+
+- **Day 12 — implementation ready for review (2026-09-11):** added immutable Workspace
+  allowlists, host-selected scope, schema v1-to-v2 membership migration, scoped repository reads
+  and writes, generated requirement/task scope checks, retrieval and catalog enforcement,
+  capability metadata and Dashboard workspace selection. Existing sessions retain legacy scope
+  and immutable revision contents. Eight new workspace tests cover migration, isolation,
+  retrieval, MCP composition and generated scope rejection. Full regression: 416 passed,
+  2 opt-in provider skips, source coverage 90.87%; V1 public benchmark 4/4, Ruff/format and
+  dependency checks passed. See [Workspace contract](WORKSPACE_SCOPE.md). Changes await review.
+
 - **Day 11 — completed 2026-09-05:** `get_agent_capabilities` now publishes a strict versioned
   schema covering product/contract versions, stdio/host-process authentication semantics,
   Agent/provider feature state, sanitized knowledge modules, budgets, exports, registered tool

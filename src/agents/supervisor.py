@@ -16,6 +16,7 @@ from agents.repositories import RevisionRecord, SessionRecord
 from agents.runtime import session_checkpoint_config
 from agents.services import SessionService, ValidationService
 from agents.tools import KnowledgeAdapter
+from agents.workspace import Workspace
 from core.settings import AgentSettings
 from core.trace import TraceCollector, TraceContext
 from libs.llm import BaseLLM
@@ -37,6 +38,7 @@ class Supervisor:
         llm: BaseLLM,
         settings: AgentSettings,
         knowledge_adapter: KnowledgeAdapter | None = None,
+        workspace: Workspace | None = None,
         clock: Any = time.time,
     ) -> None:
         self.settings = settings
@@ -74,6 +76,7 @@ class Supervisor:
             knowledge_agent=self.knowledge_agent,
             validation_service=ValidationService(),
             budget=TurnBudgetPolicy(settings, clock=clock),
+            workspace=workspace,
         )
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
@@ -113,6 +116,7 @@ class RequirementSessionRunner:
         graph = self.supervisor.compile(checkpointer)
         config = session_checkpoint_config(session.session_id)
         initial: AgentGraphState = {
+            "workspace_id": self.sessions.repository.workspace_id,
             "session_id": session.session_id,
             "revision": session.current_revision,
             "status": session.status.value,

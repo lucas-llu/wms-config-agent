@@ -137,6 +137,7 @@ class AgentSettings:
     max_context_turns: int
     approval_required: bool
     environment_inspector_enabled: bool
+    workspace_id: str = "workspace:legacy"
     max_tokens_per_turn: int = 12_000
     intent_confidence_threshold: float = 0.65
     max_questions_per_turn: int = 3
@@ -504,6 +505,9 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
             trace_file=Path(_required_str(observability, "trace_file", "observability.trace_file")),
         ),
         agent=AgentSettings(
+            workspace_id=_optional_non_empty_str(
+                agent.get("workspace_id"), "agent.workspace_id", default="workspace:legacy"
+            ),
             enabled=_optional_bool(agent.get("enabled"), "agent.enabled", default=False),
             runtime=_optional_non_empty_str(
                 agent.get("runtime"), "agent.runtime", default="langgraph"

@@ -91,7 +91,12 @@ class AgentCapabilitiesTool:
         tools.sort(key=lambda item: item["name"])
         api_key_name = self.settings.llm.api_key_env
         return {
-            "schema_version": 1,
+            "schema_version": 2,
+            "workspace": {
+                "workspace_id": self.settings.agent.workspace_id,
+                "scope_enforced": self.settings.agent.workspace_id != "workspace:legacy",
+                "policy_mode": "immutable_allowlist",
+            },
             "product": {
                 "name": self.settings.project.name,
                 "version": _package_version(),
@@ -169,7 +174,11 @@ def _output_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "schema_version": {"type": "integer", "const": 1},
+            "workspace": object_schema(
+                {"workspace_id": text, "scope_enforced": boolean, "policy_mode": text},
+                ["workspace_id", "scope_enforced", "policy_mode"],
+            ),
+            "schema_version": {"type": "integer", "const": 2},
             "product": object_schema(
                 {"name": text, "version": text, "agent_contract_version": text},
                 ["name", "version", "agent_contract_version"],
@@ -284,6 +293,7 @@ def _output_schema() -> dict[str, Any]:
             ),
         },
         "required": [
+            "workspace",
             "schema_version",
             "product",
             "transport",

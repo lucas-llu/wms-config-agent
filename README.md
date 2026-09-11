@@ -93,11 +93,17 @@ After both indexes exist, start the newline-delimited JSON-RPC stdio server:
 .\.venv\Scripts\python.exe scripts\start_mcp_server.py
 ```
 
-It exposes three read-only tools:
+It exposes four read-only tools:
 
 - `query_wms_knowledge` returns evidence excerpts with source/page citations.
 - `list_wms_collections` returns privacy-safe corpus counts.
 - `get_wms_document_summary` returns an extractive document summary.
+- `get_wms_knowledge_catalog` returns document version, scope completeness, index health and
+  freshness without exposing document bodies or absolute host paths.
+
+The catalog supports collection/module filters, scope and freshness status filters, and bounded
+pagination. See [docs/KNOWLEDGE_CATALOG.md](docs/KNOWLEDGE_CATALOG.md) for the response contract
+and Workspace behavior.
 
 Desktop MCP hosts should use absolute paths for the Python executable, script, settings, BM25
 index, and processed chunks. A complete host configuration and protocol notes are in
@@ -189,6 +195,39 @@ runs the committed public benchmark gate.
   reading the provider/privacy instructions and setting the required key.
 
 ## V2 configuration Agent
+
+### Local Workspace scope
+
+The host selects one workspace with `agent.workspace_id`. Existing sessions migrate to
+`workspace:legacy`, which preserves the earlier local unrestricted scope. Restricted workspaces
+require non-empty collection, module, site and environment allowlists. They are local scope
+boundaries, not authenticated multi-tenant accounts.
+
+Provision a workspace before selecting it:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/create_workspace.py --id workspace:dc01 --name DC01 `
+  --collections wms-dc01 --modules inbound appointment integration --sites DC01 --environments test
+```
+
+Set `agent.workspace_id: workspace:dc01` in the selected settings file and restart the MCP host
+and Dashboard. A missing workspace fails startup. The administrative provisioning command is
+local; chat tools cannot change their host workspace or modify workspace policy.
+
+Session membership and policies are immutable. Create a new workspace/session when scope changes.
+Database schema v2 migrates existing membership without rewriting immutable revision JSON or
+fingerprints. Retain a database backup before migration; older binaries must not open a v2 store.
+Unknown future schema versions are rejected.
+
+All six session tools use the selected repository scope, including historical revisions,
+approval and export. V1 query and catalog tools are also scoped. Retrieval injects singleton
+allowlist values; a multi-valued dimension must be selected explicitly before retrieval. Missing
+scope metadata is excluded. If a legacy V1 tool does not expose a dimension selector, use a
+single-valued workspace for that query workflow. Workspace scope applies even when the Agent
+itself is disabled. Existing V1 behavior remains available through `workspace:legacy`.
+
+Capabilities report the host workspace and whether restricted scope is enforced. The Agent
+Sessions page lists only sessions belonging to the selected workspace.
 
 The opt-in V2 Agent manages a durable configuration workflow on top of the V1 citation-first RAG
 core. Set `agent.enabled: true` only in an authorized local environment with aligned Chroma and

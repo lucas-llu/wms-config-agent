@@ -1,8 +1,8 @@
 # Local MCP Server
 
 The Day 5 server exposes the indexed WMS corpus to MCP hosts over stdio. It is read-only:
-it can search evidence, list collections, and summarize documents, but it cannot connect to
-or modify a WMS environment.
+it can search evidence, list collections, summarize documents, and inspect the Knowledge
+catalog, but it cannot connect to or modify a WMS environment.
 
 ## Prerequisites
 
@@ -32,6 +32,7 @@ Available tools:
 - `query_wms_knowledge`: hybrid Dense/BM25 retrieval with page-aware citations.
 - `list_wms_collections`: collection, document, chunk, and domain counts.
 - `get_wms_document_summary`: extractive summary by document ID, source, or process code.
+- `get_wms_knowledge_catalog`: privacy-safe document scope, version, freshness, and index health.
 
 ## MCP host configuration
 

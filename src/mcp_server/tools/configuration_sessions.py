@@ -29,6 +29,9 @@ class ConfigurationSessionApplication:
     trace_collector: TraceCollector | None = None
 
     def start(self, goal: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        workspace = getattr(self.repository, "workspace", None)
+        if workspace is not None:
+            workspace.validate_state({"confirmed_context": context or {}})
         message = (
             goal
             if not context

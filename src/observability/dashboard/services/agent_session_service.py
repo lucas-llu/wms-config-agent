@@ -15,6 +15,7 @@ class AgentSessionService:
         return [
             {
                 "Session": item.session_id,
+                "Workspace": item.workspace_id,
                 "Status": item.status.value,
                 "Revision": item.current_revision,
                 "Goal": item.goal,

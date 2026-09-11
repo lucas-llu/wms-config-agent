@@ -165,7 +165,12 @@ def test_mcp_stdio_handshake_discovery_and_cited_query(tmp_path) -> None:
     assert completed.returncode == 0, completed.stderr
     responses = [json.loads(line) for line in completed.stdout.splitlines()]
     assert len(responses) == 3
-    assert len(responses[1]["result"]["tools"]) == 3
+    assert {item["name"] for item in responses[1]["result"]["tools"]} == {
+        "get_wms_document_summary",
+        "get_wms_knowledge_catalog",
+        "list_wms_collections",
+        "query_wms_knowledge",
+    }
     result = responses[2]["result"]
     assert result["isError"] is False
     assert result["structuredContent"]["citations"][0]["process_code"] == "SWL.I.11.01"
