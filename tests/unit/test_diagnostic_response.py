@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -22,7 +23,12 @@ def outcome(
         chunk_id="public-1",
         score=0.1,
         text=text,
-        metadata={"title": "RF guide", "source_relative_path": "RF/guide.pdf", "page_start": 3},
+        metadata={
+            "title": "RF guide",
+            "source_path": "private/guide.pdf",
+            "source_relative_path": "RF/guide.pdf",
+            "page_start": 3,
+        },
         retrieval_sources=("dense",),
     )
     query = ProcessedQuery(
@@ -104,7 +110,7 @@ def test_mcp_mode_is_opt_in_and_preserves_filters_and_schema():
     }
     assert result["content"][0]["text"] == result["structuredContent"]["markdown"]
     Draft202012Validator(query_tool.definition().output_schema).validate(
-        result["structuredContent"]
+        json.loads(json.dumps(result["structuredContent"]))
     )
 
 

@@ -50,7 +50,7 @@ class QueryKnowledgeHubTool:
                     "response_format": {
                         "type": "string",
                         "enum": ["evidence", "troubleshooting"],
-                        "description": "Optional evidence-grouped troubleshooting; no live diagnosis.",
+                        "description": "Evidence-grouped troubleshooting; no live diagnosis.",
                     },
                 },
                 "required": ["query"],
