@@ -277,6 +277,10 @@ The detailed delivery record is [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN
 The read-only [Actions catalog](docs/ACTION_CATALOG.md) exposes registered MCP
 tools and their execution prerequisites without running them.
 
+For evidence-grouped troubleshooting, call `query_wms_knowledge` with
+`response_format: "troubleshooting"`; see the
+[diagnostic response contract](docs/DIAGNOSTIC_RESPONSES.md). Default queries are unchanged.
+
 The citation-first RAG core now includes a stateful configuration assistant. It clarifies a
 business goal over multiple turns, decomposes it into dependent configuration
 tasks, gathers evidence for each task, surfaces version or scope conflicts, validates a versioned

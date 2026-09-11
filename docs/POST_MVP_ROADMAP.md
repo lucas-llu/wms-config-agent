@@ -32,6 +32,16 @@ All previous gates ────────────────────�
 
 ## Completion record
 
+- **Day 15 — implementation ready for review (2026-09-12):** added opt-in
+  `response_format: troubleshooting` to the existing knowledge query. The response
+  groups exact cited excerpts into causes, roles, equipment, rules, environment and
+  verification, with an explicitly unconfirmed conclusion and evidence gaps. Default
+  responses and retrieval scope are unchanged. Ten new test cases cover evidence
+  preservation, insufficient evidence, input rejection, schema and MCP integration.
+  Local regression: 433 passed, 2 opt-in provider skips; coverage 90.88%. Ruff/format,
+  dependency checks and V1 benchmark (4/4) passed. See
+  [Diagnostic response contract](DIAGNOSTIC_RESPONSES.md). Main feature awaits review.
+
 - **Day 14 — implementation ready for review (2026-09-11):** added the read-only
   `get_agent_actions` catalog from the live MCP registry, with annotations, permission
   boundaries, revision/approval prerequisites and registration availability. Capability
