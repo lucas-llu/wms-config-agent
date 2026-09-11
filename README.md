@@ -274,6 +274,9 @@ The detailed delivery record is [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN
 
 ## V2 multi-agent architecture
 
+The read-only [Actions catalog](docs/ACTION_CATALOG.md) exposes registered MCP
+tools and their execution prerequisites without running them.
+
 The citation-first RAG core now includes a stateful configuration assistant. It clarifies a
 business goal over multiple turns, decomposes it into dependent configuration
 tasks, gathers evidence for each task, surfaces version or scope conflicts, validates a versioned

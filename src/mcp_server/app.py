@@ -38,6 +38,7 @@ from mcp_server.tools import (
     ListCollectionsTool,
     QueryKnowledgeHubTool,
 )
+from mcp_server.tools.action_catalog import ActionCatalogTool
 
 
 def create_protocol_handler(
@@ -128,6 +129,8 @@ def create_protocol_handler(
             trace_collector=trace_collector,
         )
         tools.extend(ConfigurationSessionTools(application).definitions())
-        tools.append(AgentCapabilitiesTool(settings, tools).definition())
     registry = ToolRegistry(tools)
+    registry.register(ActionCatalogTool(registry, settings.agent.workspace_id).definition())
+    if settings.agent.enabled:
+        registry.register(AgentCapabilitiesTool(settings, tools, registry=registry).definition())
     return ProtocolHandler(registry)
