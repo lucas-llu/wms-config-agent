@@ -6,6 +6,7 @@ from mcp_server.tools.configuration_sessions import (
     ConfigurationSessionTools,
 )
 from mcp_server.tools.get_document_summary import GetDocumentSummaryTool
+from mcp_server.tools.get_knowledge_catalog import GetKnowledgeCatalogTool
 from mcp_server.tools.list_collections import ListCollectionsTool
 from mcp_server.tools.query_knowledge_hub import QueryKnowledgeHubTool
 
@@ -14,6 +15,7 @@ __all__ = [
     "ConfigurationSessionApplication",
     "ConfigurationSessionTools",
     "GetDocumentSummaryTool",
+    "GetKnowledgeCatalogTool",
     "ListCollectionsTool",
     "QueryKnowledgeHubTool",
 ]

@@ -93,11 +93,17 @@ After both indexes exist, start the newline-delimited JSON-RPC stdio server:
 .\.venv\Scripts\python.exe scripts\start_mcp_server.py
 ```
 
-It exposes three read-only tools:
+It exposes four read-only tools:
 
 - `query_wms_knowledge` returns evidence excerpts with source/page citations.
 - `list_wms_collections` returns privacy-safe corpus counts.
 - `get_wms_document_summary` returns an extractive document summary.
+- `get_wms_knowledge_catalog` returns document version, scope completeness, index health and
+  freshness without exposing document bodies or absolute host paths.
+
+The catalog supports collection/module filters, scope and freshness status filters, and bounded
+pagination. See [docs/KNOWLEDGE_CATALOG.md](docs/KNOWLEDGE_CATALOG.md) for the response contract
+and Workspace behavior.
 
 Desktop MCP hosts should use absolute paths for the Python executable, script, settings, BM25
 index, and processed chunks. A complete host configuration and protocol notes are in
