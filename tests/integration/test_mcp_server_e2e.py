@@ -168,6 +168,7 @@ def test_mcp_stdio_handshake_discovery_and_cited_query(tmp_path) -> None:
     assert {item["name"] for item in responses[1]["result"]["tools"]} == {
         "get_wms_document_summary",
         "get_wms_knowledge_catalog",
+        "get_agent_actions",
         "list_wms_collections",
         "query_wms_knowledge",
     }

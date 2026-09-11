@@ -29,6 +29,7 @@ from libs.vector_store import VectorStoreFactory
 from mcp_server.catalog import CorpusCatalog
 from mcp_server.protocol_handler import ProtocolHandler
 from mcp_server.tool_registry import ToolRegistry
+from mcp_server.tools.action_catalog import ActionCatalogTool
 from mcp_server.tools import (
     AgentCapabilitiesTool,
     ConfigurationSessionApplication,
@@ -128,6 +129,8 @@ def create_protocol_handler(
             trace_collector=trace_collector,
         )
         tools.extend(ConfigurationSessionTools(application).definitions())
-        tools.append(AgentCapabilitiesTool(settings, tools).definition())
     registry = ToolRegistry(tools)
+    registry.register(ActionCatalogTool(registry, settings.agent.workspace_id).definition())
+    if settings.agent.enabled:
+        registry.register(AgentCapabilitiesTool(settings, tools, registry=registry).definition())
     return ProtocolHandler(registry)

@@ -9,13 +9,20 @@ from typing import Any
 
 from core.settings import Settings
 from mcp_server.protocol_handler import SUPPORTED_PROTOCOL_VERSIONS
-from mcp_server.tool_registry import MCPTool, ToolInputError
+from mcp_server.tool_registry import MCPTool, ToolInputError, ToolRegistry
 
 
 class AgentCapabilitiesTool:
-    def __init__(self, settings: Settings, registered_tools: list[MCPTool]) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        registered_tools: list[MCPTool],
+        *,
+        registry: ToolRegistry | None = None,
+    ) -> None:
         self.settings = settings
         self.registered_tools = tuple(registered_tools)
+        self.registry = registry
         self.template = self._load_template()
 
     def definition(self) -> MCPTool:
@@ -89,6 +96,11 @@ class AgentCapabilitiesTool:
             }
         )
         tools.sort(key=lambda item: item["name"])
+        if self.registry is not None:
+            tools = [
+                {"name": item["name"], "title": item["title"], "annotations": item["annotations"]}
+                for item in self.registry.definitions()
+            ]
         api_key_name = self.settings.llm.api_key_env
         return {
             "schema_version": 2,
