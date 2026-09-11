@@ -36,7 +36,8 @@ source coverage 90.85% against a 90% gate. Ruff lint/format and dependency check
 passed; V1 sanitized benchmark passed 4/4. These results do not establish real
 provider availability or production WMS correctness.
 
-Development branch: `feature/action-catalog`, based on Day 13
-`feature/knowledge-catalog`. Day 12/13 must land in order before the Day 14 main
-PR targets `dev`. Day 14 remains pending user code review. Formatting Issue #56
-is handled separately by bugfix PR #57.
+Development branch: `feature/action-catalog`, originally based on Day 13
+`feature/knowledge-catalog`. Day 12/13 are now included in `dev` through PRs
+#54/#55. The user has authorized the Day 14 PR into `dev`, subject to final
+checks and a review comment before merge. Formatting Issue #56 was resolved
+separately by merged bugfix PR #57.

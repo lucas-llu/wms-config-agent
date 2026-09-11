@@ -38,8 +38,8 @@ All previous gates ────────────────────�
   discovery shares the registry; no tool handler or WMS action is executed by discovery.
   Full local regression: 423 passed, 2 opt-in provider skips; coverage 90.85%.
   Ruff/format, dependencies and V1 benchmark (4/4) passed. See
-  [Actions catalog contract](ACTION_CATALOG.md). Main feature awaits user review;
-  Day 12/13 remain merge dependencies.
+  [Actions catalog contract](ACTION_CATALOG.md). User authorized the main PR into
+  `dev`; Day 12/13 merge dependencies are satisfied through PRs #54/#55.
 
 - **Day 13 — implementation ready for review (2026-09-11):** added the privacy-safe
   `get_wms_knowledge_catalog` MCP read model with collection/module/scope/freshness filters,
@@ -50,7 +50,8 @@ All previous gates ────────────────────�
   tests cover missing scope, stale/unknown freshness, strict schemas, pagination, Workspace
   exclusion and privacy. Full regression: 420 passed, 2 opt-in provider skips, source coverage
   90.86%; V1 public benchmark 4/4, Ruff/format and dependency checks passed. See
-  [Knowledge catalog contract](KNOWLEDGE_CATALOG.md). Changes await review.
+  [Knowledge catalog contract](KNOWLEDGE_CATALOG.md). Merged through PR #55
+  and included in `dev` by PR #54.
 
 - **Day 12 — implementation ready for review (2026-09-11):** added immutable Workspace
   allowlists, host-selected scope, schema v1-to-v2 membership migration, scoped repository reads
@@ -59,7 +60,8 @@ All previous gates ────────────────────�
   and immutable revision contents. Eight new workspace tests cover migration, isolation,
   retrieval, MCP composition and generated scope rejection. Full regression: 416 passed,
   2 opt-in provider skips, source coverage 90.87%; V1 public benchmark 4/4, Ruff/format and
-  dependency checks passed. See [Workspace contract](WORKSPACE_SCOPE.md). Changes await review.
+  dependency checks passed. See [Workspace contract](WORKSPACE_SCOPE.md). Merged
+  into `dev` through PR #54.
 
 - **Day 11 — completed 2026-09-05:** `get_agent_capabilities` now publishes a strict versioned
   schema covering product/contract versions, stdio/host-process authentication semantics,
