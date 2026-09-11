@@ -32,6 +32,15 @@ All previous gates ────────────────────�
 
 ## Completion record
 
+- **Day 14 — implementation ready for review (2026-09-11):** added the read-only
+  `get_agent_actions` catalog from the live MCP registry, with annotations, permission
+  boundaries, revision/approval prerequisites and registration availability. Capability
+  discovery shares the registry; no tool handler or WMS action is executed by discovery.
+  Full local regression: 423 passed, 2 opt-in provider skips; coverage 90.85%.
+  Ruff/format, dependencies and V1 benchmark (4/4) passed. See
+  [Actions catalog contract](ACTION_CATALOG.md). Main feature awaits user review;
+  Day 12/13 remain merge dependencies.
+
 - **Day 13 — implementation ready for review (2026-09-11):** added the privacy-safe
   `get_wms_knowledge_catalog` MCP read model with collection/module/scope/freshness filters,
   bounded pagination, document version and scope completeness, source freshness, and index
