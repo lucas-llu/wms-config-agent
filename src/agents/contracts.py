@@ -487,6 +487,7 @@ class ConfigurationSessionState(TypedDict, total=False):
     """Checkpoint state. Values must remain JSON/msgpack serializable."""
 
     session_id: str
+    workspace_id: str
     revision: int
     status: str
     created_at: str
@@ -532,6 +533,7 @@ class ConfigurationSessionState(TypedDict, total=False):
 
 SYSTEM_MANAGED_FIELDS = frozenset(
     {
+        "workspace_id",
         "session_id",
         "revision",
         "created_at",

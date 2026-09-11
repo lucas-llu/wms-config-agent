@@ -79,6 +79,7 @@ observability:
   trace_file: logs/traces.jsonl
 
 agent:
+  workspace_id: workspace:legacy
   enabled: false
   runtime: langgraph
   checkpoint_path: data/db/agent_checkpoints.db

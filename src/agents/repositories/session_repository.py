@@ -22,6 +22,7 @@ from agents.contracts import (
     canonical_json,
     state_fingerprint,
 )
+from agents.workspace import load_workspace
 
 _TURN_ROLES = frozenset({"user", "assistant", "system", "tool"})
 _TERMINAL_SESSION_STATUSES = frozenset({SessionStatus.CANCELLED})
@@ -61,6 +62,7 @@ class SessionRecord:
     created_at: str
     updated_at: str
     cancelled_at: str | None
+    workspace_id: str = "workspace:legacy"
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +125,7 @@ class SessionRepository:
         database_path: str | Path,
         *,
         clock: Callable[[], datetime] | None = None,
+        workspace_id: str = "workspace:legacy",
     ) -> None:
         self.database_path = Path(database_path)
         if not self.database_path.name:
@@ -130,6 +133,9 @@ class SessionRepository:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._clock = clock or (lambda: datetime.now(UTC))
         self._initialize_schema()
+        self.workspace_id = workspace_id
+        with self._read_connection() as connection:
+            self.workspace = load_workspace(connection, workspace_id)
 
     def create_session(
         self,
@@ -148,6 +154,7 @@ class SessionRepository:
         reason = _required_text(reason, "reason")
         timestamp = self._timestamp()
         state = dict(initial_state or {})
+        self.workspace.validate_state(state)
         state.update(
             {
                 "session_id": session_id,
@@ -156,6 +163,7 @@ class SessionRepository:
                 "created_at": timestamp,
                 "updated_at": timestamp,
                 "user_goal": goal,
+                "workspace_id": self.workspace_id,
             }
         )
         state_json = canonical_json(state)
@@ -167,8 +175,8 @@ class SessionRepository:
                     """
                     INSERT INTO sessions (
                         session_id, goal, status, current_revision,
-                        checkpoint_thread_id, created_at, updated_at, cancelled_at
-                    ) VALUES (?, ?, ?, 1, ?, ?, ?, NULL)
+                        checkpoint_thread_id, created_at, updated_at, cancelled_at, workspace_id
+                    ) VALUES (?, ?, ?, 1, ?, ?, ?, NULL, ?)
                     """,
                     (
                         session_id,
@@ -177,6 +185,7 @@ class SessionRepository:
                         session_id,
                         timestamp,
                         timestamp,
+                        self.workspace_id,
                     ),
                 )
                 connection.execute(
@@ -212,14 +221,16 @@ class SessionRepository:
             raise ValueError("limit must be greater than 0")
         with self._read_connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM sessions ORDER BY updated_at DESC, session_id LIMIT ?",
-                (limit,),
+                "SELECT * FROM sessions WHERE workspace_id = ? "
+                "ORDER BY updated_at DESC, session_id LIMIT ?",
+                (self.workspace_id, limit),
             ).fetchall()
         return tuple(_session_from_row(row) for row in rows)
 
     def get_revision(self, session_id: str, revision: int | None = None) -> RevisionRecord:
         session_id = _required_text(session_id, "session_id")
         with self._read_connection() as connection:
+            self._select_session(connection, session_id)
             if revision is None:
                 session = self._select_session(connection, session_id)
                 revision = int(session["current_revision"])
@@ -323,6 +334,8 @@ class SessionRepository:
             next_revision = expected_revision + 1
             next_state = dict(current_state)
             next_state.update(dict(state_update))
+            self.workspace.validate_state(next_state)
+            next_state["workspace_id"] = self.workspace_id
             next_state.update(
                 {
                     "session_id": session_id,
@@ -541,6 +554,8 @@ class SessionRepository:
             current_state = _decode_json_object(current["state_json"], "revision.state_json")
             next_revision = expected_revision + 1
             next_state = {**current_state, **dict(state_update)}
+            self.workspace.validate_state(next_state)
+            next_state["workspace_id"] = self.workspace_id
             next_state.update(
                 {
                     "session_id": session_id,
@@ -709,10 +724,10 @@ class SessionRepository:
             finally:
                 connection.close()
 
-    @staticmethod
-    def _select_session(connection: sqlite3.Connection, session_id: str) -> sqlite3.Row:
+    def _select_session(self, connection: sqlite3.Connection, session_id: str) -> sqlite3.Row:
         row = connection.execute(
-            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+            "SELECT * FROM sessions WHERE session_id = ? AND workspace_id = ?",
+            (session_id, self.workspace_id),
         ).fetchone()
         if row is None:
             raise SessionNotFoundError(f"Session does not exist: {session_id}")
@@ -747,8 +762,8 @@ class SessionRepository:
             raise SessionRepositoryError(f"Session is terminal: {session_id} ({status.value})")
         return session
 
-    @staticmethod
     def _touch_session(
+        self,
         connection: sqlite3.Connection,
         session_id: str,
         expected_revision: int,
@@ -762,13 +777,16 @@ class SessionRepository:
             (timestamp, session_id, expected_revision),
         )
         if cursor.rowcount != 1:
-            row = SessionRepository._select_session(connection, session_id)
+            row = self._select_session(connection, session_id)
             raise SessionRevisionConflict(
                 session_id, expected_revision, int(row["current_revision"])
             )
 
 
 def _create_schema(connection: sqlite3.Connection) -> None:
+    schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+    if schema_version > 2:
+        raise SessionRepositoryError("Unsupported future session schema")
     connection.executescript(
         """
         BEGIN IMMEDIATE;
@@ -852,15 +870,68 @@ def _create_schema(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_exports_session_revision
             ON exports(session_id, revision);
 
-        PRAGMA user_version=1;
-
         COMMIT;
         """
     )
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS workspaces "
+            "(workspace_id TEXT PRIMARY KEY, policy_json TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO workspaces VALUES (?, ?)",
+            (
+                "workspace:legacy",
+                json.dumps(
+                    {
+                        "workspace_id": "workspace:legacy",
+                        "name": "Legacy local workspace",
+                        "collections": [],
+                        "modules": [],
+                        "sites": [],
+                        "environments": [],
+                    }
+                ),
+            ),
+        )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(sessions)")}
+        if "workspace_id" not in columns:
+            connection.execute(
+                "ALTER TABLE sessions ADD COLUMN workspace_id TEXT NOT NULL "
+                "DEFAULT 'workspace:legacy'"
+            )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id)"
+        )
+        connection.execute(
+            "CREATE TRIGGER IF NOT EXISTS session_workspace_exists BEFORE INSERT ON sessions "
+            "WHEN NOT EXISTS (SELECT 1 FROM workspaces WHERE workspace_id=NEW.workspace_id) "
+            "BEGIN SELECT RAISE(ABORT, 'Unknown workspace'); END"
+        )
+        connection.execute(
+            "CREATE TRIGGER IF NOT EXISTS session_workspace_immutable BEFORE UPDATE OF "
+            "workspace_id ON sessions WHEN NEW.workspace_id != OLD.workspace_id "
+            "BEGIN SELECT RAISE(ABORT, 'Workspace binding is immutable'); END"
+        )
+        connection.execute("PRAGMA user_version=2")
+        connection.execute(
+            "CREATE TRIGGER IF NOT EXISTS workspace_policy_immutable BEFORE UPDATE ON workspaces "
+            "BEGIN SELECT RAISE(ABORT, 'Workspace policies are immutable'); END"
+        )
+        connection.execute(
+            "CREATE TRIGGER IF NOT EXISTS workspace_delete_blocked BEFORE DELETE ON workspaces "
+            "BEGIN SELECT RAISE(ABORT, 'Workspace deletion is not supported'); END"
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
 
 
 def _session_from_row(row: sqlite3.Row) -> SessionRecord:
     return SessionRecord(
+        workspace_id=str(row["workspace_id"]),
         session_id=str(row["session_id"]),
         goal=str(row["goal"]),
         status=_session_status(row["status"]),

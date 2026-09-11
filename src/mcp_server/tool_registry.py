@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from agents.workspace import WorkspaceScopeError
+
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
 
@@ -64,7 +66,7 @@ class ToolRegistry:
             raise KeyError(f"Unknown MCP tool: {name}") from exc
         try:
             return tool.handler(arguments)
-        except ToolInputError as exc:
+        except (ToolInputError, WorkspaceScopeError) as exc:
             error = {"error": str(exc), "tool": name}
             return {
                 "content": [{"type": "text", "text": str(exc)}],

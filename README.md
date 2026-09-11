@@ -190,6 +190,39 @@ runs the committed public benchmark gate.
 
 ## V2 configuration Agent
 
+### Local Workspace scope
+
+The host selects one workspace with `agent.workspace_id`. Existing sessions migrate to
+`workspace:legacy`, which preserves the earlier local unrestricted scope. Restricted workspaces
+require non-empty collection, module, site and environment allowlists. They are local scope
+boundaries, not authenticated multi-tenant accounts.
+
+Provision a workspace before selecting it:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/create_workspace.py --id workspace:dc01 --name DC01 `
+  --collections wms-dc01 --modules inbound appointment integration --sites DC01 --environments test
+```
+
+Set `agent.workspace_id: workspace:dc01` in the selected settings file and restart the MCP host
+and Dashboard. A missing workspace fails startup. The administrative provisioning command is
+local; chat tools cannot change their host workspace or modify workspace policy.
+
+Session membership and policies are immutable. Create a new workspace/session when scope changes.
+Database schema v2 migrates existing membership without rewriting immutable revision JSON or
+fingerprints. Retain a database backup before migration; older binaries must not open a v2 store.
+Unknown future schema versions are rejected.
+
+All six session tools use the selected repository scope, including historical revisions,
+approval and export. V1 query and catalog tools are also scoped. Retrieval injects singleton
+allowlist values; a multi-valued dimension must be selected explicitly before retrieval. Missing
+scope metadata is excluded. If a legacy V1 tool does not expose a dimension selector, use a
+single-valued workspace for that query workflow. Workspace scope applies even when the Agent
+itself is disabled. Existing V1 behavior remains available through `workspace:legacy`.
+
+Capabilities report the host workspace and whether restricted scope is enforced. The Agent
+Sessions page lists only sessions belonging to the selected workspace.
+
 The opt-in V2 Agent manages a durable configuration workflow on top of the V1 citation-first RAG
 core. Set `agent.enabled: true` only in an authorized local environment with aligned Chroma and
 BM25 indexes and a configured text LLM. The default remains `false` until a real provider and

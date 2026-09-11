@@ -11,7 +11,9 @@ from core.settings import load_settings
 from observability.dashboard.services import AgentSessionService
 
 settings = load_settings(os.environ.get("WMS_CONFIG_PATH", "config/settings.yaml"))
-service = AgentSessionService(SessionRepository(settings.agent.session_db_path))
+service = AgentSessionService(
+    SessionRepository(settings.agent.session_db_path, workspace_id=settings.agent.workspace_id)
+)
 
 st.title("Agent Sessions")
 rows = service.list_rows()

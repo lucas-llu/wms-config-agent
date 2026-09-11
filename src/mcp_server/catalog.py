@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from agents.workspace import Workspace
 from core.types import Chunk
 from ingestion import load_preprocessed_chunks
 
@@ -31,8 +32,9 @@ class DocumentSummary:
 
 
 class CorpusCatalog:
-    def __init__(self, chunks_path: str | Path) -> None:
+    def __init__(self, chunks_path: str | Path, workspace: Workspace | None = None) -> None:
         self.chunks_path = Path(chunks_path)
+        self.workspace = workspace
         self._chunks: list[Chunk] | None = None
         self._documents: list[DocumentSummary] | None = None
 
@@ -76,6 +78,10 @@ class CorpusCatalog:
     def _load_chunks(self) -> list[Chunk]:
         if self._chunks is None:
             self._chunks = load_preprocessed_chunks(self.chunks_path)
+            if self.workspace is not None:
+                self._chunks = [
+                    c for c in self._chunks if self.workspace.permits_metadata(c.metadata)
+                ]
         return self._chunks
 
     def _load_documents(self) -> list[DocumentSummary]:

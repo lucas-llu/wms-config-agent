@@ -55,7 +55,7 @@ def test_schema_uses_wal_foreign_keys_and_all_required_tables(tmp_path: Path) ->
     assert {"sessions", "revisions", "turns", "decisions", "approvals", "exports"} <= tables
     assert journal_mode.lower() == "wal"
     assert foreign_keys == 1
-    assert schema_version == 1
+    assert schema_version == 2
 
 
 def test_two_sessions_remain_isolated_when_turns_are_interleaved(tmp_path: Path) -> None:

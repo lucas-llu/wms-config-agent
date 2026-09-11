@@ -8,6 +8,7 @@ from agents.repositories import SessionRepository
 from agents.services import SessionService, SolutionService, ValidationService
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from agents.tools import KnowledgeAdapter
+from agents.tools.workspace_search import WorkspaceSearch
 from core.query_engine import (
     DenseRetriever,
     HybridSearch,
@@ -58,7 +59,15 @@ def create_protocol_handler(
         SparseRetriever(bm25_indexer, vector_store),
         ReciprocalRankFusion(settings.retrieval.rrf_k),
     )
-    catalog = CorpusCatalog(chunks_path)
+    repository = None
+    workspace = None
+    if settings.agent.enabled or settings.agent.workspace_id != "workspace:legacy":
+        repository = SessionRepository(
+            settings.agent.session_db_path, workspace_id=settings.agent.workspace_id
+        )
+        workspace = repository.workspace
+        hybrid_search = WorkspaceSearch(hybrid_search, workspace)
+    catalog = CorpusCatalog(chunks_path, workspace=workspace)
     assembler = MultimodalAssembler(
         image_roots
         or [
@@ -85,12 +94,13 @@ def create_protocol_handler(
         GetDocumentSummaryTool(catalog).definition(),
     ]
     if settings.agent.enabled:
-        repository = SessionRepository(settings.agent.session_db_path)
+        assert repository is not None
         sessions = SessionService(repository)
         supervisor = Supervisor(
             llm=LLMFactory.create(settings),
             settings=settings.agent,
             knowledge_adapter=KnowledgeAdapter(hybrid_search, reranker, response_builder),
+            workspace=workspace,
         )
         application = ConfigurationSessionApplication(
             runner=RequirementSessionRunner(
