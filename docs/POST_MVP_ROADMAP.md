@@ -32,6 +32,17 @@ All previous gates ────────────────────�
 
 ## Completion record
 
+- **Day 13 — implementation ready for review (2026-09-11):** added the privacy-safe
+  `get_wms_knowledge_catalog` MCP read model with collection/module/scope/freshness filters,
+  bounded pagination, document version and scope completeness, source freshness, and index
+  health. Restricted Workspaces filter records before grouping and report index health as
+  `unverified` without exposing global Dense/BM25 counts. Absolute and traversal source
+  references are sanitized, and catalog records never include document bodies. Four new catalog
+  tests cover missing scope, stale/unknown freshness, strict schemas, pagination, Workspace
+  exclusion and privacy. Full regression: 420 passed, 2 opt-in provider skips, source coverage
+  90.86%; V1 public benchmark 4/4, Ruff/format and dependency checks passed. See
+  [Knowledge catalog contract](KNOWLEDGE_CATALOG.md). Changes await review.
+
 - **Day 12 — implementation ready for review (2026-09-11):** added immutable Workspace
   allowlists, host-selected scope, schema v1-to-v2 membership migration, scoped repository reads
   and writes, generated requirement/task scope checks, retrieval and catalog enforcement,
