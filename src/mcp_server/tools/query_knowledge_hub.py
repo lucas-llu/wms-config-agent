@@ -7,6 +7,7 @@ from typing import Any
 
 from core.query_engine import HybridSearch, SafeReranker
 from core.response import MultimodalAssembler, ResponseBuilder
+from core.response.diagnostic_response import diagnostic_payload, diagnostic_schema
 from core.trace import TraceCollector
 from mcp_server.tool_registry import MCPTool, ToolInputError
 
@@ -46,6 +47,11 @@ class QueryKnowledgeHubTool:
                         "enum": ["configuration", "operation"],
                     },
                     "process_code": {"type": "string"},
+                    "response_format": {
+                        "type": "string",
+                        "enum": ["evidence", "troubleshooting"],
+                        "description": "Evidence-grouped troubleshooting; no live diagnosis.",
+                    },
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -59,6 +65,7 @@ class QueryKnowledgeHubTool:
                     "markdown": {"type": "string"},
                     "citations": {"type": "array", "items": {"type": "object"}},
                     "diagnostics": {"type": "object"},
+                    "troubleshooting": diagnostic_schema(),
                 },
                 "required": ["status", "query", "message", "markdown", "citations"],
             },
@@ -73,6 +80,9 @@ class QueryKnowledgeHubTool:
         if isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= 20:
             raise ToolInputError("top_k must be an integer between 1 and 20")
         filters = self._filters(arguments)
+        response_format = arguments.get("response_format", "evidence")
+        if response_format not in ("evidence", "troubleshooting"):
+            raise ToolInputError("response_format must be evidence or troubleshooting")
         trace = (
             self.trace_collector.start("query", {"query": query, "filters": filters})
             if self.trace_collector
@@ -87,12 +97,17 @@ class QueryKnowledgeHubTool:
             )
             outcome = replace(outcome, results=reranked.results)
             response = self.response_builder.build(outcome)
-            structured = self._sanitize_structured(response.to_dict())
+            payload = (
+                diagnostic_payload(response)
+                if response_format == "troubleshooting"
+                else response.to_dict()
+            )
+            structured = self._sanitize_structured(payload)
             if reranked.failure:
                 structured["diagnostics"]["rerank_failure"] = reranked.failure
             if trace:
                 structured["diagnostics"]["trace_id"] = trace.trace_id
-            content = [{"type": "text", "text": response.markdown}]
+            content = [{"type": "text", "text": structured["markdown"]}]
             content.extend(self.multimodal_assembler.assemble(list(outcome.results)))
             if trace:
                 trace.finish()
@@ -126,6 +141,7 @@ class QueryKnowledgeHubTool:
             "domain",
             "document_type",
             "process_code",
+            "response_format",
         }
         if unknown:
             raise ToolInputError(f"Unsupported arguments: {', '.join(sorted(unknown))}")
