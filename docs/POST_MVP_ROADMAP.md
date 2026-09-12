@@ -32,6 +32,17 @@ All previous gates ────────────────────�
 
 ## Completion record
 
+- **Day 17 — implementation ready for review (2026-09-12):** replaced the raw-JSON
+  Agent Sessions view with workspace-scoped conversation, version selection, next-step
+  guidance, task graph/draft, evidence, review/export and feedback tabs. Explicit
+  actions reuse existing MCP services and revision/approval gates; historical versions
+  remain viewable with mutation controls disabled. Nine new test cases cover rendering,
+  feedback, explicit review confirmation, historical controls, scope, safe sources and
+  sanitized errors. Targeted suite: 32 passed. Full local regression: 462 passed,
+  2 opt-in provider skips; coverage 90.98%. Ruff/format, dependencies, diff check and
+  V1 benchmark (4/4) passed. See [Workbench guide](AGENT_WORKBENCH.md). Awaiting user
+  review; no Day 17 main PR or real-provider/browser visual acceptance yet.
+
 - **Day 16 — implementation ready for review (2026-09-12):** added durable,
   deduplicated feedback signals and revision-level summaries. Host Workspace and
   existing revision checks protect both read and write paths; trace IDs come from
@@ -40,7 +51,8 @@ All previous gates ────────────────────�
   cover persistence, historical association, isolation, rejection, annotations and
   current-turn trace binding. Full local gate: 453 passed, 2 opt-in skips; coverage
   91.00%. Ruff/format, dependencies and V1 benchmark (4/4) pass. See
-  [Feedback contract](FEEDBACK_EVALUATION.md). Main feature awaits user review.
+  [Feedback contract](FEEDBACK_EVALUATION.md). Merged through PR #64 after local and
+  remote gates and review comments; feature branch cleaned.
 
 - **Day 15 — implementation ready for review (2026-09-12):** added opt-in
   `response_format: troubleshooting` to the existing knowledge query. The response
