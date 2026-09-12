@@ -225,6 +225,8 @@ class RequirementSessionRunner:
     ) -> WorkflowResult:
         snapshot = await graph.aget_state(config)
         values = dict(snapshot.values)
+        # Bind the completed revision to this turn, never an inherited checkpoint trace.
+        values["trace_id"] = trace.trace_id if trace else ""
         revision = self.sessions.update_revision(
             values["session_id"],
             expected_revision=expected_revision,

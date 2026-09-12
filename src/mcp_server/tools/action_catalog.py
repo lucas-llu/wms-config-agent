@@ -7,6 +7,8 @@ from typing import Any
 from mcp_server.tool_registry import MCPTool, ToolInputError, ToolRegistry
 
 _REQUIREMENTS = {
+    "record_configuration_feedback": ["workspace_session", "existing_revision"],
+    "get_configuration_feedback_summary": ["workspace_session", "existing_revision"],
     "continue_configuration_session": ["current_revision", "resumable_session"],
     "get_configuration_session": ["workspace_session"],
     "validate_configuration_draft": ["current_revision", "workspace_session"],

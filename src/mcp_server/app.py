@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from agents.repositories import SessionRepository
+from agents.repositories.feedback_repository import FeedbackRepository
 from agents.services import SessionService, SolutionService, ValidationService
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from agents.tools import KnowledgeAdapter
@@ -39,6 +40,7 @@ from mcp_server.tools import (
     QueryKnowledgeHubTool,
 )
 from mcp_server.tools.action_catalog import ActionCatalogTool
+from mcp_server.tools.feedback import FeedbackTools
 
 
 def create_protocol_handler(
@@ -129,6 +131,7 @@ def create_protocol_handler(
             trace_collector=trace_collector,
         )
         tools.extend(ConfigurationSessionTools(application).definitions())
+        tools.extend(FeedbackTools(FeedbackRepository(repository)).definitions())
     registry = ToolRegistry(tools)
     registry.register(ActionCatalogTool(registry, settings.agent.workspace_id).definition())
     if settings.agent.enabled:
