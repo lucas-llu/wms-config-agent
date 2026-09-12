@@ -281,6 +281,9 @@ For evidence-grouped troubleshooting, call `query_wms_knowledge` with
 `response_format: "troubleshooting"`; see the
 [diagnostic response contract](docs/DIAGNOSTIC_RESPONSES.md). Default queries are unchanged.
 
+Agent-enabled hosts also expose [revision-bound feedback](docs/FEEDBACK_EVALUATION.md)
+recording and summaries, without free-text storage or automatic regeneration.
+
 The citation-first RAG core now includes a stateful configuration assistant. It clarifies a
 business goal over multiple turns, decomposes it into dependent configuration
 tasks, gathers evidence for each task, surfaces version or scope conflicts, validates a versioned
