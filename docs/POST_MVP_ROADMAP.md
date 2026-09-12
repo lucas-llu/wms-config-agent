@@ -32,6 +32,16 @@ All previous gates ────────────────────�
 
 ## Completion record
 
+- **Day 16 — implementation ready for review (2026-09-12):** added durable,
+  deduplicated feedback signals and revision-level summaries. Host Workspace and
+  existing revision checks protect both read and write paths; trace IDs come from
+  persisted Agent turns, with missing traces explicitly null. Fixed categories only,
+  no free-text storage, automatic regeneration or approval changes. Twenty new tests
+  cover persistence, historical association, isolation, rejection, annotations and
+  current-turn trace binding. Full local gate: 453 passed, 2 opt-in skips; coverage
+  91.00%. Ruff/format, dependencies and V1 benchmark (4/4) pass. See
+  [Feedback contract](FEEDBACK_EVALUATION.md). Main feature awaits user review.
+
 - **Day 15 — implementation ready for review (2026-09-12):** added opt-in
   `response_format: troubleshooting` to the existing knowledge query. The response
   groups exact cited excerpts into causes, roles, equipment, rules, environment and
@@ -40,7 +50,8 @@ All previous gates ────────────────────�
   preservation, insufficient evidence, input rejection, schema and MCP integration.
   Local regression: 433 passed, 2 opt-in provider skips; coverage 90.88%. Ruff/format,
   dependency checks and V1 benchmark (4/4) passed. See
-  [Diagnostic response contract](DIAGNOSTIC_RESPONSES.md). Main feature awaits review.
+  [Diagnostic response contract](DIAGNOSTIC_RESPONSES.md). Merged into `dev` through
+  PR #61 after local and remote gates and review comments; feature branch cleaned.
 
 - **Day 14 — implementation ready for review (2026-09-11):** added the read-only
   `get_agent_actions` catalog from the live MCP registry, with annotations, permission
