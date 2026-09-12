@@ -27,7 +27,7 @@ class FeedbackTools:
             MCPTool(
                 name="record_configuration_feedback",
                 title="Record Configuration Feedback",
-                description="Record a deduplicated revision signal; no text, approval or regeneration.",
+                description="Record a revision signal; no text, approval or regeneration.",
                 input_schema={
                     "type": "object",
                     "additionalProperties": False,
@@ -49,7 +49,7 @@ class FeedbackTools:
             MCPTool(
                 name="get_configuration_feedback_summary",
                 title="Get Configuration Feedback Summary",
-                description="Read revision feedback counts; not an accuracy score or user vote tally.",
+                description="Read revision signals; not an accuracy score or user vote tally.",
                 input_schema={
                     "type": "object",
                     "additionalProperties": False,

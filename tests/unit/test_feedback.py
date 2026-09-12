@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -115,9 +116,8 @@ def test_tool_annotations_and_summary(tmp_path):
     assert tools["get_configuration_feedback_summary"]["annotations"]["readOnlyHint"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("with_trace", [True, False])
-async def test_runner_persists_current_trace_not_checkpoint_trace(with_trace):
+def test_runner_persists_current_trace_not_checkpoint_trace(with_trace):
     sessions = Mock()
     sessions.update_revision.return_value = SimpleNamespace(revision=2)
     runner = RequirementSessionRunner(supervisor=Mock(), sessions=sessions)
@@ -130,7 +130,7 @@ async def test_runner_persists_current_trace_not_checkpoint_trace(with_trace):
         )
     )
     trace = Mock(trace_id="a" * 32) if with_trace else None
-    await runner._persist_result(graph, {}, 1, trace)
+    asyncio.run(runner._persist_result(graph, {}, 1, trace))
     assert sessions.update_revision.call_args.kwargs["state_update"]["trace_id"] == (
         "a" * 32 if with_trace else ""
     )
