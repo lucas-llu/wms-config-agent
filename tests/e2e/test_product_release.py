@@ -38,13 +38,18 @@ def test_live_app_discovery_and_feedback_boundary(tmp_path, monkeypatch, enabled
     )
     monkeypatch.setattr(mcp_app, "load_settings", lambda _: settings)
     for factory in (
-        mcp_app.VectorStoreFactory,
         mcp_app.EmbeddingFactory,
         mcp_app.RerankerFactory,
         mcp_app.LLMFactory,
     ):
         monkeypatch.setattr(factory, "create", lambda _: object())
-    monkeypatch.setattr(mcp_app, "BM25Indexer", lambda _: object())
+
+    class Index:
+        def count(self):
+            return 1
+
+    monkeypatch.setattr(mcp_app.VectorStoreFactory, "create", lambda _: Index())
+    monkeypatch.setattr(mcp_app, "BM25Indexer", lambda _: Index())
     registry = mcp_app.create_protocol_handler(chunks_path=tmp_path).registry
     definitions = registry.definitions()
     actions = registry.call("get_agent_actions", {})["structuredContent"]["actions"]
