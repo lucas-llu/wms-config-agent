@@ -284,6 +284,9 @@ For evidence-grouped troubleshooting, call `query_wms_knowledge` with
 Agent-enabled hosts also expose [revision-bound feedback](docs/FEEDBACK_EVALUATION.md)
 recording and summaries, without free-text storage or automatic regeneration.
 
+The **Agent Sessions** page now provides a [configuration workbench](docs/AGENT_WORKBENCH.md)
+for conversation, revisioned drafts, task dependencies, evidence, review and feedback.
+
 The citation-first RAG core now includes a stateful configuration assistant. It clarifies a
 business goal over multiple turns, decomposes it into dependent configuration
 tasks, gathers evidence for each task, surfaces version or scope conflicts, validates a versioned
