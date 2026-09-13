@@ -51,3 +51,5 @@ jobs:
           --cov-fail-under=90
       - name: Public sanitized benchmark gate
         run: python -m pytest tests/e2e/test_recall_benchmark.py -q
+      - name: Product release gates
+        run: python scripts/run_product_release.py
