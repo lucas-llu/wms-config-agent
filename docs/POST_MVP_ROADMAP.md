@@ -32,6 +32,15 @@ All previous gates ────────────────────�
 
 ## Completion record
 
+- **Day 18 — implementation ready for review (2026-09-13):** added executed offline
+  product-release gates, CI integration, combined Workspace/capability/feedback
+  scenarios, migration/restart/concurrency checks and a privacy-safe report.
+  Four new product cases and ten runner tests pass. Full local regression: 476 passed,
+  2 opt-in provider skips; coverage 91.05%. Executed release suites: V1 1, Agent MVP 1,
+  product 55 passed, zero skips. Ruff/format and dependencies passed. See
+  [Product release report](PRODUCT_RELEASE_REPORT.md). Main feature awaits review;
+  real-provider, private-corpus, browser visual and production acceptance are not claimed.
+
 - **Day 17 — implementation ready for review (2026-09-12):** replaced the raw-JSON
   Agent Sessions view with workspace-scoped conversation, version selection, next-step
   guidance, task graph/draft, evidence, review/export and feedback tabs. Explicit
@@ -41,7 +50,8 @@ All previous gates ────────────────────�
   sanitized errors. Targeted suite: 32 passed. Full local regression: 462 passed,
   2 opt-in provider skips; coverage 90.98%. Ruff/format, dependencies, diff check and
   V1 benchmark (4/4) passed. See [Workbench guide](AGENT_WORKBENCH.md). Awaiting user
-  review; no Day 17 main PR or real-provider/browser visual acceptance yet.
+  review record: merged through PR #65 after local/remote gates and review comments;
+  feature branch cleaned. Real-provider/browser visual acceptance remains unrun.
 
 - **Day 16 — implementation ready for review (2026-09-12):** added durable,
   deduplicated feedback signals and revision-level summaries. Host Workspace and
