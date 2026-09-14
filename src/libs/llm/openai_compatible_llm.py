@@ -8,10 +8,12 @@ import time
 from collections.abc import Callable
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from core.settings import ProviderSettings
 from libs.llm.base_llm import BaseLLM, ChatMessage, ChatResponse
+from libs.llm.session_context import provider_session_id
 
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 JsonTransport = Callable[[str, dict[str, Any], dict[str, str], float], dict[str, Any]]
@@ -75,6 +77,8 @@ class OpenAICompatibleLLM(BaseLLM):
                 "Accept": "application/json",
                 "User-Agent": "wms-config-agent/0.1",
             }
+            if urlsplit(self.endpoint).hostname == "opencode.ai":
+                headers["x-opencode-session"] = provider_session_id()
             if self.api_key_env:
                 api_key = os.getenv(self.api_key_env, "").strip()
                 if not api_key:
