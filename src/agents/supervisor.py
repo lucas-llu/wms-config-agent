@@ -180,6 +180,17 @@ class RequirementSessionRunner:
     async def _run_graph(
         self, graph: Any, input_value: Any, config: dict[str, Any], session_id: str, revision: int
     ) -> TraceContext | None:
+        from libs.llm.session_context import llm_conversation
+
+        identity = f"{self.sessions.repository.workspace_id}:{session_id}"
+        with llm_conversation(identity):
+            return await self._run_graph_in_context(
+                graph, input_value, config, session_id, revision
+            )
+
+    async def _run_graph_in_context(
+        self, graph: Any, input_value: Any, config: dict[str, Any], session_id: str, revision: int
+    ) -> TraceContext | None:
         trace = (
             self.trace_collector.start(
                 "agent",
