@@ -287,6 +287,9 @@ recording and summaries, without free-text storage or automatic regeneration.
 The **Agent Sessions** page now provides a [configuration workbench](docs/AGENT_WORKBENCH.md)
 for conversation, revisioned drafts, task dependencies, evidence, review and feedback.
 
+Run `python scripts/run_product_release.py` for executed offline product gates.
+See the [Day 18 release report](docs/PRODUCT_RELEASE_REPORT.md) for evidence and unrun acceptance.
+
 The citation-first RAG core now includes a stateful configuration assistant. It clarifies a
 business goal over multiple turns, decomposes it into dependent configuration
 tasks, gathers evidence for each task, surfaces version or scope conflicts, validates a versioned
