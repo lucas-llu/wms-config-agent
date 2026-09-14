@@ -10,7 +10,7 @@ def test_load_project_settings() -> None:
 
     assert settings.project.name == "wms-config-agent"
     assert settings.llm.provider == "openai_compatible"
-    assert settings.llm.model == "ox-alpha-free"
+    assert settings.llm.model == "deepseek-v4.1-flash"
     assert settings.llm.base_url == "https://opencode.ai/zen/go/v1/chat/completions"
     assert settings.llm.api_key_env == "WMS_LLM_API_KEY"
     assert settings.llm.timeout_seconds == 60
@@ -85,7 +85,7 @@ def test_openai_compatible_provider_requires_model_and_base_url(tmp_path: Path) 
     original = Path("config/settings.yaml").read_text(encoding="utf-8")
     config_path = tmp_path / "settings.yaml"
     config_path.write_text(
-        original.replace("  model: ox-alpha-free\n", "  model: null\n", 1),
+        original.replace("  model: deepseek-v4.1-flash\n", "  model: null\n", 1),
         encoding="utf-8",
     )
 
