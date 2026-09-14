@@ -16,7 +16,9 @@ llm:
   retry_backoff_seconds: 0.5
 ```
 
-This model was selected for canary preparation; live gateway availability is not yet verified.
+This model passed a synthetic live connectivity probe. Full live acceptance is not yet green:
+reasoning responses can exhaust the configured cap (Issue #73). OpenCode requests now include
+the documented opaque conversation header, without impersonating another client.
 See [Canary readiness](CANARY_READINESS.md) for remaining entry checks.
 
 No credential is stored in YAML, `.env.example`, test output, traces, or Git. Supply the key only
