@@ -14,7 +14,7 @@ def test_load_project_settings() -> None:
     assert settings.llm.base_url == "https://opencode.ai/zen/go/v1/chat/completions"
     assert settings.llm.api_key_env == "WMS_LLM_API_KEY"
     assert settings.llm.timeout_seconds == 60
-    assert settings.llm.max_tokens == 1024
+    assert settings.llm.max_tokens == 4096
     assert settings.llm.temperature == 0
     assert settings.llm.max_retries == 2
     assert settings.llm.retry_backoff_seconds == 0.5
