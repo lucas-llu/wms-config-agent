@@ -18,6 +18,9 @@ def _submit(operation, *, refresh=True):
         st.error("请求被服务端拒绝。请刷新并检查版本、审批条件及输入。")
         return
     if refresh:
+        payload = result.get("structuredContent", {})
+        if payload.get("session_id") and isinstance(payload.get("revision"), int):
+            st.session_state["workbench_target"] = (payload["session_id"], payload["revision"])
         st.session_state["workbench_notice"] = "操作完成，请选择最新版本查看结果。"
         st.rerun()
     else:
@@ -54,7 +57,14 @@ def render_workbench(service: WorkbenchService) -> None:
         st.info("暂无会话。启用 Agent 后，输入配置目标开始。")
         return
     names = {row["Session"]: row["Goal"] for row in rows}
-    session_id = st.selectbox("会话", list(names), format_func=lambda key: names[key])
+    session_key = f"workbench_session:{workspace.workspace_id}"
+    target = st.session_state.pop("workbench_target", None)
+    if target and target[0] in names:
+        st.session_state[session_key] = target[0]
+        st.session_state[f"revision:{workspace.workspace_id}:{target[0]}"] = target[1]
+    session_id = st.selectbox(
+        "会话", list(names), format_func=lambda key: names[key], key=session_key
+    )
     revisions = service.repository.list_revisions(session_id)
     revision = st.selectbox(
         "查看版本",

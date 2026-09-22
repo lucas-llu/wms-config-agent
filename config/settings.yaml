@@ -8,7 +8,7 @@ llm:
   base_url: https://opencode.ai/zen/go/v1/chat/completions
   api_key_env: WMS_LLM_API_KEY
   timeout_seconds: 60
-  max_tokens: 1024
+  max_tokens: 8192
   temperature: 0
   max_retries: 2
   retry_backoff_seconds: 0.5

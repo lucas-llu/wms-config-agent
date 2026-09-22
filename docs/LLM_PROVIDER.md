@@ -10,15 +10,16 @@ llm:
   base_url: https://opencode.ai/zen/go/v1/chat/completions
   api_key_env: WMS_LLM_API_KEY
   timeout_seconds: 60
-  max_tokens: 1024
+  max_tokens: 8192
   temperature: 0
   max_retries: 2
   retry_backoff_seconds: 0.5
 ```
 
-This model passed a synthetic live connectivity probe. Full live acceptance is not yet green:
-reasoning responses can exhaust the configured cap (Issue #73). OpenCode requests now include
-the documented opaque conversation header, without impersonating another client.
+This model passed connectivity and three repeated synthetic acceptance rounds with an
+8192 output cap and thinking enabled. The 12000 Agent turn budget remains unchanged;
+full multi-turn canary acceptance is still required. OpenCode requests include the
+documented opaque conversation header, without impersonating another client.
 See [Canary readiness](CANARY_READINESS.md) for remaining entry checks.
 
 No credential is stored in YAML, `.env.example`, test output, traces, or Git. Supply the key only

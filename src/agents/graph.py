@@ -19,6 +19,7 @@ from agents.nodes import (
     PlanningAgent,
     RequirementAgent,
 )
+from agents.nodes.grounded_answer import answer_question
 from agents.services import ValidationService
 from agents.workspace import Workspace, WorkspaceScopeError
 from core.settings import AgentSettings
@@ -81,6 +82,7 @@ class AgentGraphState(TypedDict, total=False):
     tool_calls_made: int
     turn_deadline_epoch: float
     trace_id: str
+    assistant_reply: str
 
 
 ALLOWED_TRANSITIONS = MappingProxyType(
@@ -169,6 +171,8 @@ class SupervisorGraph:
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
         builder = StateGraph(AgentGraphState)
         builder.add_node("classify_intent", self._classify_intent)
+        builder.add_node("answer_question", self._answer_question)
+        builder.add_node("await_question", self._await_question)
         builder.add_node("pause_intent", self._pause_intent)
         builder.add_node("await_intent", self._await_intent)
         builder.add_node("extract_requirements", self._extract_requirements)
@@ -191,8 +195,19 @@ class SupervisorGraph:
             {
                 "clarify": "pause_intent",
                 "configure": "extract_requirements",
+                "answer": "answer_question",
                 "end": END,
             },
+        )
+        builder.add_conditional_edges(
+            "answer_question",
+            self._route_after_await,
+            {"continue": "await_question", "end": END},
+        )
+        builder.add_conditional_edges(
+            "await_question",
+            self._route_after_await,
+            {"continue": "classify_intent", "end": END},
         )
         builder.add_conditional_edges(
             "pause_intent", self._route_pause, {"await": "await_intent", "end": END}
@@ -279,9 +294,97 @@ class SupervisorGraph:
                 "active_agent": "supervisor",
                 "next_action": INTENT_ACTIONS[result.intent],
                 "pause_reason": "",
+                "assistant_reply": "",
             }
         )
         return update
+
+    def _answer_question(self, state: AgentGraphState) -> dict[str, Any]:
+        entered = self.budget.enter_node(state, "knowledge")
+        if not entered.allowed:
+            return entered.update
+        reply = "我可以查询 WMS 配置文档或协助制定配置方案，请描述相关问题。"
+        calls = 0
+        if state.get("intent") == IntentType.INSPECT_DRAFT.value:
+            tasks = state.get("configuration_tasks", [])
+            reply = (
+                "当前还没有配置草稿。请先描述需要配置的流程。"
+                if not tasks
+                else (
+                    "当前草稿任务：\n"
+                    + "\n".join(str(item.get("title", "")) for item in tasks)
+                    + "\n请在配置草稿与依赖页签查看详情；草稿不代表已批准。"
+                )
+            )
+        elif state.get("intent") == IntentType.ATOMIC_QUERY.value:
+            reply = "未找到足够的文档证据。请补充模块、版本或流程编码，或先导入相关文档。"
+            if self.knowledge_agent is not None:
+                try:
+                    filters = self.workspace.filters({}) if self.workspace else {}
+                    calls = 1
+                    result = self.knowledge_agent.adapter.search(
+                        state["latest_user_message"], filters=filters, top_k=5
+                    )
+                    if result.evidence_sufficient and result.evidence:
+                        answer = answer_question(
+                            self.classifier.llm, state["latest_user_message"], result.evidence
+                        )
+                        accounted = self.budget.account_llm(
+                            state,
+                            retries=answer.retries,
+                            tokens_used=answer.tokens_used,
+                            node_name="knowledge",
+                        )
+                        if not accounted.allowed:
+                            return {
+                                **entered.update,
+                                **accounted.update,
+                                "assistant_reply": "本次回答达到回合预算限制，请稍后重试。",
+                            }
+                        entered.update.update(accounted.update)
+                        reply = answer.text
+                except WorkspaceScopeError:
+                    reply = "当前 Workspace 需要更明确的查询范围，请联系管理员选择范围。"
+                except StructuredLLMError as exc:
+                    accounted = self.budget.account_llm(
+                        state,
+                        retries=exc.retries,
+                        tokens_used=exc.tokens_used,
+                        node_name="knowledge",
+                    )
+                    if not accounted.allowed:
+                        return {
+                            **entered.update,
+                            **accounted.update,
+                            "assistant_reply": "回答生成达到预算限制，未输出未经校验的结论。",
+                        }
+                    entered.update.update(accounted.update)
+                    reply = "找到了相关文档，但未能生成通过引用校验的答案；请补充问题或稍后重试。"
+                except Exception:
+                    reply = "知识库查询暂时失败，请稍后重试或检查索引；本次没有生成配置结论。"
+        return {
+            **entered.update,
+            "status": transition_status(state, SessionStatus.PAUSED),
+            "pause_reason": "question_answered",
+            "assistant_reply": reply,
+            "open_questions": [],
+            "tool_calls_made": int(state.get("tool_calls_made", 0)) + calls,
+        }
+
+    def _await_question(self, state: AgentGraphState) -> dict[str, Any]:
+        response = interrupt({"kind": "question_answered"})
+        message, turn_id = _resume_message(response)
+        return {
+            "status": transition_status(state, SessionStatus.CREATED),
+            "latest_user_message": message,
+            "latest_turn_id": turn_id,
+            "recent_turns": _append_recent_turn(
+                state.get("recent_turns", []), message, self.settings.max_context_turns
+            ),
+            "assistant_reply": "",
+            "pause_reason": "",
+            "open_questions": [],
+        }
 
     def _pause_intent(self, state: AgentGraphState) -> dict[str, Any]:
         entered = self.budget.enter_node(state, "supervisor")
@@ -652,7 +755,7 @@ class SupervisorGraph:
             return "clarify"
         if state.get("intent") == IntentType.CONFIGURE_GOAL.value:
             return "configure"
-        return "end"
+        return "answer"
 
     @staticmethod
     def _route_after_requirements(state: AgentGraphState) -> str:
