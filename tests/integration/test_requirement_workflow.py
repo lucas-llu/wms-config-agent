@@ -465,7 +465,7 @@ def test_non_configuration_intents_route_to_terminal_response_paths(tmp_path: Pa
         ("inspect_draft", "render_current_draft"),
         ("unsupported", "bounded_rejection"),
     ]
-    assert all(item.next == () for item in results)
+    assert all(item.next == ("await_question",) for item in results)
 
 
 def test_exhausted_structured_output_retries_pause_safely(tmp_path: Path) -> None:

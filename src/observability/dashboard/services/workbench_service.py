@@ -44,7 +44,11 @@ class WorkbenchService(AgentSessionService):
             "revision": record.revision,
             "current_revision": current.current_revision,
             "status": record.status.value,
-            "next_step": _NEXT.get(record.status.value, "处理中；刷新查看最新版本。"),
+            "next_step": (
+                "已回复，可以继续提问或描述配置目标。"
+                if state.get("pause_reason") == "question_answered"
+                else _NEXT.get(record.status.value, "处理中；刷新查看最新版本。")
+            ),
             "context": state.get("confirmed_context", {}),
             "questions": state.get("open_questions", []),
             "tasks": tasks,

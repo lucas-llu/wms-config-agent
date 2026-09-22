@@ -496,6 +496,7 @@ class ConfigurationSessionState(TypedDict, total=False):
     intent: str
     active_agent: str
     next_action: str
+    assistant_reply: str
     confirmed_context: dict[str, Any]
     assumptions: list[dict[str, Any]]
     open_questions: list[dict[str, Any]]
