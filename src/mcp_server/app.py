@@ -20,6 +20,7 @@ from core.query_engine import (
     SparseRetriever,
 )
 from core.response import MultimodalAssembler, ResponseBuilder
+from core.response.citation_generator import CitationGenerator
 from core.settings import load_settings
 from core.trace import TraceCollector
 from ingestion.storage import BM25Indexer
@@ -115,7 +116,9 @@ def create_protocol_handler(
         supervisor = Supervisor(
             llm=LLMFactory.create(settings),
             settings=settings.agent,
-            knowledge_adapter=KnowledgeAdapter(hybrid_search, reranker, response_builder),
+            knowledge_adapter=KnowledgeAdapter(
+                hybrid_search, reranker, ResponseBuilder(CitationGenerator(excerpt_length=1800))
+            ),
             workspace=workspace,
         )
         application = ConfigurationSessionApplication(
