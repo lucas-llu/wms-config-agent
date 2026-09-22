@@ -264,7 +264,15 @@ class RequirementSessionRunner:
             trace.finish(status="paused" if interrupts else "ok")
             if self.trace_collector:
                 self.trace_collector.collect(trace)
-        if values.get("status") == "paused" and values.get("open_questions"):
+        if values.get("assistant_reply"):
+            self.sessions.append_turn(
+                values["session_id"],
+                expected_revision=revision.revision,
+                role="assistant",
+                message=str(values["assistant_reply"]),
+                metadata={"kind": "question_answer"},
+            )
+        elif values.get("status") == "paused" and values.get("open_questions"):
             question_text = "\n".join(
                 str(item.get("text", "")).strip()
                 for item in values["open_questions"]
