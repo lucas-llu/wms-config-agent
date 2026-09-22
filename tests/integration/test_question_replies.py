@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import replace
 
 import pytest
@@ -12,13 +13,30 @@ from agents.services import SessionService
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from agents.tools import KnowledgeSearchResult
 from core.settings import load_settings
+from libs.llm import ChatResponse
 
 
 @pytest.mark.parametrize("mode", ["evidence", "empty", "failure"])
 def test_questions_produce_persisted_reply_and_resume(tmp_path, mode):
     class NoLLM:
         def chat(self, *args, **kwargs):
-            pytest.fail("Atomic question must use local evidence, not send excerpts to an LLM")
+            assert mode == "evidence"
+            return ChatResponse(
+                json.dumps(
+                    {
+                        "status": "answered",
+                        "gap": "",
+                        "claims": [
+                            {
+                                "text": "Synthetic receiving rule",
+                                "source_id": "1",
+                                "quote": "Synthetic receiving rule",
+                            }
+                        ],
+                    }
+                ),
+                metadata={"usage": {"total_tokens": 30}},
+            )
 
     class Search:
         calls = 0

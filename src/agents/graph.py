@@ -19,6 +19,7 @@ from agents.nodes import (
     PlanningAgent,
     RequirementAgent,
 )
+from agents.nodes.grounded_answer import answer_question
 from agents.services import ValidationService
 from agents.workspace import Workspace, WorkspaceScopeError
 from core.settings import AgentSettings
@@ -325,17 +326,40 @@ class SupervisorGraph:
                         state["latest_user_message"], filters=filters, top_k=5
                     )
                     if result.evidence_sufficient and result.evidence:
-                        lines = ["以下是本地知识库的相关原文证据，不代表已核验当前环境："]
-                        for index, item in enumerate(result.evidence, 1):
-                            lines.extend(
-                                [
-                                    f"[{index}] {item.source} · 页码：{item.page_start or '未知'}",
-                                    item.excerpt,
-                                ]
-                            )
-                        reply = "\n\n".join(lines)
+                        answer = answer_question(
+                            self.classifier.llm, state["latest_user_message"], result.evidence
+                        )
+                        accounted = self.budget.account_llm(
+                            state,
+                            retries=answer.retries,
+                            tokens_used=answer.tokens_used,
+                            node_name="knowledge",
+                        )
+                        if not accounted.allowed:
+                            return {
+                                **entered.update,
+                                **accounted.update,
+                                "assistant_reply": "本次回答达到回合预算限制，请稍后重试。",
+                            }
+                        entered.update.update(accounted.update)
+                        reply = answer.text
                 except WorkspaceScopeError:
                     reply = "当前 Workspace 需要更明确的查询范围，请联系管理员选择范围。"
+                except StructuredLLMError as exc:
+                    accounted = self.budget.account_llm(
+                        state,
+                        retries=exc.retries,
+                        tokens_used=exc.tokens_used,
+                        node_name="knowledge",
+                    )
+                    if not accounted.allowed:
+                        return {
+                            **entered.update,
+                            **accounted.update,
+                            "assistant_reply": "回答生成达到预算限制，未输出未经校验的结论。",
+                        }
+                    entered.update.update(accounted.update)
+                    reply = "找到了相关文档，但未能生成通过引用校验的答案；请补充问题或稍后重试。"
                 except Exception:
                     reply = "知识库查询暂时失败，请稍后重试或检查索引；本次没有生成配置结论。"
         return {
