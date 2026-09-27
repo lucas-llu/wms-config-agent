@@ -1,4 +1,7 @@
 :root { --chat-ink: #202123; --chat-muted: #737373; --chat-line: #e8e8e8; }
+[data-testid="stAppViewContainer"] :is(h1,h2,h3,p,button,input,textarea) {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
 [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: #fff; color: var(--chat-ink); }
 [data-testid="stHeader"] { background: rgba(255,255,255,.94); }
 [data-testid="stToolbar"] { visibility: hidden; }
@@ -7,6 +10,10 @@
 [data-testid="stSidebar"] .stButton button { border-radius: 10px; min-height: 42px; }
 [data-testid="stSidebar"] [data-testid="stRadio"] label { border-radius: 9px; padding: 7px 9px; }
 [data-testid="stSidebar"] [data-testid="stRadio"] label:hover { background: #eaeaea; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"] { width: 100%; margin: 1px 0; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] { background: #e8e8e9; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div > div:first-child { display: none; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"]:focus-within { outline: 2px solid #6789ac; }
 .stMainBlockContainer { max-width: 900px; padding-top: 2rem; padding-bottom: 2rem; }
 .st-key-workbench_header h1 { font-size: 1.3rem; font-weight: 600; letter-spacing: -.035em; }
 .st-key-workbench_header { border-bottom: 1px solid var(--chat-line); padding-bottom: .7rem; }
