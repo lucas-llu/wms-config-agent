@@ -16,10 +16,12 @@ llm:
   retry_backoff_seconds: 0.5
 ```
 
-This model passed connectivity and three repeated synthetic acceptance rounds with an
-8192 output cap and thinking enabled. The 12000 Agent turn budget remains unchanged;
-full multi-turn canary acceptance is still required. OpenCode requests include the
-documented opaque conversation header, without impersonating another client.
+This model passed connectivity and repeated synthetic acceptance with an 8192 output cap
+and thinking enabled. Fresh revalidation on 2026-09-27 passed live text transformation,
+intent and three consecutive isolated multi-turn canary rounds. The 12000 Agent turn
+budget remains unchanged; real-corpus canary acceptance is still required. OpenCode
+requests include the documented opaque conversation header, without impersonating
+another client.
 See [Canary readiness](CANARY_READINESS.md) for remaining entry checks.
 
 No credential is stored in YAML, `.env.example`, test output, traces, or Git. Supply the key only

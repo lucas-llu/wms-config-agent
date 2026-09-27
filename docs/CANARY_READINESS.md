@@ -1,8 +1,9 @@
 # Internal read-only canary preparation
 
-Prepared 2026-09-14 after Day 18 PR #68 merged into dev.
+Prepared 2026-09-14 after Day 18 PR #68 merged into dev. Updated 2026-09-27 after fresh
+provider-stability revalidation.
 
-## Current decision: not ready to admit users
+## Current decision: provider stability green, still not ready to admit users
 
 The configured model is now `deepseek-v4.1-flash`. The existing compatible gateway
 and `WMS_LLM_API_KEY` variable name are unchanged. No key is stored in Git.
@@ -16,14 +17,19 @@ Live synthetic connectivity succeeded with reported model `deepseek-v4.1-flash`
 opaque task-local conversation IDs, stable across Agent turns, own User-Agent, and
 host-specific header. See https://opencode.ai/docs/go/#where-can-i-use-it.
 
-Live intent acceptance passes, but live refinement/metadata acceptance fails. Protocol
-diagnostics observed 1024 reasoning tokens exhausting the response budget with empty
-content. A 4096-budget experiment also failed live acceptance and is retained only
-as draft PR #74 under Issue #73; it is NOT merged. The canary branch keeps the
-original 1024 cap pending a validated solution. No assertion was weakened.
+The 8192 output cap with thinking enabled now passes fresh live chunk-refinement/metadata,
+intent and isolated synthetic multi-turn canary acceptance. Three consecutive multi-turn
+canary rounds passed on 2026-09-27: first turns used 1,572-1,834 tokens, second turns used
+5,037-7,153 tokens, each produced two tasks and 18 retrieval calls, and each paused at
+`validation_blocked` as designed. No round hit timeout, token budget or retry budget.
 
-Offline regression after the session fix: 479 passed, 2 opt-in skips, coverage 91.03%.
-These offline passes do not override the separately observed live failure.
+The earlier 1024/4096 failures remain historical evidence for Issue #73 and draft PR #74.
+No assertion was weakened. Offline regression on the current workbench candidate:
+494 passed, 3 opt-in live-provider skips, coverage 91.04%.
+
+Provider stability is no longer the blocker for synthetic canary entry. Canary admission
+still requires the organization, data and operational inputs below; green synthetic tests
+do not authorize private-corpus or user admission.
 
 Set the credential securely in the process that launches the application, then
 restart it if necessary. The application reads environment variables; merely placing
