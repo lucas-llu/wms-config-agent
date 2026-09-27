@@ -144,7 +144,9 @@ def render_workbench(service: WorkbenchService) -> None:
         st.warning("正在查看历史版本：对话、验证、审批与导出已禁用。")
     disabled = not service.enabled or historical
     for turn in view["turns"]:
-        with st.chat_message(turn["role"], avatar="✦" if turn["role"] == "assistant" else None):
+        with st.chat_message(
+            turn["role"], avatar=":material/auto_awesome:" if turn["role"] == "assistant" else None
+        ):
             if turn["role"] == "user":
                 st.text(turn["message"])
             else:

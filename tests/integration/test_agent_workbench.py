@@ -191,3 +191,19 @@ def test_history_search_and_safe_markdown(tmp_path):
     call.assert_not_called()
     rendered = _safe_markdown('![tracking](https://example.invalid/pixel) <img src="remote">')
     assert "![" not in rendered and "<img" not in rendered
+
+
+def test_assistant_message_renders_with_supported_avatar(tmp_path):
+    service, call = fixture(tmp_path)
+    service.repository.append_turn(
+        session_id="session:a",
+        expected_revision=2,
+        role="assistant",
+        message="### 结论\n请确认测试环境版本。\n\n- 引用依据 [1]",
+    )
+    app = AppTest.from_function(render, args=(service,)).run()
+    assert not app.exception
+    assert len(app.chat_message) == 2
+    assert app.chat_input
+    assert any("请确认测试环境版本" in item.value for item in app.markdown)
+    call.assert_not_called()
