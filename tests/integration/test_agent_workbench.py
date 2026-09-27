@@ -61,7 +61,7 @@ def test_workbench_read_only_render_and_feedback(tmp_path):
     service, call = fixture(tmp_path)
     app = AppTest.from_function(render, args=(service,)).run()
     assert not app.exception
-    assert len(app.tabs) == 5
+    assert len(app.tabs) == 4
     assert not app.json
     assert len(app.chat_message) == 1
     call.assert_not_called()
@@ -76,7 +76,8 @@ def test_historical_view_disables_mutations_but_allows_feedback(tmp_path):
     service, call = fixture(tmp_path)
     app = AppTest.from_function(render, args=(service,)).run()
     next(item for item in app.selectbox if item.label == "查看版本").select(1).run()
-    for label in ("继续对话", "验证草稿", "提交审查", "导出已批准方案"):
+    assert app.chat_input[0].disabled
+    for label in ("验证草稿", "提交审查", "导出已批准方案"):
         assert button(app, label).disabled
     assert not button(app, "记录反馈").disabled
     call.assert_not_called()
@@ -108,8 +109,9 @@ def test_disabled_agent_and_empty_state(tmp_path):
     service = WorkbenchService(repo, call, enabled=False)
     app = AppTest.from_function(render, args=(service,)).run()
     assert not app.exception
-    assert button(app, "新建会话").disabled
-    assert any("暂无会话" in item.value for item in app.info)
+    assert button(app, "＋ 新对话").disabled
+    assert app.chat_input[0].disabled
+    assert any("暂无会话" in item.value for item in app.caption)
     with pytest.raises(ValueError):
         service.start("goal")
     call.assert_not_called()
@@ -152,3 +154,40 @@ def test_tool_error_is_generic_and_not_retried(tmp_path):
     assert len(app.error) == 1
     assert "private-token" not in app.error[0].value
     assert call.call_count == 1
+
+
+def test_new_chat_and_suggestion_do_not_send_until_submission(tmp_path):
+    service, call = fixture(tmp_path)
+    app = AppTest.from_function(render, args=(service,)).run()
+    button(app, "＋ 新对话").click().run()
+    assert not app.exception
+    assert not app.chat_message
+    button(app, "查一个配置").click().run()
+    assert not app.exception
+    call.assert_not_called()
+    app.chat_input[0].set_value("如何配置收货？").run()
+    call.assert_called_once_with("start_configuration_session", {"goal": "如何配置收货？"})
+
+
+def test_chat_composer_preserves_selected_revision(tmp_path):
+    service, call = fixture(tmp_path)
+    app = AppTest.from_function(render, args=(service,)).run()
+    app.chat_input[0].set_value("继续查询 ASN").run()
+    assert not app.exception
+    call.assert_called_once_with(
+        "continue_configuration_session",
+        {"session_id": "session:a", "expected_revision": 2, "message": "继续查询 ASN"},
+    )
+
+
+def test_history_search_and_safe_markdown(tmp_path):
+    from observability.dashboard.workbench import _safe_markdown
+
+    service, call = fixture(tmp_path)
+    app = AppTest.from_function(render, args=(service,)).run()
+    app.text_input[0].set_value("does-not-exist").run()
+    assert not app.exception
+    assert any("没有匹配" in item.value for item in app.caption)
+    call.assert_not_called()
+    rendered = _safe_markdown('![tracking](https://example.invalid/pixel) <img src="remote">')
+    assert "![" not in rendered and "<img" not in rendered

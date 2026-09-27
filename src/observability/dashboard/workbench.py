@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import html
+import re
+from pathlib import Path
+
 import streamlit as st
 
 from agents.repositories.feedback_repository import FEEDBACK_KINDS, REGENERATION_REASONS
@@ -10,7 +14,8 @@ from observability.dashboard.services.workbench_service import WorkbenchService
 
 def _submit(operation, *, refresh=True):
     try:
-        result = operation()
+        with st.spinner("正在检索资料并整理回答，请稍候…"):
+            result = operation()
     except Exception:
         st.error("操作失败：请刷新版本并检查权限、状态或服务配置。未自动重试。")
         return
@@ -21,7 +26,7 @@ def _submit(operation, *, refresh=True):
         payload = result.get("structuredContent", {})
         if payload.get("session_id") and isinstance(payload.get("revision"), int):
             st.session_state["workbench_target"] = (payload["session_id"], payload["revision"])
-        st.session_state["workbench_notice"] = "操作完成，请选择最新版本查看结果。"
+        st.session_state["workbench_notice"] = "操作完成，已显示返回的会话版本。"
         st.rerun()
     else:
         st.dataframe(result["structuredContent"].get("signals", []), hide_index=True)
@@ -39,58 +44,135 @@ def _text_values(value):
         st.text(str(value) if value is not None else "尚未提供")
 
 
+def _safe_markdown(text: str) -> str:
+    # Display generated Markdown without remote images or raw HTML.
+    return html.escape(text, quote=False).replace("![", "[")
+
+
 def render_workbench(service: WorkbenchService) -> None:
-    st.title("Agent Sessions")
+    st.markdown(
+        "<style>"
+        + Path(__file__).with_name("workbench.css").read_text(encoding="utf-8")
+        + "</style>",
+        unsafe_allow_html=True,
+    )
     workspace = service.repository.workspace
-    st.caption(f"配置工作台 · {workspace.name} · {workspace.workspace_id}")
-    st.caption("Workspace 由主机配置选择；此页面不会执行真实 WMS 配置写入。")
-    if notice := st.session_state.pop("workbench_notice", None):
-        st.success(notice)
-    if not service.enabled:
-        st.info("Agent 未启用：仅可查看已保存会话。")
-    with st.form("new_session"):
-        goal = st.text_area("配置目标", placeholder="描述模块、站点、版本和期望结果")
-        if st.form_submit_button("新建会话", disabled=not service.enabled):
-            _submit(lambda: service.start(goal))
     rows = service.list_rows()
-    if not rows:
-        st.info("暂无会话。启用 Agent 后，输入配置目标开始。")
-        return
     names = {row["Session"]: row["Goal"] for row in rows}
     session_key = f"workbench_session:{workspace.workspace_id}"
+    if session_key not in st.session_state:
+        st.session_state[session_key] = next(iter(names), "")
     target = st.session_state.pop("workbench_target", None)
     if target and target[0] in names:
         st.session_state[session_key] = target[0]
         st.session_state[f"revision:{workspace.workspace_id}:{target[0]}"] = target[1]
-    session_id = st.selectbox(
-        "会话", list(names), format_func=lambda key: names[key], key=session_key
-    )
+    with st.sidebar:
+        st.markdown("### ◈ WMS Assistant")
+        st.caption("知识问答 · 配置协作")
+        if st.button(
+            "＋ 新对话", use_container_width=True, type="primary", disabled=not service.enabled
+        ):
+            st.session_state[session_key] = ""
+        search = st.text_input("搜索会话", placeholder="搜索历史对话", key="chat_history_search")
+        visible = [key for key in names if search.casefold() in names[key].casefold()]
+        if st.session_state[session_key] not in visible:
+            st.session_state[session_key] = ""
+        st.caption("最近对话")
+        session_id = st.radio(
+            "会话",
+            ["", *visible],
+            key=session_key,
+            format_func=lambda key: "新对话" if not key else (re.sub(r"\s+", " ", names[key])[:52]),
+            label_visibility="collapsed",
+        )
+        if not rows:
+            st.caption("暂无会话，发送第一条消息开始。")
+        elif not visible:
+            st.caption("没有匹配的历史会话。")
+        st.divider()
+        st.caption("当前工作空间")
+        st.text(workspace.name)
+        with st.expander("测试范围与隐私"):
+            st.caption(workspace.workspace_id)
+            st.caption("主机配置决定 Workspace；这里不是权限切换入口。")
+            st.caption("问题及相关片段可能发送给配置的模型。请勿输入密钥或敏感信息。")
+            st.caption("只生成配置建议，不执行真实 WMS 写入。审批与导出仍需显式操作。")
+    with st.container(key="workbench_header"):
+        st.title("WMS Assistant")
+        st.caption("有据可查的回答，逐步完成的配置。")
+    if notice := st.session_state.pop("workbench_notice", None):
+        st.toast(notice)
+    if not service.enabled:
+        st.info("Agent 未启用：仅可查看已保存会话。")
+    if not session_id:
+        st.markdown(
+            '<div class="welcome"><div class="welcome-symbol">✦</div>'
+            "<h2>今天想解决什么 WMS 问题？</h2>"
+            "<p>查询配置、核对证据，或一起规划一个完整方案。</p></div>",
+            unsafe_allow_html=True,
+        )
+        composer_key = f"new_message:{workspace.workspace_id}"
+        with st.container(key="suggestions"):
+            prompts = [
+                ("查一个配置", "如何配置 trolley picking？请给出依据。"),
+                ("排查一个问题", "RF 操作不可见时，应该先检查哪些配置？"),
+                ("规划一个流程", "帮我规划一个入库收货流程，请先确认所需条件。"),
+            ]
+            for column, (label, prompt) in zip(st.columns(3), prompts, strict=True):
+                if column.button(label, use_container_width=True, disabled=not service.enabled):
+                    st.session_state[composer_key] = prompt
+        st.markdown(
+            '<div class="chat-footnote">回答基于文档证据，重要配置请人工核验。</div>',
+            unsafe_allow_html=True,
+        )
+        if message := st.chat_input(
+            "询问 WMS 问题，或描述你的配置目标…", key=composer_key, disabled=not service.enabled
+        ):
+            _submit(lambda: service.start(message))
+        return
     revisions = service.repository.list_revisions(session_id)
-    revision = st.selectbox(
-        "查看版本",
-        [item.revision for item in reversed(revisions)],
-        key=f"revision:{workspace.workspace_id}:{session_id}",
-    )
+    with st.sidebar:
+        revision = st.selectbox(
+            "查看版本",
+            [item.revision for item in reversed(revisions)],
+            key=f"revision:{workspace.workspace_id}:{session_id}",
+        )
     view = service.view(session_id, revision)
-    st.subheader(f"版本 {revision} · {view['status']}")
-    st.info(view["next_step"])
+    st.caption(f"版本 {revision} · {view['status']} · {view['next_step']}")
     historical = revision != view["current_revision"]
     if historical:
         st.warning("正在查看历史版本：对话、验证、审批与导出已禁用。")
     disabled = not service.enabled or historical
-    chat, draft, evidence, review, feedback = st.tabs(
-        ["对话", "配置草稿与依赖", "引用证据", "审查与导出", "反馈"]
-    )
-    with chat:
-        for turn in view["turns"]:
-            with st.chat_message(turn["role"]):
+    for turn in view["turns"]:
+        with st.chat_message(turn["role"], avatar="✦" if turn["role"] == "assistant" else None):
+            if turn["role"] == "user":
                 st.text(turn["message"])
-        for question in view["questions"]:
-            st.warning(str(question.get("text", "待补充需求")))
-        with st.form(f"continue:{session_id}:{revision}"):
-            message = st.text_area("补充需求或回答问题")
-            if st.form_submit_button("继续对话", disabled=disabled or view["status"] != "paused"):
-                _submit(lambda: service.act("continue", session_id, revision, message=message))
+            else:
+                st.markdown(_safe_markdown(turn["message"]))
+    if not view["turns"]:
+        st.info("这个版本还没有对话记录。")
+    if view["questions"]:
+        with st.expander("需要补充的信息", expanded=True):
+            for question in view["questions"]:
+                st.text(str(question.get("text", "待补充需求")))
+    with st.expander("草稿、证据与审批", expanded=False):
+        _render_details(service, session_id, revision, view, disabled)
+    st.markdown(
+        '<div class="chat-footnote">AI 回答可能存在错误，请结合引用核验。不会自动写入 WMS。</div>',
+        unsafe_allow_html=True,
+    )
+    if message := st.chat_input(
+        "继续提问，或补充配置需求…",
+        key=f"message:{workspace.workspace_id}:{session_id}:{revision}",
+        disabled=disabled or view["status"] != "paused",
+    ):
+        _submit(lambda: service.act("continue", session_id, revision, message=message))
+
+
+def _render_details(service, session_id, revision, view, disabled):
+    draft, evidence, review, feedback = st.tabs(
+        ["配置草稿与依赖", "引用证据", "审查与导出", "反馈"]
+    )
     with draft:
         st.subheader("已确认上下文")
         _text_values(view["context"])
