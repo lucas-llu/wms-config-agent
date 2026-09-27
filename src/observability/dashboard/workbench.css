@@ -5,6 +5,7 @@
 [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: #fff; color: var(--chat-ink); }
 [data-testid="stHeader"] { background: rgba(255,255,255,.94); }
 [data-testid="stToolbar"] { visibility: hidden; }
+[data-testid="stExpandSidebarButton"] { visibility: visible; }
 [data-testid="stSidebar"] { background: #f7f7f8; border-right: 1px solid #ededed; }
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .75rem; }
 [data-testid="stSidebar"] .stButton button { border-radius: 10px; min-height: 42px; }
