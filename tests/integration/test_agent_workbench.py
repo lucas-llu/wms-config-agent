@@ -207,3 +207,10 @@ def test_assistant_message_renders_with_supported_avatar(tmp_path):
     assert app.chat_input
     assert any("请确认测试环境版本" in item.value for item in app.markdown)
     call.assert_not_called()
+
+
+def test_style_keeps_sidebar_expand_control_visible(tmp_path):
+    service, _ = fixture(tmp_path)
+    app = AppTest.from_function(render, args=(service,)).run()
+    styles = next(item.value for item in app.markdown if "<style>" in item.value)
+    assert '[data-testid="stExpandSidebarButton"] { visibility: visible; }' in styles
