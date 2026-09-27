@@ -33,7 +33,7 @@
 [data-testid="stExpander"] { border-color: var(--chat-line); border-radius: 14px; }
 .chat-footnote { text-align: center; font-size: 12px; color: #858585; padding: 10px 0; }
 @media (max-width: 640px) {
-  .stMainBlockContainer { padding: 1rem 1rem 2rem; }
+  .stMainBlockContainer { padding: 4.5rem 1rem 2rem; }
   [data-testid="stBottomBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
   .welcome { padding-top: 35px; }
   [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { max-width: 94%; }
