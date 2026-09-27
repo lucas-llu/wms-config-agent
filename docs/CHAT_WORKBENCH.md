@@ -23,12 +23,16 @@ configured provider as described in the grounded-answer contract.
 
 ## Verification
 
-493 full tests passed, 3 live-provider cases explicitly skipped, coverage 91.00%.
+494 full tests passed, 3 live-provider cases explicitly skipped, coverage 91.04%.
 The renderer tests cover new chat, prompt selection without submission, sending,
 history search, selected revision, disabled controls and actual assistant messages.
 Headless Chromium checks use synthetic data only; screenshots cover 1440px desktop
 and 390px mobile with no horizontal overflow. Issue #80 / internal PR #81 covers
 the avatar-rendering and narrow-screen header fixes found during visual QA.
+Issue #82 / internal PR #83 restores the mobile sidebar toggle; an actual 390px
+browser click confirmed that history remains accessible. The live local test page
+also passed a render-only check for its title, composer and new-chat button, without
+submitting any private content or invoking a model.
 
 Feature branch: `feature/chat-workbench`, based on the current working canary
 candidate (`bugfix/model-token-budget`, PR #74), not yet merged to dev. The UI
