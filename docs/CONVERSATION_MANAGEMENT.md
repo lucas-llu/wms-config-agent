@@ -1,10 +1,22 @@
 # Conversation management and chat feedback
 
-Select a history conversation, then **删除对话** to move it into the sidebar
-recycle bin. **恢复** restores the conversation and its selected current revision.
+Each history row has a **⋯** menu with **重命名** and **删除对话**. Actions target
+that row, even when a different conversation is open. Deleting/restoring another
+conversation preserves the open view and selected revision; deleting the open one
+returns to new conversation. **恢复** reopens it when no other conversation is selected.
 This is recoverable deletion: stored turns, immutable revisions, approvals,
 checkpoints, feedback and previously exported files are retained. It is not data
 erasure. No existing conversation is removed automatically.
+
+Rename changes an additive display-title record, not the original goal, immutable
+revision, planning requirement or approval fingerprint. Search filters sidebar rows
+without clearing the open conversation. New conversation clears the search and
+starts a blank composer. The selected historical revision survives sidebar reruns.
+
+The page is a conversation workspace: **对话** contains messages and pending status;
+**工作区** contains task/evidence/review summaries and the existing controlled actions.
+Sending from the workspace switches to conversation; operating on a draft retains
+the workspace context. Names are rendered without remote images or raw HTML.
 
 Deletion is durable in an additive SQLite `deleted_sessions` table. Reads and
 writes through the current repository reject deleted conversations until restored;
@@ -49,3 +61,10 @@ No real user conversation is deleted during development or browser QA.
 Final feature regression: 500 passed, 3 explicit live-test skips, source coverage
 91.00%. Conversation deletion/restore plus question evidence/pending states are
 tested with isolated data; the existing 8509 test page is updated after verification.
+
+User-review refinements under Issue #89 add row actions, rename and workspace
+navigation. Updated full gate: 507 passed, 3 explicit live-test skips, coverage
+91.01%; targeted 59 passed. Clean synthetic browser flow verified deletion,
+restoration, rename, search preserving the active view and workspace evidence.
+An unrelated privacy-test timestamp false positive was fixed separately via #90 / #91
+without relaxing its assertions.
