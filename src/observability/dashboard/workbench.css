@@ -66,6 +66,15 @@
 .st-key-conversation-delete-dialog button[kind="primary"]:hover {
   background: #a82d2d; border-color: #a82d2d;
 }
+.st-key-conversation-rename-dialog button[kind*="primary"] {
+  background: #242424; border-color: #242424; color: #fff;
+}
+.st-key-conversation-rename-dialog button[kind*="primary"]:hover {
+  background: #383838; border-color: #383838;
+}
+.st-key-conversation-rename-dialog [data-testid="stTextInput"] > div:focus-within {
+  border-color: #777;
+}
 .st-key-conversation-rename-dialog button, .st-key-conversation-delete-dialog button {
   border-radius: 10px; min-height: 42px;
 }
