@@ -11,6 +11,7 @@ import streamlit as st
 
 from agents.repositories.feedback_repository import FEEDBACK_KINDS, REGENERATION_REASONS
 from observability.dashboard.services.workbench_service import WorkbenchService
+from observability.dashboard.theme import apply_global_theme
 
 _BUSY = "workbench_busy"
 _PENDING = "workbench_pending_message"
@@ -334,6 +335,7 @@ def render_workbench(service: WorkbenchService) -> None:
     # Localhost's default developer-mode C shortcut can interfere with copying.
     # Disable the framework's cache action and expose a distinct, confirmed one.
     st.set_option("client.toolbarMode", "viewer")
+    apply_global_theme()
     st.markdown(
         "<style>"
         + Path(__file__).with_name("workbench.css").read_text(encoding="utf-8")
@@ -353,8 +355,12 @@ def render_workbench(service: WorkbenchService) -> None:
         st.session_state[f"revision:{workspace.workspace_id}:{target[0]}"] = target[1]
         st.session_state[f"selected_revision:{workspace.workspace_id}:{target[0]}"] = target[1]
     with st.sidebar:
-        st.markdown("### ◈ WMS Assistant")
-        st.caption("知识问答 · 配置协作")
+        st.markdown(
+            '<div class="wb-brand"><span class="wb-brand-mark">✦</span>'
+            '<span class="wb-brand-text"><strong>WMS Assistant</strong>'
+            "<small>知识问答 · 配置协作</small></span></div>",
+            unsafe_allow_html=True,
+        )
         st.button(
             "＋ 新对话",
             use_container_width=True,
@@ -364,7 +370,11 @@ def render_workbench(service: WorkbenchService) -> None:
             args=(workspace.workspace_id,),
         )
         search = st.text_input(
-            "搜索会话", placeholder="搜索历史对话", key="chat_history_search", disabled=busy
+            "搜索会话",
+            placeholder="搜索历史对话",
+            icon=":material/search:",
+            key="chat_history_search",
+            disabled=busy,
         )
         visible = [key for key in names if search.casefold() in names[key].casefold()]
         if st.session_state[session_key] not in names:
@@ -462,18 +472,35 @@ def render_workbench(service: WorkbenchService) -> None:
         )
         with st.container(key="suggestions"):
             prompts = [
-                ("查一个配置", "如何配置 trolley picking？请给出依据。"),
-                ("排查一个问题", "RF 操作不可见时，应该先检查哪些配置？"),
-                ("规划一个流程", "帮我规划一个入库收货流程，请先确认所需条件。"),
+                (
+                    "查一个配置",
+                    "如何配置 trolley picking？请给出依据。",
+                    ":material/search:",
+                    "检索操作手册，按引用逐条核对配置点",
+                ),
+                (
+                    "排查一个问题",
+                    "RF 操作不可见时，应该先检查哪些配置？",
+                    ":material/build:",
+                    "定位常见失效原因与检查顺序",
+                ),
+                (
+                    "规划一个流程",
+                    "帮我规划一个入库收货流程，请先确认所需条件。",
+                    ":material/route:",
+                    "梳理前置条件，产出可审查的配置草案",
+                ),
             ]
-            for column, (label, prompt) in zip(st.columns(3), prompts, strict=True):
+            for column, (label, prompt, icon, hint) in zip(st.columns(3), prompts, strict=True):
                 column.button(
                     label,
+                    icon=icon,
                     use_container_width=True,
                     disabled=not service.enabled or busy,
                     on_click=_prefill_message,
                     args=(composer_key, prompt),
                 )
+                column.caption(hint)
         st.markdown(
             '<div class="chat-footnote">回答基于文档证据，重要配置请人工核验。</div>',
             unsafe_allow_html=True,
