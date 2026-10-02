@@ -16,6 +16,8 @@ class GroundedAnswer:
     text: str
     tokens_used: int
     retries: int
+    cited_source_ids: tuple[int, ...] = ()
+    status: str = "answered"
 
 
 def clean_excerpt(text: str) -> str:
@@ -96,4 +98,10 @@ def answer_question(llm: BaseLLM, question: str, evidence: tuple[Evidence, ...])
         lines.append(f"[{claim['source_id']}] {item.source} · 页码：{item.page_start or '未知'}")
         lines.append("原文：" + clean_excerpt(claim["quote"]))
     lines.extend(["", "以上基于文档，尚未核验你的实际环境。"])
-    return GroundedAnswer("\n".join(lines), invocation.tokens_used, invocation.retries)
+    return GroundedAnswer(
+        "\n".join(lines),
+        invocation.tokens_used,
+        invocation.retries,
+        tuple(sorted({int(claim["source_id"]) for claim in payload["claims"]})),
+        payload["status"],
+    )

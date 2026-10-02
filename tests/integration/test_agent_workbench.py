@@ -214,3 +214,47 @@ def test_style_keeps_sidebar_expand_control_visible(tmp_path):
     app = AppTest.from_function(render, args=(service,)).run()
     styles = next(item.value for item in app.markdown if "<style>" in item.value)
     assert '[data-testid="stExpandSidebarButton"] { visibility: visible; }' in styles
+
+
+def test_qa_citations_visible_without_configuration_draft(tmp_path):
+    service, _ = fixture(tmp_path)
+    service.repository.update_revision(
+        session_id="session:a",
+        expected_revision=2,
+        actor="test",
+        reason="qa",
+        state_update={
+            "intent": "atomic_query",
+            "configuration_tasks": [],
+            "evidence_registry": [],
+            "answer_status": "answered",
+            "answer_evidence": [
+                {
+                    "evidence_id": "q:1",
+                    "source": "qa.pdf",
+                    "page_start": 6,
+                    "excerpt": "A verified question citation",
+                    "citation_index": 1,
+                }
+            ],
+        },
+    )
+    app = AppTest.from_function(render, args=(service,)).run()
+    assert not app.exception
+    assert any(item.label == "[1] qa.pdf" for item in app.expander)
+    assert any("知识问答" in item.value for item in app.info)
+    assert button(app, "验证草稿").disabled
+    assert button(app, "提交审查").disabled
+
+
+def test_failed_chat_remains_visible_and_can_be_retried_manually(tmp_path):
+    service, call = fixture(tmp_path)
+    call.side_effect = RuntimeError("private-token")
+    app = AppTest.from_function(render, args=(service,)).run()
+    app.chat_input[0].set_value("新问题").run()
+    assert not app.exception
+    assert any(item.value == "新问题" for item in app.text)
+    assert app.error and "private-token" not in app.error[0].value
+    assert not app.chat_input[0].disabled
+    app.run()
+    assert call.call_count == 1

@@ -50,6 +50,28 @@ class WorkbenchService(AgentSessionService):
                 else _NEXT.get(record.status.value, "处理中；刷新查看最新版本。")
             ),
             "context": state.get("confirmed_context", {}),
+            "is_question": state.get("intent") == "atomic_query",
+            "answer_status": state.get("answer_status", ""),
+            "legacy_answer_evidence": state.get("intent") == "atomic_query"
+            and "answer_evidence" not in state,
+            "answer_evidence": [
+                {
+                    **{
+                        key: item.get(key)
+                        for key in (
+                            "evidence_id",
+                            "excerpt",
+                            "page_start",
+                            "page_end",
+                            "product_version",
+                            "module",
+                            "citation_index",
+                        )
+                    },
+                    "source": safe_source(item.get("source")),
+                }
+                for item in state.get("answer_evidence", [])
+            ],
             "questions": state.get("open_questions", []),
             "tasks": tasks,
             "dag": task_graph(tasks, state.get("dependency_edges", [])),

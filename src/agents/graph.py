@@ -83,6 +83,8 @@ class AgentGraphState(TypedDict, total=False):
     turn_deadline_epoch: float
     trace_id: str
     assistant_reply: str
+    answer_evidence: list[dict[str, Any]]
+    answer_status: str
 
 
 ALLOWED_TRANSITIONS = MappingProxyType(
@@ -295,6 +297,8 @@ class SupervisorGraph:
                 "next_action": INTENT_ACTIONS[result.intent],
                 "pause_reason": "",
                 "assistant_reply": "",
+                "answer_evidence": [],
+                "answer_status": "",
             }
         )
         return update
@@ -305,6 +309,8 @@ class SupervisorGraph:
             return entered.update
         reply = "我可以查询 WMS 配置文档或协助制定配置方案，请描述相关问题。"
         calls = 0
+        answer_evidence = []
+        answer_status = "no_evidence"
         if state.get("intent") == IntentType.INSPECT_DRAFT.value:
             tasks = state.get("configuration_tasks", [])
             reply = (
@@ -343,9 +349,16 @@ class SupervisorGraph:
                             }
                         entered.update.update(accounted.update)
                         reply = answer.text
+                        answer_status = answer.status
+                        answer_evidence = [
+                            {**item.to_dict(), "citation_index": index}
+                            for index, item in enumerate(result.evidence[:5], 1)
+                            if index in answer.cited_source_ids
+                        ]
                 except WorkspaceScopeError:
                     reply = "当前 Workspace 需要更明确的查询范围，请联系管理员选择范围。"
                 except StructuredLLMError as exc:
+                    answer_status = "generation_failed"
                     accounted = self.budget.account_llm(
                         state,
                         retries=exc.retries,
@@ -361,12 +374,15 @@ class SupervisorGraph:
                     entered.update.update(accounted.update)
                     reply = "找到了相关文档，但未能生成通过引用校验的答案；请补充问题或稍后重试。"
                 except Exception:
+                    answer_status = "retrieval_failed"
                     reply = "知识库查询暂时失败，请稍后重试或检查索引；本次没有生成配置结论。"
         return {
             **entered.update,
             "status": transition_status(state, SessionStatus.PAUSED),
             "pause_reason": "question_answered",
             "assistant_reply": reply,
+            "answer_evidence": answer_evidence,
+            "answer_status": answer_status,
             "open_questions": [],
             "tool_calls_made": int(state.get("tool_calls_made", 0)) + calls,
         }
@@ -382,6 +398,8 @@ class SupervisorGraph:
                 state.get("recent_turns", []), message, self.settings.max_context_turns
             ),
             "assistant_reply": "",
+            "answer_evidence": [],
+            "answer_status": "",
             "pause_reason": "",
             "open_questions": [],
         }

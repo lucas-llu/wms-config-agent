@@ -40,6 +40,13 @@
 .stButton button:focus-visible { outline: 2px solid #5e8fbe; outline-offset: 2px; }
 [data-testid="stExpander"] { border-color: var(--chat-line); border-radius: 14px; }
 .chat-footnote { text-align: center; font-size: 12px; color: #858585; padding: 10px 0; }
+.chat-thinking { display: flex; align-items: center; gap: 12px; color: #737373; padding: 8px 0; font-size: 14px; }
+.thinking-dots { display: inline-flex; gap: 5px; }
+.thinking-dots i { display: block; width: 6px; height: 6px; border-radius: 50%; background: #747474; animation: chat-pulse 1.2s ease-in-out infinite; }
+.thinking-dots i:nth-child(2) { animation-delay: .15s; }
+.thinking-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes chat-pulse { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .thinking-dots i { animation: none; opacity: .7; } }
 @media (max-width: 640px) {
   .stMainBlockContainer { padding: 4.5rem 1rem 2rem; }
   [data-testid="stBottomBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
