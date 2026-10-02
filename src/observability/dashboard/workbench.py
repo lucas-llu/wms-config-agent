@@ -11,12 +11,14 @@ import streamlit as st
 
 from agents.repositories.feedback_repository import FEEDBACK_KINDS, REGENERATION_REASONS
 from observability.dashboard.services.workbench_service import WorkbenchService
+from observability.dashboard.theme import apply_global_theme
 
 _BUSY = "workbench_busy"
 _PENDING = "workbench_pending_message"
 _FAILED = "workbench_failed_message"
 _CACHE_DIALOG = "workbench_cache_dialog"
 _CACHE_SHORTCUT = "Ctrl+Alt+Shift+K"
+_PURGE_DIALOG = "workbench_purge_dialog"
 
 
 def _queue_message(key, workspace_id, session_id, revision):
@@ -135,6 +137,117 @@ def _close_cache_dialog():
     st.session_state.pop(_CACHE_DIALOG, None)
 
 
+def _close_purge_dialog():
+    st.session_state.pop(_PURGE_DIALOG, None)
+
+
+def _select_trash_rows(keys, selected):
+    for key in keys:
+        st.session_state[key] = selected
+
+
+def _open_purge_dialog(workspace_id, rows, clear_all=False):
+    if not rows or st.session_state.get(_BUSY):
+        return
+    _close_rename()
+    _close_delete()
+    _close_cache_dialog()
+    st.session_state[_PURGE_DIALOG] = {
+        "workspace_id": workspace_id,
+        "rows": rows,
+        "clear_all": clear_all,
+    }
+
+
+@st.dialog("永久删除回收站记录", on_dismiss=_close_purge_dialog)
+def _confirm_purge(service, request):
+    rows = request["rows"]
+    with st.container(key="conversation-purge-dialog"):
+        action = "清空回收站中的" if request["clear_all"] else "永久删除所选的"
+        st.markdown(f"将{action} **{len(rows)} 条对话**。")
+        for row in rows[:5]:
+            st.text(re.sub(r"\s+", " ", row["goal"])[:90])
+        if len(rows) > 5:
+            st.caption(f"以及另外 {len(rows) - 5} 条对话。")
+        st.caption("删除后无法从回收站恢复。已导出的文件不会被删除。")
+        cancel, confirm = st.columns(2)
+        if cancel.button("取消", key="cancel-purge", use_container_width=True):
+            _close_purge_dialog()
+            st.rerun()
+        if confirm.button(
+            "确认永久删除",
+            key="confirm-purge",
+            type="primary",
+            use_container_width=True,
+            disabled=bool(st.session_state.get(_BUSY)),
+        ):
+            if request["workspace_id"] != service.repository.workspace_id:
+                st.error("工作区已变化，请取消后重新选择。")
+                return
+            try:
+                count = service.purge_conversations({r["session_id"]: r["revision"] for r in rows})
+            except Exception:
+                st.error("删除未完成。记录可能已恢复或发生变化，请取消后刷新并重新选择。")
+                return
+            _close_purge_dialog()
+            st.session_state["workbench_notice"] = f"已永久删除 {count} 条对话。"
+            st.rerun()
+
+
+def _render_recycle_bin(service, busy):
+    workspace_id = service.repository.workspace_id
+    rows = service.deleted_rows()
+    with st.expander(f"回收站（{len(rows)}）"), st.container(key="recycle-bin-content"):
+        if not rows:
+            st.caption("回收站为空。")
+            return
+        keys = {r["session_id"]: f"trash-selected:{workspace_id}:{r['session_id']}" for r in rows}
+        selected = [r for r in rows if st.session_state.get(keys[r["session_id"]], False)]
+        all_selected = len(selected) == len(rows)
+        st.button(
+            "取消全选" if all_selected else "全选",
+            key=f"trash-toggle:{workspace_id}",
+            type="tertiary",
+            disabled=busy,
+            on_click=_select_trash_rows,
+            args=(list(keys.values()), not all_selected),
+        )
+        with st.container(height=260 if len(rows) > 4 else "content", border=False):
+            for row in rows:
+                select, restore = st.columns([3, 1], gap="small", vertical_alignment="center")
+                select.checkbox(
+                    _history_title(row["goal"]),
+                    key=keys[row["session_id"]],
+                    disabled=busy,
+                )
+                if restore.button(
+                    "恢复",
+                    key=f"restore:{workspace_id}:{row['session_id']}",
+                    disabled=busy,
+                    type="tertiary",
+                ):
+                    _restore_conversation(service, row["session_id"])
+        st.caption(f"已选 {len(selected)} / {len(rows)} 条")
+        with st.container(key="trash-actions"):
+            delete, clear = st.columns(2)
+            delete.button(
+                "删除所选",
+                key=f"purge-selected:{workspace_id}",
+                use_container_width=True,
+                disabled=busy or not selected,
+                on_click=_open_purge_dialog,
+                args=(workspace_id, selected),
+            )
+            clear.button(
+                "清空回收站",
+                key=f"purge-all:{workspace_id}",
+                use_container_width=True,
+                disabled=busy,
+                on_click=_open_purge_dialog,
+                args=(workspace_id, rows, True),
+            )
+
+
 def _local_maintenance_enabled():
     # Viewer mode is a UX setting, not authorization. Do not expose global cache
     # maintenance when this instance may accept remote browser connections.
@@ -146,6 +259,7 @@ def _open_cache_dialog():
         st.session_state.get(_BUSY)
         or st.session_state.get("workbench_rename_target")
         or st.session_state.get("workbench_delete_target")
+        or st.session_state.get(_PURGE_DIALOG)
     ):
         st.session_state[_CACHE_DIALOG] = True
 
@@ -180,6 +294,7 @@ def _confirm_cache_clear():
 def _open_conversation_dialog(kind, session_id, menu_key):
     _close_rename()
     _close_delete()
+    _close_purge_dialog()
     st.session_state[menu_key] = False
     st.session_state[f"workbench_{kind}_target"] = session_id
 
@@ -334,6 +449,7 @@ def render_workbench(service: WorkbenchService) -> None:
     # Localhost's default developer-mode C shortcut can interfere with copying.
     # Disable the framework's cache action and expose a distinct, confirmed one.
     st.set_option("client.toolbarMode", "viewer")
+    apply_global_theme()
     st.markdown(
         "<style>"
         + Path(__file__).with_name("workbench.css").read_text(encoding="utf-8")
@@ -353,8 +469,12 @@ def render_workbench(service: WorkbenchService) -> None:
         st.session_state[f"revision:{workspace.workspace_id}:{target[0]}"] = target[1]
         st.session_state[f"selected_revision:{workspace.workspace_id}:{target[0]}"] = target[1]
     with st.sidebar:
-        st.markdown("### ◈ WMS Assistant")
-        st.caption("知识问答 · 配置协作")
+        st.markdown(
+            '<div class="wb-brand"><span class="wb-brand-mark">✦</span>'
+            '<span class="wb-brand-text"><strong>WMS Assistant</strong>'
+            "<small>知识问答 · 配置协作</small></span></div>",
+            unsafe_allow_html=True,
+        )
         st.button(
             "＋ 新对话",
             use_container_width=True,
@@ -364,7 +484,11 @@ def render_workbench(service: WorkbenchService) -> None:
             args=(workspace.workspace_id,),
         )
         search = st.text_input(
-            "搜索会话", placeholder="搜索历史对话", key="chat_history_search", disabled=busy
+            "搜索会话",
+            placeholder="搜索历史对话",
+            icon=":material/search:",
+            key="chat_history_search",
+            disabled=busy,
         )
         visible = [key for key in names if search.casefold() in names[key].casefold()]
         if st.session_state[session_key] not in names:
@@ -376,19 +500,7 @@ def render_workbench(service: WorkbenchService) -> None:
             st.caption("暂无会话，发送第一条消息开始。")
         elif not visible:
             st.caption("没有匹配的历史会话。")
-        deleted = service.deleted_rows()
-        if deleted:
-            with st.expander(f"回收站（{len(deleted)}）"):
-                st.caption("恢复会保留原有对话、版本和审批记录；已导出文件不会被删除。")
-                for item in deleted:
-                    title, action = st.columns([3, 1])
-                    title.text(re.sub(r"\s+", " ", item["goal"])[:44])
-                    if action.button(
-                        "恢复",
-                        key=f"restore:{workspace.workspace_id}:{item['session_id']}",
-                        disabled=busy,
-                    ):
-                        _restore_conversation(service, item["session_id"])
+        _render_recycle_bin(service, busy)
         st.divider()
         st.caption("当前工作空间")
         st.text(workspace.name)
@@ -413,6 +525,7 @@ def render_workbench(service: WorkbenchService) -> None:
                     st.session_state.get(_CACHE_DIALOG)
                     or st.session_state.get("workbench_rename_target")
                     or st.session_state.get("workbench_delete_target")
+                    or st.session_state.get(_PURGE_DIALOG)
                 ),
                 on_click=_open_cache_dialog,
             )
@@ -420,7 +533,12 @@ def render_workbench(service: WorkbenchService) -> None:
         not service.enabled or not _local_maintenance_enabled()
     ):
         _close_cache_dialog()
-    if st.session_state.get(_CACHE_DIALOG):
+    if purge_request := st.session_state.get(_PURGE_DIALOG):
+        if purge_request["workspace_id"] == workspace.workspace_id:
+            _confirm_purge(service, purge_request)
+        else:
+            _close_purge_dialog()
+    elif st.session_state.get(_CACHE_DIALOG):
         _confirm_cache_clear()
     elif rename_target := st.session_state.get("workbench_rename_target"):
         if rename_target in names:
@@ -462,18 +580,35 @@ def render_workbench(service: WorkbenchService) -> None:
         )
         with st.container(key="suggestions"):
             prompts = [
-                ("查一个配置", "如何配置 trolley picking？请给出依据。"),
-                ("排查一个问题", "RF 操作不可见时，应该先检查哪些配置？"),
-                ("规划一个流程", "帮我规划一个入库收货流程，请先确认所需条件。"),
+                (
+                    "查一个配置",
+                    "如何配置 trolley picking？请给出依据。",
+                    ":material/search:",
+                    "检索操作手册，按引用逐条核对配置点",
+                ),
+                (
+                    "排查一个问题",
+                    "RF 操作不可见时，应该先检查哪些配置？",
+                    ":material/build:",
+                    "定位常见失效原因与检查顺序",
+                ),
+                (
+                    "规划一个流程",
+                    "帮我规划一个入库收货流程，请先确认所需条件。",
+                    ":material/route:",
+                    "梳理前置条件，产出可审查的配置草案",
+                ),
             ]
-            for column, (label, prompt) in zip(st.columns(3), prompts, strict=True):
+            for column, (label, prompt, icon, hint) in zip(st.columns(3), prompts, strict=True):
                 column.button(
                     label,
+                    icon=icon,
                     use_container_width=True,
                     disabled=not service.enabled or busy,
                     on_click=_prefill_message,
                     args=(composer_key, prompt),
                 )
+                column.caption(hint)
         st.markdown(
             '<div class="chat-footnote">回答基于文档证据，重要配置请人工核验。</div>',
             unsafe_allow_html=True,

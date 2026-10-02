@@ -1,0 +1,326 @@
+/* Shared design system for the WMS dashboard shell.
+   Visual language: quiet, monochrome, ChatGPT-inspired light interface. */
+
+:root {
+  --ui-ink: #0d0d0d;
+  --ui-gray-700: #424242;
+  --ui-gray-500: #6e6e6e;
+  --ui-gray-400: #8f8f8f;
+  --ui-line: #e9e9e9;
+  --ui-line-strong: #d9d9d9;
+  --ui-fill: #f4f4f4;
+  --ui-fill-hover: #ececec;
+  --ui-bg: #ffffff;
+  --ui-bg-subtle: #f9f9f9;
+  --ui-danger: #c13b3b;
+  --ui-radius: 12px;
+  --ui-shadow-raise: 0 6px 24px rgba(0, 0, 0, 0.06);
+  --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei",
+    "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ---------- base typography ---------- */
+[data-testid="stAppViewContainer"],
+[data-testid="stSidebar"],
+[data-testid="stBottom"],
+[data-baseweb="popover"],
+[data-testid="stDialog"] {
+  font-family: var(--ui-font);
+}
+[data-testid="stAppViewContainer"]
+  :is(h1, h2, h3, h4, h5, h6, p, button, input, textarea, select, label, li, td, th, summary, a) {
+  font-family: var(--ui-font);
+}
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] {
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+}
+[data-testid="stAppViewContainer"] h1 {
+  font-size: 1.625rem;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+}
+[data-testid="stAppViewContainer"] h2 {
+  font-size: 1.25rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+}
+[data-testid="stAppViewContainer"] h3 {
+  font-size: 1.05rem;
+  font-weight: 620;
+}
+[data-testid="stCaptionContainer"] {
+  color: var(--ui-gray-500);
+}
+::selection {
+  background: rgba(13, 13, 13, 0.14);
+}
+
+/* ---------- chrome: header, decoration, toolbar ---------- */
+[data-testid="stHeader"] {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: saturate(1.2) blur(10px);
+}
+[data-testid="stDecoration"] {
+  display: none;
+}
+[data-testid="stToolbar"] {
+  visibility: hidden;
+}
+[data-testid="stExpandSidebarButton"] { visibility: visible; }
+
+/* ---------- layout ---------- */
+.stMainBlockContainer {
+  max-width: 1120px;
+  padding-top: 2.5rem;
+}
+[data-testid="stDivider"] {
+  margin: 1.75rem 0;
+}
+
+/* ---------- sidebar ---------- */
+section[data-testid="stSidebar"] {
+  background: var(--ui-bg-subtle);
+  border-right: 1px solid #ededed;
+}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+  gap: 0.75rem;
+}
+[data-testid="stSidebarContent"] {
+  display: flex;
+  flex-direction: column;
+}
+[data-testid="stSidebarNav"] {
+  order: 25;
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ui-line);
+}
+[data-testid="stSidebarNav"]::before {
+  content: "控制台视图";
+  display: block;
+  padding: 12px 12px 6px;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  color: var(--ui-gray-400);
+}
+[data-testid="stSidebarNav"] ul {
+  gap: 2px;
+}
+[data-testid="stSidebarNavLink"] {
+  border-radius: 8px;
+  color: var(--ui-gray-700);
+  transition: background-color 0.12s ease;
+}
+[data-testid="stSidebarNavLink"]:hover {
+  background: var(--ui-fill);
+}
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+  background: #e9e9e9;
+  color: var(--ui-ink);
+  font-weight: 560;
+}
+section[data-testid="stSidebar"] .stButton button {
+  border-radius: 10px;
+  min-height: 42px;
+}
+
+/* ---------- buttons ---------- */
+.stButton button,
+.stFormSubmitButton button,
+.stDownloadButton button {
+  border-radius: 10px;
+  border: 1px solid var(--ui-line-strong);
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+  font-weight: 520;
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.stButton button:hover,
+.stFormSubmitButton button:hover {
+  background: var(--ui-fill);
+  border-color: #c9c9c9;
+}
+.stButton button:active {
+  background: var(--ui-fill-hover);
+}
+.stButton button[kind="primary"],
+.stFormSubmitButton button[kind="primary"] {
+  background: var(--ui-ink);
+  border-color: var(--ui-ink);
+  color: #ffffff;
+}
+.stButton button[kind="primary"]:hover,
+.stFormSubmitButton button[kind="primary"]:hover {
+  background: #2c2c2c;
+  border-color: #2c2c2c;
+}
+.stButton button:disabled,
+.stFormSubmitButton button:disabled {
+  opacity: 0.5;
+}
+.stButton button:focus-visible,
+.stFormSubmitButton button:focus-visible,
+[data-testid="stChatInputSubmitButton"] button:focus-visible {
+  outline: 2px solid var(--ui-ink);
+  outline-offset: 2px;
+}
+
+/* ---------- inputs ---------- */
+[data-baseweb="input"],
+[data-baseweb="base-input"],
+[data-baseweb="textarea"],
+[data-baseweb="select"] > div:first-child {
+  border-radius: 10px !important;
+}
+[data-baseweb="input"],
+[data-baseweb="base-input"],
+[data-baseweb="textarea"] {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-bg);
+}
+[data-baseweb="input"]:focus-within,
+[data-baseweb="base-input"]:focus-within,
+[data-baseweb="textarea"]:focus-within,
+[data-baseweb="select"]:focus-within > div:first-child {
+  border-color: var(--ui-ink) !important;
+  box-shadow: none !important;
+}
+[data-testid="stFileUploaderDropzone"] {
+  border-radius: var(--ui-radius);
+  border: 1.5px dashed var(--ui-line-strong);
+  background: var(--ui-bg-subtle);
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+  border-color: #b6b6b6;
+}
+
+/* ---------- metrics ---------- */
+[data-testid="stMetric"] {
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  padding: 14px 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+[data-testid="stMetric"]:hover {
+  border-color: var(--ui-line-strong);
+  box-shadow: var(--ui-shadow-raise);
+}
+[data-testid="stMetricLabel"] p {
+  color: var(--ui-gray-500);
+  font-size: 0.8125rem;
+  font-weight: 520;
+}
+[data-testid="stMetricValue"] {
+  color: var(--ui-ink);
+  font-weight: 640;
+}
+
+/* ---------- surfaces: alerts, expanders, dialogs, popovers ---------- */
+[data-testid="stAlert"] {
+  border-radius: var(--ui-radius);
+}
+[data-testid="stExpander"] {
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  transition: border-color 0.15s ease;
+}
+[data-testid="stExpander"]:hover {
+  border-color: var(--ui-line-strong);
+}
+[data-testid="stExpander"] summary {
+  font-weight: 520;
+}
+[data-testid="stDialog"] [role="dialog"] {
+  border-radius: 16px;
+}
+[data-baseweb="popover"] [data-baseweb="menu"],
+[data-baseweb="popover"] > div {
+  border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.12);
+}
+[data-testid="stForm"] {
+  border: 1px solid var(--ui-line);
+  border-radius: 14px;
+  padding: 18px;
+}
+[data-testid="stToast"] {
+  border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.14);
+}
+
+/* ---------- tabs ---------- */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  gap: 4px;
+  border-bottom: 1px solid var(--ui-line);
+}
+[data-testid="stTabs"] [data-baseweb="tab"] {
+  padding: 8px 4px;
+  margin-right: 18px;
+  color: var(--ui-gray-500);
+  font-weight: 500;
+}
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+  color: var(--ui-ink);
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+  color: var(--ui-ink);
+  font-weight: 620;
+}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+  background-color: var(--ui-ink);
+  height: 2px;
+}
+[data-testid="stTabs"] [data-baseweb="tab-border"] {
+  background-color: transparent;
+}
+
+/* ---------- data and diagnostics ---------- */
+[data-testid="stDataFrame"] {
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  overflow: hidden;
+}
+[data-testid="stCodeBlock"],
+.stCode {
+  border-radius: 10px;
+}
+[data-testid="stJson"] {
+  font-size: 0.8125rem;
+}
+[data-testid="stProgress"] > div > div {
+  border-radius: 999px;
+}
+
+/* ---------- scrollbars ---------- */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d2d2d2;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- narrow screens ---------- */
+@media (max-width: 640px) {
+  .stMainBlockContainer {
+    padding: 3.5rem 1rem 2rem;
+  }
+  [data-testid="stAppViewContainer"] h1 {
+    font-size: 1.4rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

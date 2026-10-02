@@ -262,8 +262,8 @@ class SessionRepository:
             connection.execute("DELETE FROM deleted_sessions WHERE session_id = ?", (session_id,))
         return _session_from_row(row)
 
-    def list_deleted_sessions(self, *, limit: int = 100) -> tuple[SessionRecord, ...]:
-        if limit <= 0:
+    def list_deleted_sessions(self, *, limit: int | None = 100) -> tuple[SessionRecord, ...]:
+        if limit is not None and limit <= 0:
             raise ValueError("limit must be greater than 0")
         with self._read_connection() as connection:
             rows = connection.execute(
@@ -271,9 +271,72 @@ class SessionRepository:
                 "JOIN deleted_sessions d ON d.session_id = s.session_id "
                 "LEFT JOIN conversation_titles t ON t.session_id = s.session_id "
                 "WHERE s.workspace_id = ? ORDER BY d.deleted_at DESC, s.session_id LIMIT ?",
-                (self.workspace_id, limit),
+                (self.workspace_id, -1 if limit is None else limit),
             ).fetchall()
         return tuple(_session_from_row(row) for row in rows)
+
+    def purge_deleted_sessions(
+        self,
+        expected_revisions: dict[str, int],
+        *,
+        checkpoint_path: str | Path | None = None,
+    ) -> int:
+        """Permanently remove an explicitly confirmed snapshot of this workspace's bin.
+
+        Recheck every target before deleting any. A restored, changed or foreign
+        session rejects the whole batch. Existing export files and trace logs are
+        outside this record-management operation.
+        """
+        if not isinstance(expected_revisions, dict) or not expected_revisions:
+            raise ValueError("Select at least one deleted conversation")
+        targets = {}
+        for session_id, revision in expected_revisions.items():
+            session_id = _required_text(session_id, "session_id")
+            _validate_revision(revision)
+            if session_id in targets:
+                raise ValueError("Duplicate conversation")
+            targets[session_id] = revision
+        checkpoint = Path(checkpoint_path).resolve() if checkpoint_path is not None else None
+        if checkpoint == self.database_path.resolve():
+            raise ValueError("Checkpoint and session databases must be separate")
+        with self._write_transaction() as connection:
+            threads = []
+            for session_id, expected in targets.items():
+                row = self._select_session(connection, session_id, include_deleted=True)
+                if not connection.execute(
+                    "SELECT 1 FROM deleted_sessions WHERE session_id = ?", (session_id,)
+                ).fetchone():
+                    raise ValueError("Conversation is no longer in the recycle bin")
+                if row["current_revision"] != expected:
+                    raise SessionRevisionConflict(session_id, expected, row["current_revision"])
+                threads.append((row["checkpoint_thread_id"],))
+            if checkpoint is not None and checkpoint.exists():
+                connection.execute(
+                    "ATTACH DATABASE ? AS purge_checkpoints", (checkpoint.as_uri() + "?mode=rw",)
+                )
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM purge_checkpoints.sqlite_master WHERE type = 'table'"
+                    )
+                }
+                if tables:
+                    if not {"checkpoints", "writes"} <= tables:
+                        raise ValueError("Unsupported checkpoint database schema")
+                    connection.executemany(
+                        "DELETE FROM purge_checkpoints.writes WHERE thread_id = ?", threads
+                    )
+                    connection.executemany(
+                        "DELETE FROM purge_checkpoints.checkpoints WHERE thread_id = ?", threads
+                    )
+            ids = [(session_id,) for session_id in targets]
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'feedback_signals'"
+            ).fetchone():
+                # Older feedback tables use a non-cascading foreign key.
+                connection.executemany("DELETE FROM feedback_signals WHERE session_id = ?", ids)
+            connection.executemany("DELETE FROM sessions WHERE session_id = ?", ids)
+        return len(targets)
 
     def get_revision(self, session_id: str, revision: int | None = None) -> RevisionRecord:
         session_id = _required_text(session_id, "session_id")
@@ -728,7 +791,7 @@ class SessionRepository:
         return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=30, isolation_level=None)
+        connection = sqlite3.connect(self.database_path, timeout=30, isolation_level=None, uri=True)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout=30000")
         connection.execute("PRAGMA foreign_keys=ON")
