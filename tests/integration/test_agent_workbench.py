@@ -501,3 +501,78 @@ def test_rename_menu_targets_its_own_conversation(tmp_path):
     assert service.repository.get_revision("session:b") == original
     assert app.session_state[selection] == "session:a"
     call.assert_not_called()
+
+
+def _trash_rows(service, *ids):
+    for sid in ids:
+        service.repository.create_session(session_id=sid, goal=f"Archived {sid}")
+        service.repository.delete_session(sid)
+
+
+def test_multi_select_purge_requires_confirmation_and_preserves_active_view(tmp_path):
+    service, call = fixture(tmp_path)
+    _trash_rows(service, "b", "c", "d")
+    active = service.repository.get_revision("session:a")
+    app = AppTest.from_function(render, args=(service,)).run()
+    assert button(app, "删除所选").disabled
+    for sid in ("b", "c"):
+        next(c for c in app.checkbox if c.key == f"trash-selected:workspace:legacy:{sid}").check()
+    app.run()
+    button(app, "删除所选").click().run()
+    assert not app.exception
+    assert len(service.deleted_rows()) == 3
+    button(app, "取消").click().run()
+    assert len(service.deleted_rows()) == 3
+    button(app, "删除所选").click().run()
+    button(app, "确认永久删除").click().run()
+    assert not app.exception
+    assert [r["session_id"] for r in service.deleted_rows()] == ["d"]
+    assert service.repository.get_revision("session:a") == active
+    assert app.session_state["workbench_session:workspace:legacy"] == "session:a"
+    assert len(app.chat_message) == 1
+    call.assert_not_called()
+
+
+def test_empty_bin_deletes_confirmed_snapshot_only_and_shows_empty_state(tmp_path):
+    service, call = fixture(tmp_path)
+    _trash_rows(service, "b", "c")
+    app = AppTest.from_function(render, args=(service,)).run()
+    button(app, "清空回收站").click().run()
+    _trash_rows(service, "arrived-later")
+    button(app, "确认永久删除").click().run()
+    assert not app.exception
+    assert [r["session_id"] for r in service.deleted_rows()] == ["arrived-later"]
+    button(app, "清空回收站").click().run()
+    button(app, "确认永久删除").click().run()
+    assert not app.exception
+    assert service.deleted_rows() == []
+    assert any(e.label == "回收站（0）" for e in app.expander)
+    assert any(c.value == "回收站为空。" for c in app.caption)
+    assert service.repository.get_session("session:a")
+    call.assert_not_called()
+
+
+def test_restored_target_rejects_whole_selected_purge(tmp_path):
+    service, _ = fixture(tmp_path)
+    _trash_rows(service, "b", "c")
+    app = AppTest.from_function(render, args=(service,)).run()
+    button(app, "全选").click().run()
+    assert button(app, "取消全选")
+    button(app, "删除所选").click().run()
+    service.repository.restore_session("b")
+    button(app, "确认永久删除").click().run()
+    assert not app.exception and app.error
+    assert [r["session_id"] for r in service.deleted_rows()] == ["c"]
+    assert service.repository.get_session("b")
+
+
+def test_bin_controls_are_disabled_while_a_reply_is_running(tmp_path):
+    service, _ = fixture(tmp_path)
+    _trash_rows(service, "b")
+    app = AppTest.from_function(render, args=(service,)).run()
+    app.session_state["workbench_busy"] = True
+    app.run()
+    assert not app.exception
+    for label in ("全选", "恢复", "删除所选", "清空回收站"):
+        assert button(app, label).disabled
+    assert next(c for c in app.checkbox if c.key == "trash-selected:workspace:legacy:b").disabled

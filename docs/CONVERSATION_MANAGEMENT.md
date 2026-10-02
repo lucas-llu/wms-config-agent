@@ -27,7 +27,32 @@ Deletion is durable in an additive SQLite `deleted_sessions` table. Reads and
 writes through the current repository reject deleted conversations until restored;
 history and recycle-bin operations are Workspace scoped. Existing revisions and
 schema version are preserved. Older binaries that do not know this table can show
-deleted sessions again; permanent purge is outside this feature.
+deleted sessions again. Permanent removal is a separate, explicitly confirmed action.
+
+## Recycle-bin cleanup
+
+The bin supports individual checkboxes, select/deselect all, **删除所选** and
+**清空回收站**. Each destructive action confirms the count and conversation titles;
+cancel/dismiss preserves every record. Emptying targets the snapshot shown when the
+dialog was opened, so newly trashed conversations are not silently included.
+
+All targets must still be deleted, belong to the current Workspace and match their
+displayed revisions. A missing, restored, changed or foreign target rejects the
+entire selection. The list used for clearing is not capped at 100 records. The open
+conversation and selected revision remain unchanged; an empty bin has an explicit
+empty state. Controls are disabled while an answer is being processed.
+
+Purging removes session/title/tombstone records and associated turns, revisions,
+decisions, approvals, export metadata and feedback. The standard workbench host also
+passes `checkpoint_path` to `WorkbenchService`, allowing the corresponding SQLite
+LangGraph checkpoint/writes rows to be removed in the same attached-database SQL
+transaction. Ordinary SQL errors roll back both stores. This does not promise
+cross-database crash atomicity in WAL mode. Hosts with a graph store must supply its
+configured path. Existing exported files, backups and trace logs are retained; this
+is conversation-record management rather than secure erasure of every artifact.
+
+The current redesign is preserved. Chat spacing is increased and the composer owns
+one outer focus border, with matching inner corners and a visible keyboard focus.
 
 ## Sending and waiting
 

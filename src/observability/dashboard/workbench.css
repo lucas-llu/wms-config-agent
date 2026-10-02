@@ -421,6 +421,37 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 }
 
 /* ---------- dialogs ---------- */
+.st-key-recycle-bin-content button[kind="tertiary"] {
+  border: 0;
+  background: transparent;
+  min-height: 32px;
+  padding: 6px 8px;
+  box-shadow: none;
+  font-size: 0.8125rem;
+  color: var(--ui-gray-700);
+}
+.st-key-recycle-bin-content button[kind="tertiary"]:hover {
+  background: var(--ui-fill-hover);
+}
+.st-key-trash-actions button {
+  padding: 8px 6px;
+  font-size: 0.8125rem;
+  color: var(--ui-danger);
+}
+.st-key-trash-actions button:hover {
+  background: #fff2f2;
+  border-color: #e5bcbc;
+}
+.st-key-conversation-purge-dialog button[kind="primary"] {
+  background: var(--ui-danger);
+  border-color: var(--ui-danger);
+  color: #fff;
+}
+.st-key-conversation-purge-dialog [data-testid="stText"] {
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--ui-fill);
+}
 .st-key-conversation-rename-dialog,
 .st-key-conversation-delete-dialog {
   padding: 4px 0 8px;

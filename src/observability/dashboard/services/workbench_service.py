@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from agents.repositories import SessionRepository
@@ -30,10 +30,18 @@ _NEXT = {
 
 
 class WorkbenchService(AgentSessionService):
-    def __init__(self, repository: SessionRepository, call_tool: Callable, *, enabled: bool):
+    def __init__(
+        self,
+        repository: SessionRepository,
+        call_tool: Callable,
+        *,
+        enabled: bool,
+        checkpoint_path: str | Path | None = None,
+    ):
         super().__init__(repository)
         self.call_tool = call_tool
         self.enabled = enabled
+        self.checkpoint_path = checkpoint_path
 
     def view(self, session_id: str, revision: int) -> dict[str, Any]:
         record = self.repository.get_revision(session_id, revision)
@@ -129,8 +137,13 @@ class WorkbenchService(AgentSessionService):
                 "goal": item.display_title or item.goal,
                 "revision": item.current_revision,
             }
-            for item in self.repository.list_deleted_sessions()
+            for item in self.repository.list_deleted_sessions(limit=None)
         ]
+
+    def purge_conversations(self, expected_revisions: dict[str, int]) -> int:
+        return self.repository.purge_deleted_sessions(
+            expected_revisions, checkpoint_path=self.checkpoint_path
+        )
 
     def restore_conversation(self, session_id: str) -> tuple[str, int]:
         item = self.repository.restore_session(session_id)

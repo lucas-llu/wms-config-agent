@@ -26,6 +26,7 @@ try:
         SessionRepository(settings.agent.session_db_path, workspace_id=settings.agent.workspace_id),
         call_tool,
         enabled=settings.agent.enabled,
+        checkpoint_path=settings.agent.checkpoint_path,
     )
     render_workbench(service)
 except Exception:
