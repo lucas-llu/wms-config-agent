@@ -19,6 +19,7 @@ class AgentSessionService:
                 "Status": item.status.value,
                 "Revision": item.current_revision,
                 "Goal": item.goal,
+                "Title": item.display_title or item.goal,
                 "Updated": item.updated_at,
             }
             for item in self.repository.list_sessions(limit=limit)

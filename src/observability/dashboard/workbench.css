@@ -38,6 +38,12 @@
 [data-testid="stChatInput"] textarea { min-height: 52px; font-size: 15px; }
 .stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] { background: #242424; color: white; border-color: #242424; }
 .stButton button:focus-visible { outline: 2px solid #5e8fbe; outline-offset: 2px; }
+[class*="st-key-history-row-"] [data-testid="stVerticalBlock"] { gap: 0; }
+[class*="st-key-history-row-"] .stButton button { border: 0; background: transparent; text-align: left; justify-content: flex-start; padding: 8px 10px; }
+[class*="st-key-history-row-"] .stButton button[kind="primary"] { background: #e8e8e9; color: #222; }
+[class*="st-key-history-row-"] .stButton button:hover { background: #e8e8e9; }
+[class*="st-key-history-row-"] [data-testid="stPopover"] button { padding: 0 4px; min-height: 36px; border: 0; background: transparent; }
+[class*="st-key-history-row-"] [data-testid="stPopover"] button [data-testid="stIconMaterial"] { display: none; }
 [data-testid="stExpander"] { border-color: var(--chat-line); border-radius: 14px; }
 .chat-footnote { text-align: center; font-size: 12px; color: #858585; padding: 10px 0; }
 .chat-thinking { display: flex; align-items: center; gap: 12px; color: #737373; padding: 8px 0; font-size: 14px; }

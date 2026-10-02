@@ -119,9 +119,16 @@ class WorkbenchService(AgentSessionService):
     def delete_conversation(self, session_id: str) -> None:
         self.repository.delete_session(session_id)
 
+    def rename_conversation(self, session_id: str, title: str) -> None:
+        self.repository.rename_session(session_id, title)
+
     def deleted_rows(self) -> list[dict[str, Any]]:
         return [
-            {"session_id": item.session_id, "goal": item.goal, "revision": item.current_revision}
+            {
+                "session_id": item.session_id,
+                "goal": item.display_title or item.goal,
+                "revision": item.current_revision,
+            }
             for item in self.repository.list_deleted_sessions()
         ]
 

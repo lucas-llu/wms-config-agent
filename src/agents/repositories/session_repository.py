@@ -63,6 +63,7 @@ class SessionRecord:
     updated_at: str
     cancelled_at: str | None
     workspace_id: str = "workspace:legacy"
+    display_title: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,13 +222,28 @@ class SessionRepository:
             raise ValueError("limit must be greater than 0")
         with self._read_connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM sessions WHERE workspace_id = ? "
+                "SELECT sessions.*, t.display_title FROM sessions "
+                "LEFT JOIN conversation_titles t ON t.session_id = sessions.session_id "
+                "WHERE workspace_id = ? "
                 "AND NOT EXISTS (SELECT 1 FROM deleted_sessions d "
                 "WHERE d.session_id = sessions.session_id) "
-                "ORDER BY updated_at DESC, session_id LIMIT ?",
+                "ORDER BY sessions.updated_at DESC, sessions.session_id LIMIT ?",
                 (self.workspace_id, limit),
             ).fetchall()
         return tuple(_session_from_row(row) for row in rows)
+
+    def rename_session(self, session_id: str, title: str) -> None:
+        session_id = _required_text(session_id, "session_id")
+        title = _required_text(title, "title")
+        if len(title) > 120 or any(ord(character) < 32 for character in title):
+            raise ValueError("Conversation title must be a single line of at most 120 characters")
+        with self._write_transaction() as connection:
+            self._select_session(connection, session_id)
+            connection.execute(
+                "INSERT INTO conversation_titles(session_id, display_title) VALUES (?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET display_title = excluded.display_title",
+                (session_id, title),
+            )
 
     def delete_session(self, session_id: str) -> None:
         """Remove a scoped conversation from active use, retaining recoverable history."""
@@ -251,7 +267,9 @@ class SessionRepository:
             raise ValueError("limit must be greater than 0")
         with self._read_connection() as connection:
             rows = connection.execute(
-                "SELECT s.* FROM sessions s JOIN deleted_sessions d ON d.session_id = s.session_id "
+                "SELECT s.*, t.display_title FROM sessions s "
+                "JOIN deleted_sessions d ON d.session_id = s.session_id "
+                "LEFT JOIN conversation_titles t ON t.session_id = s.session_id "
                 "WHERE s.workspace_id = ? ORDER BY d.deleted_at DESC, s.session_id LIMIT ?",
                 (self.workspace_id, limit),
             ).fetchall()
@@ -758,7 +776,9 @@ class SessionRepository:
         self, connection: sqlite3.Connection, session_id: str, *, include_deleted: bool = False
     ) -> sqlite3.Row:
         row = connection.execute(
-            "SELECT * FROM sessions WHERE session_id = ? AND workspace_id = ? "
+            "SELECT sessions.*, t.display_title FROM sessions "
+            "LEFT JOIN conversation_titles t ON t.session_id = sessions.session_id "
+            "WHERE sessions.session_id = ? AND workspace_id = ? "
             "AND (? OR NOT EXISTS (SELECT 1 FROM deleted_sessions d "
             "WHERE d.session_id = sessions.session_id))",
             (session_id, self.workspace_id, include_deleted),
@@ -852,6 +872,12 @@ def _create_schema(connection: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS deleted_sessions (
             session_id TEXT PRIMARY KEY,
             deleted_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS conversation_titles (
+            session_id TEXT PRIMARY KEY,
+            display_title TEXT NOT NULL CHECK(length(display_title) BETWEEN 1 AND 120),
             FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
         );
 
@@ -971,6 +997,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
 
 def _session_from_row(row: sqlite3.Row) -> SessionRecord:
     return SessionRecord(
+        display_title=row["display_title"],
         workspace_id=str(row["workspace_id"]),
         session_id=str(row["session_id"]),
         goal=str(row["goal"]),

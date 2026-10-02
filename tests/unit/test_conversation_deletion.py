@@ -43,9 +43,36 @@ def test_other_workspace_cannot_delete_restore_or_list_history(tmp_path):
     other = SessionRepository(path, workspace_id="workspace:b")
     with pytest.raises(SessionNotFoundError):
         other.delete_session("session:a")
+    with pytest.raises(SessionNotFoundError):
+        other.rename_session("session:a", "Wrong workspace")
     repo.delete_session("session:a")
     assert other.list_deleted_sessions() == ()
     with pytest.raises(SessionNotFoundError):
         other.restore_session("session:a")
     repo.restore_session("session:a")
     assert repo.list_sessions()
+
+
+def test_rename_persists_as_display_metadata_without_changing_goal(tmp_path):
+    path = tmp_path / "sessions.db"
+    repo = SessionRepository(path)
+    repo.create_session(session_id="session:a", goal="Original configuration requirement")
+    revision = repo.get_revision("session:a")
+    repo.rename_session("session:a", "Display title")
+    restarted = SessionRepository(path)
+    assert restarted.get_session("session:a").goal == "Original configuration requirement"
+    assert restarted.get_session("session:a").display_title == "Display title"
+    assert restarted.get_revision("session:a") == revision
+    restarted.delete_session("session:a")
+    assert restarted.list_deleted_sessions()[0].display_title == "Display title"
+    restarted.restore_session("session:a")
+    assert restarted.get_session("session:a").display_title == "Display title"
+
+
+@pytest.mark.parametrize("title", ["", "  ", "x" * 121, "line\nbreak"])
+def test_invalid_title_cannot_change_history(tmp_path, title):
+    repo = SessionRepository(tmp_path / "sessions.db")
+    repo.create_session(session_id="session:a", goal="Original")
+    with pytest.raises(ValueError):
+        repo.rename_session("session:a", title)
+    assert repo.get_session("session:a").display_title is None

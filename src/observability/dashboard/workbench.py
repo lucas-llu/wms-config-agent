@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 from pathlib import Path
@@ -27,6 +28,7 @@ def _queue_message(key, workspace_id, session_id, revision):
         }
         st.session_state[_BUSY] = True
         st.session_state.pop(_FAILED, None)
+        st.session_state[f"workbench_view:{workspace_id}:{session_id}"] = "对话"
 
 
 def _prefill_message(key, message):
@@ -94,9 +96,97 @@ def _delete_conversation(service, session_id):
     except Exception:
         st.error("未能删除对话，请刷新后重试。")
         return
-    st.session_state.pop(_FAILED, None)
+    failed = st.session_state.get(_FAILED)
+    if failed and failed["session_id"] == session_id:
+        st.session_state.pop(_FAILED, None)
+    selection = f"workbench_session:{service.repository.workspace_id}"
+    if st.session_state.get(selection) == session_id:
+        st.session_state[selection] = ""
     st.session_state["workbench_notice"] = "对话已移至回收站，可以恢复。"
     st.rerun()
+
+
+def _new_conversation(workspace_id):
+    st.session_state[f"workbench_session:{workspace_id}"] = ""
+    st.session_state[f"new_message:{workspace_id}"] = ""
+    st.session_state["chat_history_search"] = ""
+
+
+def _select_conversation(key, session_id):
+    st.session_state[key] = session_id
+
+
+def _remember_revision(widget_key, selection_key):
+    st.session_state[selection_key] = st.session_state[widget_key]
+
+
+def _close_rename():
+    st.session_state.pop("workbench_rename_target", None)
+
+
+@st.dialog("重命名对话", on_dismiss=_close_rename)
+def _rename_conversation(service, session_id, current_title):
+    with st.form(f"rename:{service.repository.workspace_id}:{session_id}"):
+        title = st.text_input("对话名称", value=current_title[:120], max_chars=120)
+        if st.form_submit_button("保存名称", type="primary"):
+            try:
+                service.rename_conversation(session_id, title)
+            except ValueError:
+                st.error("名称不能为空，且需为不超过 120 个字符的单行文本。")
+                return
+            except Exception:
+                st.error("未能重命名对话，请刷新后重试。")
+                return
+            st.session_state["workbench_notice"] = "对话名称已更新。"
+            _close_rename()
+            st.rerun()
+    if st.button("取消"):
+        _close_rename()
+        st.rerun()
+
+
+def _history_title(text):
+    title = re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"([\\`*_\[\]()<>!])", r"\\\1", title[:48]) + ("…" if len(title) > 48 else "")
+
+
+def _render_history(service, names, visible, session_key, busy):
+    current = st.session_state[session_key]
+    for session_id in visible:
+        identity = hashlib.sha256(session_id.encode()).hexdigest()[:12]
+        with st.container(key=f"history-row-{identity}"):
+            title, actions = st.columns([5, 1], gap="small", vertical_alignment="center")
+            title.button(
+                _history_title(names[session_id]),
+                key=f"select:{session_key}:{session_id}",
+                help=_safe_markdown(names[session_id]),
+                use_container_width=True,
+                wrap=False,
+                type="primary" if session_id == current else "secondary",
+                disabled=busy,
+                on_click=_select_conversation,
+                args=(session_key, session_id),
+            )
+            with actions.popover(
+                "⋯",
+                help="对话操作",
+                disabled=busy,
+                use_container_width=True,
+                key=f"menu:{session_key}:{session_id}",
+            ):
+                st.caption(_safe_markdown(names[session_id]))
+                if st.button(
+                    "重命名", key=f"rename-action:{session_key}:{session_id}", disabled=busy
+                ):
+                    st.session_state["workbench_rename_target"] = session_id
+                if st.button(
+                    "删除对话",
+                    key=f"delete:{session_key}:{session_id}",
+                    icon=":material/delete:",
+                    disabled=busy,
+                    help="移到回收站，可恢复。",
+                ):
+                    _delete_conversation(service, session_id)
 
 
 def _restore_conversation(service, session_id):
@@ -105,7 +195,9 @@ def _restore_conversation(service, session_id):
     except Exception:
         st.error("未能恢复对话，请刷新后重试。")
         return
-    st.session_state["workbench_target"] = target
+    selection = f"workbench_session:{service.repository.workspace_id}"
+    if not st.session_state.get(selection):
+        st.session_state["workbench_target"] = target
     st.session_state["workbench_notice"] = "对话已恢复。"
     st.rerun()
 
@@ -157,7 +249,7 @@ def render_workbench(service: WorkbenchService) -> None:
     workspace = service.repository.workspace
     busy = bool(st.session_state.get(_BUSY))
     rows = service.list_rows()
-    names = {row["Session"]: row["Goal"] for row in rows}
+    names = {row["Session"]: row.get("Title") or row["Goal"] for row in rows}
     session_key = f"workbench_session:{workspace.workspace_id}"
     if session_key not in st.session_state:
         st.session_state[session_key] = next(iter(names), "")
@@ -165,43 +257,31 @@ def render_workbench(service: WorkbenchService) -> None:
     if target and target[0] in names:
         st.session_state[session_key] = target[0]
         st.session_state[f"revision:{workspace.workspace_id}:{target[0]}"] = target[1]
+        st.session_state[f"selected_revision:{workspace.workspace_id}:{target[0]}"] = target[1]
     with st.sidebar:
         st.markdown("### ◈ WMS Assistant")
         st.caption("知识问答 · 配置协作")
-        if st.button(
+        st.button(
             "＋ 新对话",
             use_container_width=True,
             type="primary",
             disabled=not service.enabled or busy,
-        ):
-            st.session_state[session_key] = ""
+            on_click=_new_conversation,
+            args=(workspace.workspace_id,),
+        )
         search = st.text_input(
             "搜索会话", placeholder="搜索历史对话", key="chat_history_search", disabled=busy
         )
         visible = [key for key in names if search.casefold() in names[key].casefold()]
-        if st.session_state[session_key] not in visible:
+        if st.session_state[session_key] not in names:
             st.session_state[session_key] = ""
         st.caption("最近对话")
-        session_id = st.radio(
-            "会话",
-            ["", *visible],
-            key=session_key,
-            format_func=lambda key: "新对话" if not key else (re.sub(r"\s+", " ", names[key])[:52]),
-            label_visibility="collapsed",
-            disabled=busy,
-        )
+        _render_history(service, names, visible, session_key, busy)
+        session_id = st.session_state[session_key]
         if not rows:
             st.caption("暂无会话，发送第一条消息开始。")
         elif not visible:
             st.caption("没有匹配的历史会话。")
-        if session_id and st.button(
-            "删除对话",
-            icon=":material/delete:",
-            use_container_width=True,
-            disabled=busy,
-            help="将当前对话移到回收站，可恢复。",
-        ):
-            _delete_conversation(service, session_id)
         deleted = service.deleted_rows()
         if deleted:
             with st.expander(f"回收站（{len(deleted)}）"):
@@ -223,9 +303,14 @@ def render_workbench(service: WorkbenchService) -> None:
             st.caption("主机配置决定 Workspace；这里不是权限切换入口。")
             st.caption("问题及相关片段可能发送给配置的模型。请勿输入密钥或敏感信息。")
             st.caption("只生成配置建议，不执行真实 WMS 写入。审批与导出仍需显式操作。")
+    if rename_target := st.session_state.get("workbench_rename_target"):
+        if rename_target in names:
+            _rename_conversation(service, rename_target, names[rename_target])
+        else:
+            _close_rename()
     with st.container(key="workbench_header"):
-        st.title("WMS Assistant")
-        st.caption("有据可查的回答，逐步完成的配置。")
+        st.title("WMS Workspace")
+        st.caption("对话、证据和配置方案，在同一工作区协作。")
     if notice := st.session_state.pop("workbench_notice", None):
         st.toast(notice)
     if not service.enabled:
@@ -271,15 +356,25 @@ def render_workbench(service: WorkbenchService) -> None:
         )
         return
     revisions = service.repository.list_revisions(session_id)
+    versions = [item.revision for item in reversed(revisions)]
+    revision_key = f"revision:{workspace.workspace_id}:{session_id}"
+    selected_revision_key = f"selected_revision:{workspace.workspace_id}:{session_id}"
+    selected_revision = st.session_state.get(selected_revision_key)
+    if selected_revision in versions:
+        st.session_state[revision_key] = selected_revision
     with st.sidebar:
         revision = st.selectbox(
             "查看版本",
-            [item.revision for item in reversed(revisions)],
-            key=f"revision:{workspace.workspace_id}:{session_id}",
+            versions,
+            key=revision_key,
             disabled=busy,
+            on_change=_remember_revision,
+            args=(revision_key, selected_revision_key),
         )
+    st.session_state[selected_revision_key] = revision
     view = service.view(session_id, revision)
-    st.caption(f"版本 {revision} · {view['status']} · {view['next_step']}")
+    st.subheader(_safe_markdown(names[session_id]))
+    st.caption(f"版本 {revision} · {view['next_step']}")
     historical = revision != view["current_revision"]
     if historical:
         st.warning("正在查看历史版本：对话、验证、审批与导出已禁用。")
@@ -292,28 +387,49 @@ def render_workbench(service: WorkbenchService) -> None:
         on_submit=_queue_message,
         args=(composer_key, workspace.workspace_id, session_id, revision),
     )
-    for turn in view["turns"]:
-        with st.chat_message(
-            turn["role"], avatar=":material/auto_awesome:" if turn["role"] == "assistant" else None
-        ):
-            if turn["role"] == "user":
-                st.text(turn["message"])
-            else:
-                st.markdown(_safe_markdown(turn["message"]))
-    if not view["turns"]:
-        st.info("这个版本还没有对话记录。")
-    _render_failed(workspace.workspace_id, session_id, view["turns"])
     entry = st.session_state.pop(_PENDING, None)
+    chat, workspace_panel = st.tabs(
+        ["对话", "工作区"],
+        key=f"workbench_view:{workspace.workspace_id}:{session_id}",
+        default="对话",
+    )
+    with chat:
+        for turn in view["turns"]:
+            with st.chat_message(
+                turn["role"],
+                avatar=":material/auto_awesome:" if turn["role"] == "assistant" else None,
+            ):
+                if turn["role"] == "user":
+                    st.text(turn["message"])
+                else:
+                    st.markdown(_safe_markdown(turn["message"]))
+        if not view["turns"]:
+            st.info("这个版本还没有对话记录。")
+        _render_failed(workspace.workspace_id, session_id, view["turns"])
+        if entry:
+            indicator = _render_pending(entry)
+        if view["questions"]:
+            with st.expander("需要补充的信息", expanded=True):
+                for question in view["questions"]:
+                    st.text(str(question.get("text", "待补充需求")))
+    with workspace_panel:
+        st.caption("当前工作区内容绑定这条对话和所选版本。")
+        tasks, sources, review = st.columns(3)
+        tasks.metric("配置任务", len(view["tasks"]))
+        sources.metric("证据片段", len(view["answer_evidence"]) + len(view["evidence"]))
+        review.metric(
+            "审查状态",
+            {
+                "approved": "已批准",
+                "review_required": "待审查",
+                "rejected": "已拒绝",
+                "cancelled": "已取消",
+            }.get(view["status"], "待验证" if view["tasks"] else "尚未生成方案"),
+        )
+        _render_details(service, session_id, revision, view, disabled)
     if entry:
-        indicator = _render_pending(entry)
         _process_message(service, entry, indicator)
         return
-    if view["questions"]:
-        with st.expander("需要补充的信息", expanded=True):
-            for question in view["questions"]:
-                st.text(str(question.get("text", "待补充需求")))
-    with st.expander("草稿、证据与审批", expanded=False):
-        _render_details(service, session_id, revision, view, disabled)
     st.markdown(
         '<div class="chat-footnote">AI 回答可能存在错误，请结合引用核验。不会自动写入 WMS。</div>',
         unsafe_allow_html=True,
