@@ -116,6 +116,19 @@ class WorkbenchService(AgentSessionService):
             raise ValueError("Agent must be enabled and a goal supplied")
         return self.call_tool("start_configuration_session", {"goal": goal})
 
+    def delete_conversation(self, session_id: str) -> None:
+        self.repository.delete_session(session_id)
+
+    def deleted_rows(self) -> list[dict[str, Any]]:
+        return [
+            {"session_id": item.session_id, "goal": item.goal, "revision": item.current_revision}
+            for item in self.repository.list_deleted_sessions()
+        ]
+
+    def restore_conversation(self, session_id: str) -> tuple[str, int]:
+        item = self.repository.restore_session(session_id)
+        return item.session_id, item.current_revision
+
     def act(self, action: str, session_id: str, revision: int, **fields) -> dict[str, Any]:
         if not self.enabled or action not in _TOOLS:
             raise ValueError("Action unavailable")

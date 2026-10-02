@@ -222,7 +222,37 @@ class SessionRepository:
         with self._read_connection() as connection:
             rows = connection.execute(
                 "SELECT * FROM sessions WHERE workspace_id = ? "
+                "AND NOT EXISTS (SELECT 1 FROM deleted_sessions d "
+                "WHERE d.session_id = sessions.session_id) "
                 "ORDER BY updated_at DESC, session_id LIMIT ?",
+                (self.workspace_id, limit),
+            ).fetchall()
+        return tuple(_session_from_row(row) for row in rows)
+
+    def delete_session(self, session_id: str) -> None:
+        """Remove a scoped conversation from active use, retaining recoverable history."""
+        session_id = _required_text(session_id, "session_id")
+        with self._write_transaction() as connection:
+            self._select_session(connection, session_id, include_deleted=True)
+            connection.execute(
+                "INSERT OR IGNORE INTO deleted_sessions(session_id, deleted_at) VALUES (?, ?)",
+                (session_id, self._timestamp()),
+            )
+
+    def restore_session(self, session_id: str) -> SessionRecord:
+        session_id = _required_text(session_id, "session_id")
+        with self._write_transaction() as connection:
+            row = self._select_session(connection, session_id, include_deleted=True)
+            connection.execute("DELETE FROM deleted_sessions WHERE session_id = ?", (session_id,))
+        return _session_from_row(row)
+
+    def list_deleted_sessions(self, *, limit: int = 100) -> tuple[SessionRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than 0")
+        with self._read_connection() as connection:
+            rows = connection.execute(
+                "SELECT s.* FROM sessions s JOIN deleted_sessions d ON d.session_id = s.session_id "
+                "WHERE s.workspace_id = ? ORDER BY d.deleted_at DESC, s.session_id LIMIT ?",
                 (self.workspace_id, limit),
             ).fetchall()
         return tuple(_session_from_row(row) for row in rows)
@@ -724,10 +754,14 @@ class SessionRepository:
             finally:
                 connection.close()
 
-    def _select_session(self, connection: sqlite3.Connection, session_id: str) -> sqlite3.Row:
+    def _select_session(
+        self, connection: sqlite3.Connection, session_id: str, *, include_deleted: bool = False
+    ) -> sqlite3.Row:
         row = connection.execute(
-            "SELECT * FROM sessions WHERE session_id = ? AND workspace_id = ?",
-            (session_id, self.workspace_id),
+            "SELECT * FROM sessions WHERE session_id = ? AND workspace_id = ? "
+            "AND (? OR NOT EXISTS (SELECT 1 FROM deleted_sessions d "
+            "WHERE d.session_id = sessions.session_id))",
+            (session_id, self.workspace_id, include_deleted),
         ).fetchone()
         if row is None:
             raise SessionNotFoundError(f"Session does not exist: {session_id}")
@@ -812,6 +846,12 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             reason TEXT NOT NULL,
             created_at TEXT NOT NULL,
             PRIMARY KEY (session_id, revision),
+            FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS deleted_sessions (
+            session_id TEXT PRIMARY KEY,
+            deleted_at TEXT NOT NULL,
             FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
         );
 

@@ -258,3 +258,20 @@ def test_failed_chat_remains_visible_and_can_be_retried_manually(tmp_path):
     assert not app.chat_input[0].disabled
     app.run()
     assert call.call_count == 1
+
+
+def test_sidebar_delete_and_restore_preserve_conversation(tmp_path):
+    service, call = fixture(tmp_path)
+    before = service.repository.get_revision("session:a")
+    app = AppTest.from_function(render, args=(service,)).run()
+    button(app, "删除对话").click().run()
+    assert not app.exception
+    assert service.repository.list_sessions() == ()
+    assert len(service.deleted_rows()) == 1
+    assert not app.chat_message
+    button(app, "恢复").click().run()
+    assert not app.exception
+    assert service.repository.get_revision("session:a") == before
+    assert len(app.chat_message) == 1
+    assert not service.deleted_rows()
+    call.assert_not_called()

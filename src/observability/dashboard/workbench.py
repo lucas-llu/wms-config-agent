@@ -88,6 +88,28 @@ def _render_failed(workspace_id, session_id, turns):
             st.error(failed["error"])
 
 
+def _delete_conversation(service, session_id):
+    try:
+        service.delete_conversation(session_id)
+    except Exception:
+        st.error("未能删除对话，请刷新后重试。")
+        return
+    st.session_state.pop(_FAILED, None)
+    st.session_state["workbench_notice"] = "对话已移至回收站，可以恢复。"
+    st.rerun()
+
+
+def _restore_conversation(service, session_id):
+    try:
+        target = service.restore_conversation(session_id)
+    except Exception:
+        st.error("未能恢复对话，请刷新后重试。")
+        return
+    st.session_state["workbench_target"] = target
+    st.session_state["workbench_notice"] = "对话已恢复。"
+    st.rerun()
+
+
 def _submit(operation, *, refresh=True):
     if st.session_state.get(_BUSY):
         st.info("请等待当前回答完成。")
@@ -172,6 +194,27 @@ def render_workbench(service: WorkbenchService) -> None:
             st.caption("暂无会话，发送第一条消息开始。")
         elif not visible:
             st.caption("没有匹配的历史会话。")
+        if session_id and st.button(
+            "删除对话",
+            icon=":material/delete:",
+            use_container_width=True,
+            disabled=busy,
+            help="将当前对话移到回收站，可恢复。",
+        ):
+            _delete_conversation(service, session_id)
+        deleted = service.deleted_rows()
+        if deleted:
+            with st.expander(f"回收站（{len(deleted)}）"):
+                st.caption("恢复会保留原有对话、版本和审批记录；已导出文件不会被删除。")
+                for item in deleted:
+                    title, action = st.columns([3, 1])
+                    title.text(re.sub(r"\s+", " ", item["goal"])[:44])
+                    if action.button(
+                        "恢复",
+                        key=f"restore:{workspace.workspace_id}:{item['session_id']}",
+                        disabled=busy,
+                    ):
+                        _restore_conversation(service, item["session_id"])
         st.divider()
         st.caption("当前工作空间")
         st.text(workspace.name)
