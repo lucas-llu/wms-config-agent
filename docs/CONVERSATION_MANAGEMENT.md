@@ -62,6 +62,30 @@ not bypass that safety check, approve a draft or execute WMS changes. Budget/pro
 pauses without a graph interrupt restart against the saved baseline on a manual
 retry instead of silently replaying the previous result.
 
+## Copy and cache maintenance shortcuts
+
+The workspace uses Streamlit viewer toolbar mode to disable the framework's legacy
+developer cache shortcut (`C`). `Ctrl+C` / `Cmd+C` remains a normal browser copy
+operation; ordinary `C` typing does not open cache maintenance. This does not change
+terminal `Ctrl+C`, which still stops a foreground server.
+
+`.streamlit/config.toml` sets viewer mode before the first browser session; a render-
+time setting alone is too late for the initial configuration message. Launch from
+the repository root so this file is loaded. External launchers can explicitly pass
+`--client.toolbarMode viewer` instead.
+
+Use **维护工具 → 清理应用缓存** or `Ctrl+Alt+Shift+K` (Mac:
+`Cmd+Option+Shift+K`) to open the app-owned confirmation. Only explicit confirmation
+clears `st.cache_data` and `st.cache_resource`; opening, cancelling or dismissing it
+does not clear anything. Resource initialization may run again afterward. Persisted
+conversations, corpus indexes and exports are not deleted. The shortcut is disabled
+while processing or another management dialog is open, and in read-only Agent mode.
+This is local-instance maintenance, not a per-workspace data-erasure operation.
+
+The native button shortcut requires Streamlit 1.62 or newer, now reflected in the
+declared dependency minimum. No JavaScript shortcut interceptor or dependency-source
+patch is used.
+
 ## Draft, evidence and approval
 
 Atomic questions now store only validated cited sources in `answer_evidence`, with
@@ -104,3 +128,12 @@ other active conversation, immediate message/pending status, resolved-question
 removal, persisted configuration reply and workspace evidence. Separate real-provider
 checks with synthetic English evidence pass for Chinese, English and an explicit
 English override, all without repair retries. No real user history is changed by QA.
+
+Issue #95 cache/copy refinement: 539 passed, 3 explicit live-test skips, 91.21%
+source coverage; targeted workbench suite 26 passed. Lint/format and offline release
+gates (V1: 1 / Agent MVP: 1 / product: 72) pass. A cold-start synthetic Chrome check
+verifies the native copy event (without overwriting the system clipboard), ordinary
+`C` and input copy without a dialog, the replacement shortcut from a collapsed
+maintenance section, cancel, explicit clearing and preservation of unsent input.
+No real service cache is cleared during QA. Restart an already-running server and
+refresh its page after installing this startup-configuration change.

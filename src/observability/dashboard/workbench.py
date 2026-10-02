@@ -15,6 +15,8 @@ from observability.dashboard.services.workbench_service import WorkbenchService
 _BUSY = "workbench_busy"
 _PENDING = "workbench_pending_message"
 _FAILED = "workbench_failed_message"
+_CACHE_DIALOG = "workbench_cache_dialog"
+_CACHE_SHORTCUT = "Ctrl+Alt+Shift+K"
 
 
 def _queue_message(key, workspace_id, session_id, revision):
@@ -127,6 +129,44 @@ def _close_rename():
 
 def _close_delete():
     st.session_state.pop("workbench_delete_target", None)
+
+
+def _close_cache_dialog():
+    st.session_state.pop(_CACHE_DIALOG, None)
+
+
+def _open_cache_dialog():
+    if not (
+        st.session_state.get(_BUSY)
+        or st.session_state.get("workbench_rename_target")
+        or st.session_state.get("workbench_delete_target")
+    ):
+        st.session_state[_CACHE_DIALOG] = True
+
+
+@st.dialog("清理应用缓存？", on_dismiss=_close_cache_dialog)
+def _confirm_cache_clear():
+    st.caption("仅在需要重新加载应用资源时使用，普通复制操作不需要清理缓存。")
+    st.info(
+        "这会清空本应用的函数数据缓存和资源缓存，后端资源可能重新加载。"
+        "不会删除历史对话、知识库索引或已导出的文件。"
+    )
+    cancel, confirm = st.columns(2)
+    if cancel.button("取消", use_container_width=True):
+        _close_cache_dialog()
+        st.rerun()
+    if confirm.button(
+        "确认清理缓存", use_container_width=True, disabled=bool(st.session_state.get(_BUSY))
+    ):
+        try:
+            st.cache_data.clear()
+            st.cache_resource.clear()
+        except Exception:
+            st.error("未能完成缓存清理，请稍后重试；没有删除已保存的数据。")
+            return
+        _close_cache_dialog()
+        st.session_state["workbench_notice"] = "应用缓存已清理，已保存的对话和索引未改动。"
+        st.rerun()
 
 
 def _open_conversation_dialog(kind, session_id, menu_key):
@@ -283,6 +323,9 @@ def _safe_markdown(text: str) -> str:
 
 
 def render_workbench(service: WorkbenchService) -> None:
+    # Localhost's default developer-mode C shortcut can interfere with copying.
+    # Disable the framework's cache action and expose a distinct, confirmed one.
+    st.set_option("client.toolbarMode", "viewer")
     st.markdown(
         "<style>"
         + Path(__file__).with_name("workbench.css").read_text(encoding="utf-8")
@@ -346,7 +389,27 @@ def render_workbench(service: WorkbenchService) -> None:
             st.caption("主机配置决定 Workspace；这里不是权限切换入口。")
             st.caption("问题及相关片段可能发送给配置的模型。请勿输入密钥或敏感信息。")
             st.caption("只生成配置建议，不执行真实 WMS 写入。审批与导出仍需显式操作。")
-    if rename_target := st.session_state.get("workbench_rename_target"):
+        with st.expander("维护工具"):
+            st.caption("仅用于重新加载应用资源，不影响已保存的对话数据。")
+            st.button(
+                "清理应用缓存",
+                key="workbench_clear_cache",
+                icon=":material/refresh:",
+                shortcut=_CACHE_SHORTCUT,
+                help="Ctrl+Alt+Shift+K；Mac 使用 Cmd+Option+Shift+K。清理前必须确认。",
+                use_container_width=True,
+                disabled=not service.enabled
+                or busy
+                or bool(
+                    st.session_state.get(_CACHE_DIALOG)
+                    or st.session_state.get("workbench_rename_target")
+                    or st.session_state.get("workbench_delete_target")
+                ),
+                on_click=_open_cache_dialog,
+            )
+    if st.session_state.get(_CACHE_DIALOG):
+        _confirm_cache_clear()
+    elif rename_target := st.session_state.get("workbench_rename_target"):
         if rename_target in names:
             _rename_conversation(service, rename_target, names[rename_target])
         else:
