@@ -8,6 +8,11 @@ This is recoverable deletion: stored turns, immutable revisions, approvals,
 checkpoints, feedback and previously exported files are retained. It is not data
 erasure. No existing conversation is removed automatically.
 
+The compact icon menu closes before opening a rename or delete dialog. Rename has
+aligned cancel/save actions; delete displays the target title and requires explicit
+confirmation. Cancel/dismiss makes no data change. Only the destructive confirmation
+is emphasized in red; each conversation retains its own row actions.
+
 Rename changes an additive display-title record, not the original goal, immutable
 revision, planning requirement or approval fingerprint. Search filters sidebar rows
 without clearing the open conversation. New conversation clears the search and
@@ -34,6 +39,28 @@ notice; retries are manual, with no automatic duplicate request.
 
 The status describes processing, not hidden model reasoning. Motion is disabled
 for users with reduced-motion preferences while the status text remains visible.
+
+## Conversation language and clarification completion
+
+Chinese and English conversations default to the user's question language, even
+when source documents are English. An explicit request (e.g. “用英文回答”) overrides
+that default. Short follow-ups such as `2024.1`, `DC01` or `test` inherit the current
+language. Technical identifiers and original evidence quotes are not translated.
+QA conclusions/gaps and plan descriptions receive an explicit language instruction;
+wrong-language QA prose and wholly wrong-language plan titles/goals are rejected
+within the existing bounded structured-output repair budget, never silently shown.
+
+Every completed configuration turn persists an assistant reply: unresolved questions,
+planning outcome, blocked validation, or readiness for human review. “需要补充的信息”
+shows only current unanswered fields in a clarification pause; it is hidden while
+processing a submitted answer and removed when requirements are complete. Earlier
+clarification messages stay in history and historical revisions remain immutable.
+
+Validation-blocked replies re-enter requirement extraction, replanning, evidence
+retrieval and validation. Changed baselines still invalidate old tasks; a reply does
+not bypass that safety check, approve a draft or execute WMS changes. Budget/provider
+pauses without a graph interrupt restart against the saved baseline on a manual
+retry instead of silently replaying the previous result.
 
 ## Draft, evidence and approval
 
@@ -68,3 +95,12 @@ navigation. Updated full gate: 507 passed, 3 explicit live-test skips, coverage
 restoration, rename, search preserving the active view and workspace evidence.
 An unrelated privacy-test timestamp false positive was fixed separately via #90 / #91
 without relaxing its assertions.
+
+Issue #93 clarification/language refinements: 535 passed, 3 opt-in live-test skips,
+91.18% source coverage; lint and format checks pass. Offline release suites all pass
+(V1: 1, Agent MVP: 1, product: 68). A freshly restarted synthetic browser verifies
+menu closure, rename, delete cancellation/confirmation/restore, preservation of the
+other active conversation, immediate message/pending status, resolved-question
+removal, persisted configuration reply and workspace evidence. Separate real-provider
+checks with synthetic English evidence pass for Chinese, English and an explicit
+English override, all without repair retries. No real user history is changed by QA.

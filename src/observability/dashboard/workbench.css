@@ -44,6 +44,40 @@
 [class*="st-key-history-row-"] .stButton button:hover { background: #e8e8e9; }
 [class*="st-key-history-row-"] [data-testid="stPopover"] button { padding: 0 4px; min-height: 36px; border: 0; background: transparent; }
 [class*="st-key-history-row-"] [data-testid="stPopover"] button [data-testid="stIconMaterial"] { display: none; }
+[class*="st-key-conversation-menu-"] { min-width: 174px; }
+[class*="st-key-conversation-menu-"] [data-testid="stVerticalBlock"] { gap: 3px; }
+[class*="st-key-conversation-menu-"] button {
+  border: 0; border-radius: 8px; background: transparent; min-height: 40px;
+  justify-content: flex-start; padding: 9px 12px; box-shadow: none;
+}
+[class*="st-key-conversation-menu-"] button:hover { background: #f3f3f3; }
+[class*="st-key-conversation-menu-"] [data-testid="stIconMaterial"] { font-size: 19px; }
+[class*="st-key-conversation-menu-"] [class*="st-key-conversation-delete-"] button { color: #c13b3b; }
+[class*="st-key-conversation-menu-"] [class*="st-key-conversation-delete-"] button:hover { background: #fff1f1; }
+[data-testid="stDialog"] [role="dialog"] { border-radius: 20px; }
+.st-key-conversation-rename-dialog, .st-key-conversation-delete-dialog { padding: 4px 0 8px; }
+.st-key-conversation-delete-dialog [data-testid="stText"] {
+  background: #f6f6f6; border-radius: 12px; padding: 12px 14px;
+  overflow-wrap: anywhere; font-size: 14px;
+}
+.st-key-conversation-delete-dialog button[kind="primary"] {
+  background: #c23b3b; border-color: #c23b3b; color: #fff;
+}
+.st-key-conversation-delete-dialog button[kind="primary"]:hover {
+  background: #a82d2d; border-color: #a82d2d;
+}
+.st-key-conversation-rename-dialog button[kind*="primary"] {
+  background: #242424; border-color: #242424; color: #fff;
+}
+.st-key-conversation-rename-dialog button[kind*="primary"]:hover {
+  background: #383838; border-color: #383838;
+}
+.st-key-conversation-rename-dialog [data-testid="stTextInput"] > div:focus-within {
+  border-color: #777;
+}
+.st-key-conversation-rename-dialog button, .st-key-conversation-delete-dialog button {
+  border-radius: 10px; min-height: 42px;
+}
 [data-testid="stExpander"] { border-color: var(--chat-line); border-radius: 14px; }
 .chat-footnote { text-align: center; font-size: 12px; color: #858585; padding: 10px 0; }
 .chat-thinking { display: flex; align-items: center; gap: 12px; color: #737373; padding: 8px 0; font-size: 14px; }

@@ -11,6 +11,7 @@ from langgraph.types import interrupt
 
 from agents.budget import TurnBudgetPolicy
 from agents.contracts import IntentType, OpenQuestion, SessionStatus, stable_contract_id
+from agents.language import localized, response_language
 from agents.llm_json import StructuredLLMError
 from agents.nodes import (
     IntentClassifier,
@@ -85,6 +86,7 @@ class AgentGraphState(TypedDict, total=False):
     assistant_reply: str
     answer_evidence: list[dict[str, Any]]
     answer_status: str
+    response_language: str
 
 
 ALLOWED_TRANSITIONS = MappingProxyType(
@@ -264,7 +266,11 @@ class SupervisorGraph:
             )
             builder.add_edge("targeted_retrieval", "analyze_conflicts")
             builder.add_edge("pause_validation", "await_validation")
-            builder.add_edge("await_validation", END)
+            builder.add_conditional_edges(
+                "await_validation",
+                self._route_after_await,
+                {"continue": "extract_requirements", "end": END},
+            )
             builder.add_edge("complete_validation", END)
         return builder.compile(checkpointer=checkpointer, name="configuration-supervisor")
 
@@ -299,6 +305,7 @@ class SupervisorGraph:
                 "assistant_reply": "",
                 "answer_evidence": [],
                 "answer_status": "",
+                "response_language": _language(state),
             }
         )
         return update
@@ -307,23 +314,42 @@ class SupervisorGraph:
         entered = self.budget.enter_node(state, "knowledge")
         if not entered.allowed:
             return entered.update
-        reply = "我可以查询 WMS 配置文档或协助制定配置方案，请描述相关问题。"
+        language = _language(state)
+        reply = localized(
+            language,
+            "我可以查询 WMS 配置文档或协助制定配置方案，请描述相关问题。",
+            "I can look up WMS configuration documents or help plan a configuration. "
+            "Please describe a related question.",
+        )
         calls = 0
         answer_evidence = []
         answer_status = "no_evidence"
         if state.get("intent") == IntentType.INSPECT_DRAFT.value:
             tasks = state.get("configuration_tasks", [])
             reply = (
-                "当前还没有配置草稿。请先描述需要配置的流程。"
+                localized(
+                    language,
+                    "当前还没有配置草稿。请先描述需要配置的流程。",
+                    "There is no configuration draft yet. Describe the workflow first.",
+                )
                 if not tasks
                 else (
-                    "当前草稿任务：\n"
+                    localized(language, "当前草稿任务：\n", "Current draft tasks:\n")
                     + "\n".join(str(item.get("title", "")) for item in tasks)
-                    + "\n请在配置草稿与依赖页签查看详情；草稿不代表已批准。"
+                    + localized(
+                        language,
+                        "\n请在工作区查看详情；草稿不代表已批准。",
+                        "\nView the details in Workspace. The draft is not approved.",
+                    )
                 )
             )
         elif state.get("intent") == IntentType.ATOMIC_QUERY.value:
-            reply = "未找到足够的文档证据。请补充模块、版本或流程编码，或先导入相关文档。"
+            reply = localized(
+                language,
+                "未找到足够的文档证据。请补充模块、版本或流程编码，或先导入相关文档。",
+                "There is not enough document evidence. Specify the module, version or "
+                "process code, or import the relevant documents.",
+            )
             if self.knowledge_agent is not None:
                 try:
                     filters = self.workspace.filters({}) if self.workspace else {}
@@ -333,7 +359,10 @@ class SupervisorGraph:
                     )
                     if result.evidence_sufficient and result.evidence:
                         answer = answer_question(
-                            self.classifier.llm, state["latest_user_message"], result.evidence
+                            self.classifier.llm,
+                            state["latest_user_message"],
+                            result.evidence,
+                            language=language,
                         )
                         accounted = self.budget.account_llm(
                             state,
@@ -345,7 +374,12 @@ class SupervisorGraph:
                             return {
                                 **entered.update,
                                 **accounted.update,
-                                "assistant_reply": "本次回答达到回合预算限制，请稍后重试。",
+                                "assistant_reply": localized(
+                                    language,
+                                    "本次回答达到回合预算限制，请稍后重试。",
+                                    "The answer reached this turn's budget limit. "
+                                    "Please retry later.",
+                                ),
                             }
                         entered.update.update(accounted.update)
                         reply = answer.text
@@ -356,7 +390,12 @@ class SupervisorGraph:
                             if index in answer.cited_source_ids
                         ]
                 except WorkspaceScopeError:
-                    reply = "当前 Workspace 需要更明确的查询范围，请联系管理员选择范围。"
+                    reply = localized(
+                        language,
+                        "当前 Workspace 需要更明确的查询范围，请联系管理员选择范围。",
+                        "This workspace requires a more specific query scope. "
+                        "Contact the administrator.",
+                    )
                 except StructuredLLMError as exc:
                     answer_status = "generation_failed"
                     accounted = self.budget.account_llm(
@@ -369,13 +408,29 @@ class SupervisorGraph:
                         return {
                             **entered.update,
                             **accounted.update,
-                            "assistant_reply": "回答生成达到预算限制，未输出未经校验的结论。",
+                            "assistant_reply": localized(
+                                language,
+                                "回答生成达到预算限制，未输出未经校验的结论。",
+                                "Answer generation reached the budget limit; "
+                                "no unvalidated conclusion was returned.",
+                            ),
                         }
                     entered.update.update(accounted.update)
-                    reply = "找到了相关文档，但未能生成通过引用校验的答案；请补充问题或稍后重试。"
+                    reply = localized(
+                        language,
+                        "找到了相关文档，但未能生成通过引用和语言校验的答案；请补充问题或稍后重试。",
+                        "Relevant documents were found, but the answer failed citation or language "
+                        "validation. Clarify the question or retry later.",
+                    )
                 except Exception:
                     answer_status = "retrieval_failed"
-                    reply = "知识库查询暂时失败，请稍后重试或检查索引；本次没有生成配置结论。"
+                    reply = localized(
+                        language,
+                        "知识库查询暂时失败，请稍后重试或检查索引；本次没有生成配置结论。",
+                        "Knowledge retrieval failed. Retry later or check the index; "
+                        "no configuration "
+                        "conclusion was generated.",
+                    )
         return {
             **entered.update,
             "status": transition_status(state, SessionStatus.PAUSED),
@@ -394,6 +449,7 @@ class SupervisorGraph:
             "status": transition_status(state, SessionStatus.CREATED),
             "latest_user_message": message,
             "latest_turn_id": turn_id,
+            "response_language": response_language(message, _language(state)),
             "recent_turns": _append_recent_turn(
                 state.get("recent_turns", []), message, self.settings.max_context_turns
             ),
@@ -410,7 +466,11 @@ class SupervisorGraph:
             return entered.update
         question = OpenQuestion(
             question_id=stable_contract_id("question", {"field": "intent"}),
-            text="Are you asking a one-time question or building a complete configuration plan?",
+            text=localized(
+                _language(state),
+                "你希望查询一个配置问题，还是制定完整的配置方案？",
+                "Are you asking a one-time question or building a complete configuration plan?",
+            ),
             reason="intent_confidence_below_threshold",
         )
         return {
@@ -434,6 +494,7 @@ class SupervisorGraph:
             "status": transition_status(state, SessionStatus.CREATED),
             "latest_user_message": message,
             "latest_turn_id": turn_id,
+            "response_language": response_language(message, _language(state)),
             "recent_turns": _append_recent_turn(
                 state.get("recent_turns", []), message, self.settings.max_context_turns
             ),
@@ -454,6 +515,7 @@ class SupervisorGraph:
                 confirmed_context=dict(state.get("confirmed_context", {})),
                 recent_turns=list(state.get("recent_turns", [])),
                 requirement_summary=str(state.get("requirement_summary", "")),
+                language=_language(state),
             )
         except StructuredLLMError as exc:
             return self._structured_failure(
@@ -516,6 +578,7 @@ class SupervisorGraph:
             "status": transition_status(state, SessionStatus.COLLECTING_REQUIREMENTS),
             "latest_user_message": message,
             "latest_turn_id": turn_id,
+            "response_language": response_language(message, _language(state)),
             "recent_turns": _append_recent_turn(
                 state.get("recent_turns", []), message, self.settings.max_context_turns
             ),
@@ -546,6 +609,7 @@ class SupervisorGraph:
                 confirmed_context=dict(state.get("confirmed_context", {})),
                 assumptions=list(state.get("assumptions", [])),
                 previous_tasks=list(state.get("configuration_tasks", [])),
+                language=_language(state),
             )
         except StructuredLLMError as exc:
             return self._structured_failure(
@@ -699,12 +763,18 @@ class SupervisorGraph:
         message, turn_id = _resume_message(response)
         return {
             **entered.update,
+            "status": transition_status(state, SessionStatus.COLLECTING_REQUIREMENTS),
             "latest_user_message": message,
             "latest_turn_id": turn_id,
+            "response_language": response_language(message, _language(state)),
             "recent_turns": _append_recent_turn(
                 state.get("recent_turns", []), message, self.settings.max_context_turns
             ),
-            "next_action": "revise_requirements_or_scope",
+            "assistant_reply": "",
+            "open_questions": [],
+            "pause_reason": "",
+            "targeted_retrieval_rounds": 0,
+            "next_action": "extract_requirements",
         }
 
     def _complete_validation(self, state: AgentGraphState) -> dict[str, Any]:
@@ -806,6 +876,12 @@ def _resume_message(response: Any) -> tuple[str, str]:
     if not turn_id:
         turn_id = stable_contract_id("turn", {"message": message})
     return message, turn_id
+
+
+def _language(state: AgentGraphState) -> str:
+    return state.get("response_language") or response_language(
+        state.get("latest_user_message", state.get("user_goal", ""))
+    )
 
 
 def _append_recent_turn(

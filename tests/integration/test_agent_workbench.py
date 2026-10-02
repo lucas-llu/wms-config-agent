@@ -266,6 +266,9 @@ def test_sidebar_delete_and_restore_preserve_conversation(tmp_path):
     app = AppTest.from_function(render, args=(service,)).run()
     button(app, "删除对话").click().run()
     assert not app.exception
+    assert len(service.repository.list_sessions()) == 1
+    button(app, "确认删除").click().run()
+    assert not app.exception
     assert service.repository.list_sessions() == ()
     assert len(service.deleted_rows()) == 1
     assert not app.chat_message
@@ -285,6 +288,7 @@ def test_row_actions_and_search_preserve_other_selected_conversation(tmp_path):
     next(b for b in app.button if b.key == f"select:{selection}:session:a").click().run()
     next(b for b in app.selectbox if b.label == "查看版本").select(1).run()
     next(b for b in app.button if b.key == f"delete:{selection}:session:b").click().run()
+    button(app, "确认删除").click().run()
     assert not app.exception
     assert app.session_state[selection] == "session:a"
     assert next(b for b in app.selectbox if b.label == "查看版本").value == 1
@@ -294,6 +298,83 @@ def test_row_actions_and_search_preserve_other_selected_conversation(tmp_path):
     assert app.session_state[selection] == "session:a"
     assert len(app.chat_message) == 1
     call.assert_not_called()
+
+
+def test_delete_confirmation_cancel_and_rename_cancel_do_not_mutate(tmp_path):
+    service, call = fixture(tmp_path)
+    before = service.repository.get_session("session:a")
+    app = AppTest.from_function(render, args=(service,)).run()
+    button(app, "删除对话").click().run()
+    assert button(app, "确认删除")
+    button(app, "取消").click().run()
+    assert not app.exception
+    assert service.repository.get_session("session:a") == before
+    button(app, "重命名").click().run()
+    next(t for t in app.text_input if t.label == "对话名称").set_value("不应保存")
+    button(app, "取消").click().run()
+    assert not app.exception
+    assert service.repository.get_session("session:a") == before
+    call.assert_not_called()
+
+
+def test_clarification_completion_selects_latest_and_removes_prompt(tmp_path):
+    service, call = fixture(tmp_path)
+
+    def complete(_tool, fields):
+        assert fields["expected_revision"] == 2
+        latest = service.repository.update_revision(
+            session_id="session:a",
+            expected_revision=2,
+            actor="test",
+            reason="complete",
+            state_update={"status": "review_required", "open_questions": [], "pause_reason": ""},
+        )
+        service.repository.append_turn(
+            session_id="session:a",
+            expected_revision=latest.revision,
+            role="assistant",
+            message="需求已补齐，方案等待审查。",
+        )
+        return {"structuredContent": {"session_id": "session:a", "revision": latest.revision}}
+
+    call.side_effect = complete
+    app = AppTest.from_function(render, args=(service,)).run()
+    assert any(e.label == "需要补充的信息" for e in app.expander)
+    app.chat_input[0].set_value("站点是 DC01").run()
+    assert not app.exception
+    assert next(b for b in app.selectbox if b.label == "查看版本").value == 3
+    assert not any(e.label == "需要补充的信息" for e in app.expander)
+    assert any("需求已补齐" in m.value for m in app.markdown)
+    assert call.call_count == 1
+
+
+def test_answered_fields_and_nonclarification_pauses_hide_stale_questions(tmp_path):
+    service, _ = fixture(tmp_path)
+    repo = service.repository
+    repo.update_revision(
+        session_id="session:a",
+        expected_revision=2,
+        actor="test",
+        reason="partial",
+        state_update={
+            "pause_reason": "requirements_missing",
+            "confirmed_context": {"site": "DC01"},
+            "open_questions": [
+                {"text": "Which site?", "reason": "required_context_missing:site"},
+                {"text": "Which environment?", "reason": "required_context_missing:environment"},
+            ],
+        },
+    )
+    assert [q["text"] for q in service.view("session:a", 3)["questions"]] == ["Which environment?"]
+    repo.update_revision(
+        session_id="session:a",
+        expected_revision=3,
+        actor="test",
+        reason="timeout",
+        state_update={"pause_reason": "turn_timeout"},
+    )
+    assert service.view("session:a", 4)["questions"] == []
+    assert len(service.view("session:a", 3)["questions"]) == 1
 
 
 def test_rename_menu_targets_its_own_conversation(tmp_path):

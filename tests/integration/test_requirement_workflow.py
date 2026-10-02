@@ -6,6 +6,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from langgraph.types import Command
 
 from agents import Evidence
@@ -26,9 +27,11 @@ class ScriptedLLM:
     def __init__(self, *outputs: dict[str, object] | str, tokens: int = 19) -> None:
         self.outputs = list(outputs)
         self.tokens = tokens
+        self.messages = []
 
     def chat(self, messages, trace=None) -> ChatResponse:
-        del messages, trace
+        del trace
+        self.messages.append(messages)
         output = self.outputs.pop(0)
         content = json.dumps(output) if isinstance(output, dict) else output
         return ChatResponse(
@@ -202,7 +205,11 @@ def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
         "user",
         "assistant",
         "user",
+        "assistant",
     ]
+    assert third.state["open_questions"] == []
+    assert "2 tasks" in repository.list_turns("session:three-turn")[-1].message
+    assert "not an executable or approved" in third.state["assistant_reply"]
 
 
 def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path) -> None:
@@ -269,6 +276,147 @@ def test_completed_plan_collects_task_evidence_before_validation(tmp_path: Path)
         "complete_validation",
     } <= nodes
     assert any(item["Event"] == "checkpoint" for item in events)
+    assert "not approved" in result.state["assistant_reply"]
+    sessions = SessionRepository(settings.session_db_path).list_turns("session:knowledge")
+    assert len(sessions) == 2
+    assert sessions[-1].role == "assistant"
+
+
+def _chinese_plan() -> dict[str, object]:
+    plan = _planning_output()
+    for task in plan["tasks"]:
+        task["title"] = "确认入库范围" if task["task_key"] == "confirm_scope" else "规划预约容量"
+        task["goal"] = "核验已确认的配置需求"
+        for field in ("steps", "validation_steps", "rollback_steps", "evidence_requirements"):
+            task[field] = ["按对应文档检查并确认配置条件"]
+        task["preconditions"] = ["入库范围已确认"] if task["depends_on"] else []
+    return plan
+
+
+def test_chinese_clarification_across_restarts_produces_visible_final_reply(tmp_path):
+    settings = _settings(tmp_path / "zh")
+    llm = ScriptedLLM(*_requirement_outputs(), _chinese_plan())
+    repository = SessionRepository(settings.session_db_path)
+
+    async def turn(message, first=False):
+        runner = RequirementSessionRunner(
+            supervisor=Supervisor(
+                llm=llm, settings=settings, knowledge_adapter=FakeKnowledgeAdapter()
+            ),
+            sessions=SessionService(repository),
+        )
+        async with open_configured_checkpointer(settings) as saver:
+            if first:
+                return await runner.start(message, checkpointer=saver, session_id="session:zh")
+            return await runner.continue_session("session:zh", message, checkpointer=saver)
+
+    first = asyncio.run(turn("帮我配置一个入库预约完整方案", True))
+    assert all("？" in q["text"] for q in first.state["open_questions"])
+    second = asyncio.run(turn("2024.1"))
+    assert second.state["response_language"] == "zh"
+    assert len(second.state["open_questions"]) == 2
+    assert "产品版本" not in second.state["assistant_reply"]
+    third = asyncio.run(turn("DC01，测试环境"))
+    assert third.state["status"] == "review_required"
+    assert third.state["open_questions"] == []
+    assert "已生成 2 项配置任务" in third.state["assistant_reply"]
+    assert "尚未批准" in third.state["assistant_reply"]
+    assert [t.role for t in repository.list_turns("session:zh")] == ["user", "assistant"] * 3
+    assert repository.list_approvals("session:zh") == ()
+    assert all("Response language: Chinese" in m[0]["content"] for m in llm.messages)
+
+
+@pytest.mark.parametrize("changed_baseline", [False, True])
+def test_validation_clarification_replans_and_returns_result_without_approval(
+    tmp_path, changed_baseline
+):
+    settings = _settings(tmp_path / "validation-resume")
+    initial_context = {
+        "business_process": "Inbound appointment",
+        "modules": ["inbound", "appointment"],
+        "product_version": "2024.1",
+        "site": "DC01",
+        "environment": "test",
+    }
+    llm = ScriptedLLM(
+        {"confirmed_context": initial_context, "assumptions": [], "summary": "Complete scope"},
+        _planning_output(),
+        {
+            "confirmed_context": {"constraints": ["Use the standard flow"]}
+            if changed_baseline
+            else {},
+            "assumptions": [],
+            "summary": "Revised scope",
+        },
+        _planning_output(),
+    )
+    repository = SessionRepository(settings.session_db_path)
+
+    async def run():
+        async with open_configured_checkpointer(settings) as saver:
+            first = await RequirementSessionRunner(
+                supervisor=Supervisor(
+                    llm=llm, settings=settings, knowledge_adapter=UnsupportedKnowledgeAdapter()
+                ),
+                sessions=SessionService(repository),
+            ).start("Build a complete inbound configuration plan", checkpointer=saver)
+        assert first.state["pause_reason"] == "validation_blocked"
+        assert "validation is blocked" in first.state["assistant_reply"]
+        async with open_configured_checkpointer(settings) as saver:
+            adapter = FakeKnowledgeAdapter()
+            second = await RequirementSessionRunner(
+                supervisor=Supervisor(llm=llm, settings=settings, knowledge_adapter=adapter),
+                sessions=SessionService(repository),
+            ).continue_session(
+                first.session.session_id, "Use the standard flow", checkpointer=saver
+            )
+        return second, adapter
+
+    result, adapter = asyncio.run(run())
+    assert result.state["status"] == ("paused" if changed_baseline else "review_required")
+    assert result.state["pause_reason"] == ("validation_blocked" if changed_baseline else "")
+    assert result.state["targeted_retrieval_rounds"] == 0
+    assert result.state["confirmed_context"]["site"] == "DC01"
+    assert len(adapter.calls) == 2
+    if changed_baseline:
+        assert result.state["invalidated_task_ids"]
+        assert "validation is blocked" in result.state["assistant_reply"]
+        assert any(f["rule_id"] == "invalidated_tasks" for f in result.state["validation_findings"])
+    else:
+        assert result.state["confirmed_context"] == initial_context
+        assert "no blocking validation findings" in result.state["assistant_reply"]
+    assert len(repository.list_turns(result.session.session_id)) == 4
+    assert repository.list_approvals(result.session.session_id) == ()
+
+
+def test_noninterrupt_budget_pause_can_resume_without_replaying_old_state(tmp_path):
+    settings = _settings(tmp_path / "budget-resume", max_nodes_per_turn=1)
+    repository = SessionRepository(settings.session_db_path)
+
+    async def run():
+        async with open_configured_checkpointer(settings) as saver:
+            first = await RequirementSessionRunner(
+                supervisor=Supervisor(llm=ScriptedLLM(), settings=settings),
+                sessions=SessionService(repository),
+            ).start("Build a complete inbound configuration plan", checkpointer=saver)
+        assert not first.interrupts
+        assert "This turn paused" in first.state["assistant_reply"]
+        normal = replace(settings, max_nodes_per_turn=20)
+        async with open_configured_checkpointer(normal) as saver:
+            return await RequirementSessionRunner(
+                supervisor=Supervisor(llm=ScriptedLLM(_requirement_outputs()[0]), settings=normal),
+                sessions=SessionService(repository),
+            ).continue_session(
+                first.session.session_id,
+                "Build a complete inbound configuration plan",
+                checkpointer=saver,
+            )
+
+    result = asyncio.run(run())
+    assert result.state["pause_reason"] == "requirements_missing"
+    assert result.next_nodes == ("await_requirements",)
+    assert "please confirm" in result.state["assistant_reply"]
+    assert len(repository.list_turns(result.session.session_id)) == 4
 
 
 def test_evidence_gaps_retry_twice_then_interrupt_before_review(tmp_path: Path) -> None:

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agents.contracts import ConfigurationTask, RiskLevel
+from agents.language import language_instruction, response_language, validate_language
 from agents.llm_json import StructuredLLMError, invoke_json
 from agents.task_graph import TaskDraft, TaskGraphError, TaskPlan, build_task_plan
 from libs.llm import BaseLLM
@@ -67,7 +68,9 @@ class PlanningAgent:
         confirmed_context: dict[str, Any],
         assumptions: list[dict[str, Any]],
         previous_tasks: list[dict[str, Any]],
+        language: str = "",
     ) -> PlanningResult:
+        language = language or response_language(user_goal)
         prior_tasks = _previous_tasks(previous_tasks)
 
         def validate(payload: dict[str, Any]) -> None:
@@ -77,13 +80,16 @@ class PlanningAgent:
                 confirmed_context=confirmed_context,
                 previous_tasks=prior_tasks,
             )
+            for task in payload["tasks"]:
+                validate_language(task["title"] + " " + task["goal"], language)
 
         invocation = invoke_json(
             self.llm,
             [
                 {
                     "role": "user",
-                    "content": self.prompt.replace("{user_goal}", user_goal)
+                    "content": language_instruction(language)
+                    + self.prompt.replace("{user_goal}", user_goal)
                     .replace(
                         "{confirmed_context}",
                         json.dumps(confirmed_context, ensure_ascii=False, sort_keys=True),

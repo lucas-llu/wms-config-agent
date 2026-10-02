@@ -103,6 +103,7 @@ def _delete_conversation(service, session_id):
     if st.session_state.get(selection) == session_id:
         st.session_state[selection] = ""
     st.session_state["workbench_notice"] = "对话已移至回收站，可以恢复。"
+    _close_delete()
     st.rerun()
 
 
@@ -124,11 +125,44 @@ def _close_rename():
     st.session_state.pop("workbench_rename_target", None)
 
 
+def _close_delete():
+    st.session_state.pop("workbench_delete_target", None)
+
+
+def _open_conversation_dialog(kind, session_id, menu_key):
+    _close_rename()
+    _close_delete()
+    st.session_state[menu_key] = False
+    st.session_state[f"workbench_{kind}_target"] = session_id
+
+
+@st.dialog("删除这条对话？", on_dismiss=_close_delete)
+def _confirm_delete(service, session_id, current_title):
+    with st.container(key="conversation-delete-dialog"):
+        st.caption("对话将移至回收站，不会影响其他对话。")
+        st.text(re.sub(r"\s+", " ", current_title)[:120])
+        st.caption("你可以随时恢复。已导出的文件不会被删除。")
+        cancel, confirm = st.columns(2)
+        if cancel.button("取消", use_container_width=True):
+            _close_delete()
+            st.rerun()
+        if confirm.button("确认删除", type="primary", use_container_width=True):
+            _delete_conversation(service, session_id)
+
+
 @st.dialog("重命名对话", on_dismiss=_close_rename)
 def _rename_conversation(service, session_id, current_title):
-    with st.form(f"rename:{service.repository.workspace_id}:{session_id}"):
-        title = st.text_input("对话名称", value=current_title[:120], max_chars=120)
-        if st.form_submit_button("保存名称", type="primary"):
+    with st.container(key="conversation-rename-dialog"):
+        st.caption("取一个容易识别的名称，方便下次找到。")
+        with st.form(f"rename:{service.repository.workspace_id}:{session_id}", border=False):
+            title = st.text_input("对话名称", value=current_title[:120], max_chars=120)
+            cancel, save = st.columns(2)
+            cancelled = cancel.form_submit_button("取消", use_container_width=True)
+            saved = save.form_submit_button("保存名称", type="primary", use_container_width=True)
+        if cancelled:
+            _close_rename()
+            st.rerun()
+        if saved:
             try:
                 service.rename_conversation(session_id, title)
             except ValueError:
@@ -140,9 +174,6 @@ def _rename_conversation(service, session_id, current_title):
             st.session_state["workbench_notice"] = "对话名称已更新。"
             _close_rename()
             st.rerun()
-    if st.button("取消"):
-        _close_rename()
-        st.rerun()
 
 
 def _history_title(text):
@@ -154,6 +185,7 @@ def _render_history(service, names, visible, session_key, busy):
     current = st.session_state[session_key]
     for session_id in visible:
         identity = hashlib.sha256(session_id.encode()).hexdigest()[:12]
+        menu_key = f"menu:{session_key}:{session_id}"
         with st.container(key=f"history-row-{identity}"):
             title, actions = st.columns([5, 1], gap="small", vertical_alignment="center")
             title.button(
@@ -167,26 +199,37 @@ def _render_history(service, names, visible, session_key, busy):
                 on_click=_select_conversation,
                 args=(session_key, session_id),
             )
-            with actions.popover(
-                "⋯",
-                help="对话操作",
-                disabled=busy,
-                use_container_width=True,
-                key=f"menu:{session_key}:{session_id}",
-            ):
-                st.caption(_safe_markdown(names[session_id]))
-                if st.button(
-                    "重命名", key=f"rename-action:{session_key}:{session_id}", disabled=busy
-                ):
-                    st.session_state["workbench_rename_target"] = session_id
-                if st.button(
-                    "删除对话",
-                    key=f"delete:{session_key}:{session_id}",
-                    icon=":material/delete:",
+            with (
+                actions.popover(
+                    "⋯",
+                    help="对话操作",
                     disabled=busy,
-                    help="移到回收站，可恢复。",
-                ):
-                    _delete_conversation(service, session_id)
+                    use_container_width=True,
+                    key=menu_key,
+                    on_change="rerun",
+                ),
+                st.container(key=f"conversation-menu-{identity}"),
+            ):
+                st.button(
+                    "重命名",
+                    key=f"rename-action:{session_key}:{session_id}",
+                    icon=":material/edit:",
+                    disabled=busy,
+                    use_container_width=True,
+                    on_click=_open_conversation_dialog,
+                    args=("rename", session_id, menu_key),
+                )
+                with st.container(key=f"conversation-delete-{identity}"):
+                    st.button(
+                        "删除对话",
+                        key=f"delete:{session_key}:{session_id}",
+                        icon=":material/delete:",
+                        disabled=busy,
+                        use_container_width=True,
+                        help="移到回收站，可恢复。",
+                        on_click=_open_conversation_dialog,
+                        args=("delete", session_id, menu_key),
+                    )
 
 
 def _restore_conversation(service, session_id):
@@ -308,6 +351,11 @@ def render_workbench(service: WorkbenchService) -> None:
             _rename_conversation(service, rename_target, names[rename_target])
         else:
             _close_rename()
+    elif delete_target := st.session_state.get("workbench_delete_target"):
+        if delete_target in names:
+            _confirm_delete(service, delete_target, names[delete_target])
+        else:
+            _close_delete()
     with st.container(key="workbench_header"):
         st.title("WMS Workspace")
         st.caption("对话、证据和配置方案，在同一工作区协作。")
@@ -408,7 +456,7 @@ def render_workbench(service: WorkbenchService) -> None:
         _render_failed(workspace.workspace_id, session_id, view["turns"])
         if entry:
             indicator = _render_pending(entry)
-        if view["questions"]:
+        if view["questions"] and not entry:
             with st.expander("需要补充的信息", expanded=True):
                 for question in view["questions"]:
                     st.text(str(question.get("text", "待补充需求")))
