@@ -11,8 +11,87 @@ import streamlit as st
 from agents.repositories.feedback_repository import FEEDBACK_KINDS, REGENERATION_REASONS
 from observability.dashboard.services.workbench_service import WorkbenchService
 
+_BUSY = "workbench_busy"
+_PENDING = "workbench_pending_message"
+_FAILED = "workbench_failed_message"
+
+
+def _queue_message(key, workspace_id, session_id, revision):
+    message = st.session_state.get(key)
+    if isinstance(message, str) and message.strip() and not st.session_state.get(_BUSY):
+        st.session_state[_PENDING] = {
+            "workspace_id": workspace_id,
+            "session_id": session_id,
+            "revision": revision,
+            "message": message,
+        }
+        st.session_state[_BUSY] = True
+        st.session_state.pop(_FAILED, None)
+
+
+def _prefill_message(key, message):
+    st.session_state[key] = message
+
+
+def _render_pending(entry):
+    with st.chat_message("user"):
+        st.text(entry["message"])
+    with st.chat_message("assistant", avatar=":material/auto_awesome:"):
+        indicator = st.empty()
+        indicator.markdown(
+            '<div class="chat-thinking" role="status" aria-live="polite">'
+            '<span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>'
+            "<span>正在处理你的问题，整理证据与回答…</span></div>",
+            unsafe_allow_html=True,
+        )
+    return indicator
+
+
+def _process_message(service, entry, indicator):
+    error = None
+    result = None
+    try:
+        if entry["session_id"]:
+            result = service.act(
+                "continue", entry["session_id"], entry["revision"], message=entry["message"]
+            )
+        else:
+            result = service.start(entry["message"])
+        if result.get("isError"):
+            error = "请求未完成。请检查当前版本和输入后再重试。"
+    except Exception:
+        error = "暂时未能完成回答。请检查历史是否已保存，再重试；不会自动重复发送。"
+    finally:
+        st.session_state[_BUSY] = False
+        indicator.empty()
+    if error:
+        st.session_state[_FAILED] = {**entry, "error": error}
+    else:
+        _select_result(result)
+    st.rerun()
+
+
+def _select_result(result):
+    payload = result.get("structuredContent", {})
+    if payload.get("session_id") and isinstance(payload.get("revision"), int):
+        st.session_state["workbench_target"] = (payload["session_id"], payload["revision"])
+    st.session_state["workbench_notice"] = "操作完成，已显示返回的会话版本。"
+
+
+def _render_failed(workspace_id, session_id, turns):
+    failed = st.session_state.get(_FAILED)
+    if failed and (failed["workspace_id"], failed["session_id"]) == (workspace_id, session_id):
+        if not turns or turns[-1]["role"] != "user" or turns[-1]["message"] != failed["message"]:
+            with st.chat_message("user"):
+                st.text(failed["message"])
+        with st.chat_message("assistant", avatar=":material/auto_awesome:"):
+            st.error(failed["error"])
+
 
 def _submit(operation, *, refresh=True):
+    if st.session_state.get(_BUSY):
+        st.info("请等待当前回答完成。")
+        return
     try:
         with st.spinner("正在检索资料并整理回答，请稍候…"):
             result = operation()
@@ -23,10 +102,7 @@ def _submit(operation, *, refresh=True):
         st.error("请求被服务端拒绝。请刷新并检查版本、审批条件及输入。")
         return
     if refresh:
-        payload = result.get("structuredContent", {})
-        if payload.get("session_id") and isinstance(payload.get("revision"), int):
-            st.session_state["workbench_target"] = (payload["session_id"], payload["revision"])
-        st.session_state["workbench_notice"] = "操作完成，已显示返回的会话版本。"
+        _select_result(result)
         st.rerun()
     else:
         st.dataframe(result["structuredContent"].get("signals", []), hide_index=True)
@@ -57,6 +133,7 @@ def render_workbench(service: WorkbenchService) -> None:
         unsafe_allow_html=True,
     )
     workspace = service.repository.workspace
+    busy = bool(st.session_state.get(_BUSY))
     rows = service.list_rows()
     names = {row["Session"]: row["Goal"] for row in rows}
     session_key = f"workbench_session:{workspace.workspace_id}"
@@ -70,10 +147,15 @@ def render_workbench(service: WorkbenchService) -> None:
         st.markdown("### ◈ WMS Assistant")
         st.caption("知识问答 · 配置协作")
         if st.button(
-            "＋ 新对话", use_container_width=True, type="primary", disabled=not service.enabled
+            "＋ 新对话",
+            use_container_width=True,
+            type="primary",
+            disabled=not service.enabled or busy,
         ):
             st.session_state[session_key] = ""
-        search = st.text_input("搜索会话", placeholder="搜索历史对话", key="chat_history_search")
+        search = st.text_input(
+            "搜索会话", placeholder="搜索历史对话", key="chat_history_search", disabled=busy
+        )
         visible = [key for key in names if search.casefold() in names[key].casefold()]
         if st.session_state[session_key] not in visible:
             st.session_state[session_key] = ""
@@ -84,6 +166,7 @@ def render_workbench(service: WorkbenchService) -> None:
             key=session_key,
             format_func=lambda key: "新对话" if not key else (re.sub(r"\s+", " ", names[key])[:52]),
             label_visibility="collapsed",
+            disabled=busy,
         )
         if not rows:
             st.caption("暂无会话，发送第一条消息开始。")
@@ -105,13 +188,26 @@ def render_workbench(service: WorkbenchService) -> None:
     if not service.enabled:
         st.info("Agent 未启用：仅可查看已保存会话。")
     if not session_id:
+        composer_key = f"new_message:{workspace.workspace_id}"
+        st.chat_input(
+            "询问 WMS 问题，或描述你的配置目标…",
+            key=composer_key,
+            disabled=not service.enabled or busy,
+            on_submit=_queue_message,
+            args=(composer_key, workspace.workspace_id, "", None),
+        )
+        entry = st.session_state.pop(_PENDING, None)
+        if entry:
+            indicator = _render_pending(entry)
+            _process_message(service, entry, indicator)
+            return
+        _render_failed(workspace.workspace_id, "", [])
         st.markdown(
             '<div class="welcome"><div class="welcome-symbol">✦</div>'
             "<h2>今天想解决什么 WMS 问题？</h2>"
             "<p>查询配置、核对证据，或一起规划一个完整方案。</p></div>",
             unsafe_allow_html=True,
         )
-        composer_key = f"new_message:{workspace.workspace_id}"
         with st.container(key="suggestions"):
             prompts = [
                 ("查一个配置", "如何配置 trolley picking？请给出依据。"),
@@ -119,16 +215,17 @@ def render_workbench(service: WorkbenchService) -> None:
                 ("规划一个流程", "帮我规划一个入库收货流程，请先确认所需条件。"),
             ]
             for column, (label, prompt) in zip(st.columns(3), prompts, strict=True):
-                if column.button(label, use_container_width=True, disabled=not service.enabled):
-                    st.session_state[composer_key] = prompt
+                column.button(
+                    label,
+                    use_container_width=True,
+                    disabled=not service.enabled or busy,
+                    on_click=_prefill_message,
+                    args=(composer_key, prompt),
+                )
         st.markdown(
             '<div class="chat-footnote">回答基于文档证据，重要配置请人工核验。</div>',
             unsafe_allow_html=True,
         )
-        if message := st.chat_input(
-            "询问 WMS 问题，或描述你的配置目标…", key=composer_key, disabled=not service.enabled
-        ):
-            _submit(lambda: service.start(message))
         return
     revisions = service.repository.list_revisions(session_id)
     with st.sidebar:
@@ -136,13 +233,22 @@ def render_workbench(service: WorkbenchService) -> None:
             "查看版本",
             [item.revision for item in reversed(revisions)],
             key=f"revision:{workspace.workspace_id}:{session_id}",
+            disabled=busy,
         )
     view = service.view(session_id, revision)
     st.caption(f"版本 {revision} · {view['status']} · {view['next_step']}")
     historical = revision != view["current_revision"]
     if historical:
         st.warning("正在查看历史版本：对话、验证、审批与导出已禁用。")
-    disabled = not service.enabled or historical
+    disabled = not service.enabled or historical or busy
+    composer_key = f"message:{workspace.workspace_id}:{session_id}:{revision}"
+    st.chat_input(
+        "继续提问，或补充配置需求…",
+        key=composer_key,
+        disabled=disabled or view["status"] != "paused",
+        on_submit=_queue_message,
+        args=(composer_key, workspace.workspace_id, session_id, revision),
+    )
     for turn in view["turns"]:
         with st.chat_message(
             turn["role"], avatar=":material/auto_awesome:" if turn["role"] == "assistant" else None
@@ -153,6 +259,12 @@ def render_workbench(service: WorkbenchService) -> None:
                 st.markdown(_safe_markdown(turn["message"]))
     if not view["turns"]:
         st.info("这个版本还没有对话记录。")
+    _render_failed(workspace.workspace_id, session_id, view["turns"])
+    entry = st.session_state.pop(_PENDING, None)
+    if entry:
+        indicator = _render_pending(entry)
+        _process_message(service, entry, indicator)
+        return
     if view["questions"]:
         with st.expander("需要补充的信息", expanded=True):
             for question in view["questions"]:
@@ -163,12 +275,6 @@ def render_workbench(service: WorkbenchService) -> None:
         '<div class="chat-footnote">AI 回答可能存在错误，请结合引用核验。不会自动写入 WMS。</div>',
         unsafe_allow_html=True,
     )
-    if message := st.chat_input(
-        "继续提问，或补充配置需求…",
-        key=f"message:{workspace.workspace_id}:{session_id}:{revision}",
-        disabled=disabled or view["status"] != "paused",
-    ):
-        _submit(lambda: service.act("continue", session_id, revision, message=message))
 
 
 def _render_details(service, session_id, revision, view, disabled):
@@ -179,7 +285,11 @@ def _render_details(service, session_id, revision, view, disabled):
         st.subheader("已确认上下文")
         _text_values(view["context"])
         if not view["tasks"]:
-            st.info("需求尚未形成配置草稿。")
+            st.info(
+                "这轮是知识问答，尚未生成配置草稿。描述完整配置目标后，可进入方案规划。"
+                if view["is_question"]
+                else "需求尚未形成配置草稿。请继续补充配置条件。"
+            )
         else:
             st.graphviz_chart(view["dag"])
         for task in view["tasks"]:
@@ -197,10 +307,23 @@ def _render_details(service, session_id, revision, view, disabled):
                     st.text(label)
                     _text_values(task.get(field) or "尚未提供")
     with evidence:
-        if not view["evidence"]:
-            st.warning("暂无可核验引用；不能将草稿视为已验证配置。")
-        for item in view["evidence"]:
-            with st.expander(str(item["evidence_id"]), expanded=True):
+        if view["answer_evidence"]:
+            st.subheader("本次回答的引用")
+        elif view["legacy_answer_evidence"]:
+            st.info("这条历史回答尚未保存结构化引用。重新提问后可在这里查看对应证据。")
+        elif view["is_question"]:
+            st.info("本轮尚未形成通过校验的引用，回答中的证据缺口仍需补充。")
+        if view["evidence"]:
+            st.subheader("配置任务的证据")
+        elif not view["is_question"]:
+            st.info("尚无配置任务证据；请先完成需求与规划，再检查证据覆盖。")
+        for item in [*view["answer_evidence"], *view["evidence"]]:
+            title = (
+                f"[{item['citation_index']}] {item['source']}"
+                if item.get("citation_index")
+                else str(item["evidence_id"])
+            )
+            with st.expander(title, expanded=True):
                 st.text(f"来源：{item['source']} · 页码：{item['page_start'] or '未知'}")
                 st.text(f"文档版本：{item['product_version'] or '未知'}")
                 st.text(item["excerpt"])
@@ -210,11 +333,15 @@ def _render_details(service, session_id, revision, view, disabled):
             for gap in binding.get("gap_reasons", []):
                 st.warning(str(gap))
     with review:
+        if not view["tasks"]:
+            st.info(
+                "当前没有配置草稿可审查。普通问答无需审批；生成草稿并通过验证后才能批准和导出。"
+            )
         for finding in [*view["conflicts"], *view["findings"]]:
             _text_values(finding)
         st.dataframe(view["approvals"], hide_index=True)
         terminal = view["status"] in {"approved", "rejected", "cancelled"}
-        if st.button("验证草稿", disabled=disabled or terminal):
+        if st.button("验证草稿", disabled=disabled or terminal or not view["tasks"]):
             _submit(lambda: service.act("validate", session_id, revision))
         with st.form(f"review:{session_id}:{revision}"):
             decision = st.selectbox("审查决定", ["revise", "reject", "approve"])
