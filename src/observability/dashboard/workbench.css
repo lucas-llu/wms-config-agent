@@ -17,9 +17,9 @@ section[data-testid="stSidebar"] > div:first-child {
 }
 
 .stMainBlockContainer {
-  max-width: 780px;
-  padding-top: 1.6rem;
-  padding-bottom: 2rem;
+  max-width: 800px;
+  padding-top: 2rem;
+  padding-bottom: 2.75rem;
 }
 
 /* ---------- sidebar: brand ---------- */
@@ -155,9 +155,9 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 
 /* ---------- page header ---------- */
 .st-key-workbench_header {
-  padding: 2px 4px 12px;
+  padding: 2px 4px 18px;
   border-bottom: 1px solid var(--ui-line);
-  margin-bottom: 8px;
+  margin-bottom: 14px;
 }
 .st-key-workbench_header h1 {
   font-size: 1.125rem;
@@ -204,7 +204,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 
 /* ---------- suggestion cards ---------- */
 .st-key-suggestions [data-testid="stHorizontalBlock"] {
-  gap: 12px;
+  gap: 18px;
 }
 .st-key-suggestions .stButton button {
   display: flex;
@@ -214,8 +214,8 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
   border: 1px solid var(--ui-line);
   border-radius: 15px;
   background: var(--ui-bg);
-  padding: 15px 16px;
-  min-height: 86px;
+  padding: 19px 20px;
+  min-height: 100px;
   text-align: left;
   font-weight: 560;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -239,17 +239,17 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 /* ---------- chat transcript ---------- */
 [data-testid="stChatMessage"] {
   background: transparent;
-  padding: 0.85rem 0;
+  padding: 1.25rem 0;
   border-radius: 0;
   gap: 14px;
 }
 [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
-  line-height: 1.75;
+  line-height: 1.85;
   font-size: 0.9375rem;
 }
 [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] li {
-  margin: 0.3em 0;
-  line-height: 1.7;
+  margin: 0.55em 0;
+  line-height: 1.8;
 }
 [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] h3 {
   font-size: 1.05rem;
@@ -303,7 +303,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
   background: #efefef;
   border-radius: 22px;
-  padding: 11px 19px;
+  padding: 15px 22px;
   margin-left: auto;
   width: fit-content;
   max-width: 82%;
@@ -321,35 +321,57 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 }
 [data-testid="stBottomBlockContainer"] {
   max-width: 800px;
-  padding-top: 10px;
-  padding-bottom: 18px;
+  padding-top: 18px;
+  padding-bottom: 24px;
 }
 [data-testid="stChatInput"] {
   border-radius: 28px;
-  border: 1px solid #dcdcdc;
-  background: var(--ui-bg);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  border: 1px solid #dedede;
+  background: var(--ui-fill);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 [data-testid="stChatInput"]:focus-within {
-  border-color: var(--ui-ink);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  border-color: #929292;
+  box-shadow: 0 0 0 3px rgba(13, 13, 13, 0.045), 0 4px 18px rgba(0, 0, 0, 0.04);
+}
+/* The native inner surface also draws a focus border. Only the outer pill owns it. */
+[data-testid="stChatInput"] > div:first-child {
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none;
+  padding: 14px 18px;
 }
 [data-testid="stChatInput"] textarea {
-  min-height: 52px;
+  min-height: 56px;
   font-size: 0.9375rem;
+  line-height: 1.7;
+  background: transparent;
+  outline: none;
 }
-[data-testid="stChatInputSubmitButton"] button {
+[data-testid="stChatInputSubmitButton"] {
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--ui-ink);
   color: #ffffff;
   border: 0;
 }
-[data-testid="stChatInputSubmitButton"] button:hover {
+[data-testid="stChatInputSubmitButton"]:hover {
   background: #2c2c2c;
 }
-[data-testid="stChatInputSubmitButton"] button:disabled {
+[data-testid="stChatInputSubmitButton"]:disabled {
   background: var(--ui-fill);
   color: var(--ui-gray-400);
+}
+[data-testid="stChatInputSubmitButton"]:focus-visible {
+  outline: 2px solid #737373;
+  outline-offset: 3px;
+}
+[data-testid="stChatInput"]:has(textarea:disabled) {
+  border-color: var(--ui-line);
+  box-shadow: none;
 }
 
 /* ---------- footnote ---------- */
@@ -357,7 +379,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
   text-align: center;
   font-size: 0.75rem;
   color: var(--ui-gray-400);
-  padding: 10px 0 2px;
+  padding: 18px 0 12px;
 }
 
 /* ---------- thinking indicator ---------- */
