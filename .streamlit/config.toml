@@ -1,0 +1,4 @@
+[client]
+# Apply before the first browser session: the legacy developer C shortcut must
+# not interfere with copying. Cache maintenance uses the workbench's own button.
+toolbarMode = "viewer"

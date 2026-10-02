@@ -50,7 +50,29 @@ class WorkbenchService(AgentSessionService):
                 else _NEXT.get(record.status.value, "处理中；刷新查看最新版本。")
             ),
             "context": state.get("confirmed_context", {}),
-            "questions": state.get("open_questions", []),
+            "is_question": state.get("intent") == "atomic_query",
+            "answer_status": state.get("answer_status", ""),
+            "legacy_answer_evidence": state.get("intent") == "atomic_query"
+            and "answer_evidence" not in state,
+            "answer_evidence": [
+                {
+                    **{
+                        key: item.get(key)
+                        for key in (
+                            "evidence_id",
+                            "excerpt",
+                            "page_start",
+                            "page_end",
+                            "product_version",
+                            "module",
+                            "citation_index",
+                        )
+                    },
+                    "source": safe_source(item.get("source")),
+                }
+                for item in state.get("answer_evidence", [])
+            ],
+            "questions": _pending_questions(state, record.status.value),
             "tasks": tasks,
             "dag": task_graph(tasks, state.get("dependency_edges", [])),
             "evidence": [
@@ -93,6 +115,26 @@ class WorkbenchService(AgentSessionService):
         if not self.enabled or not goal.strip():
             raise ValueError("Agent must be enabled and a goal supplied")
         return self.call_tool("start_configuration_session", {"goal": goal})
+
+    def delete_conversation(self, session_id: str) -> None:
+        self.repository.delete_session(session_id)
+
+    def rename_conversation(self, session_id: str, title: str) -> None:
+        self.repository.rename_session(session_id, title)
+
+    def deleted_rows(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "session_id": item.session_id,
+                "goal": item.display_title or item.goal,
+                "revision": item.current_revision,
+            }
+            for item in self.repository.list_deleted_sessions()
+        ]
+
+    def restore_conversation(self, session_id: str) -> tuple[str, int]:
+        item = self.repository.restore_session(session_id)
+        return item.session_id, item.current_revision
 
     def act(self, action: str, session_id: str, revision: int, **fields) -> dict[str, Any]:
         if not self.enabled or action not in _TOOLS:
@@ -139,3 +181,21 @@ def safe_source(value: Any) -> str:
     if path.drive or path.root or ".." in path.parts or ":" in value:
         return "本地来源路径已隐藏"
     return value
+
+
+def _pending_questions(state: dict[str, Any], status: str) -> list[dict[str, Any]]:
+    if status != "paused" or state.get("pause_reason", "") not in {
+        "",
+        "requirements_missing",
+        "intent_clarification",
+    }:
+        return []
+    context = state.get("confirmed_context", {})
+    return [
+        item
+        for item in state.get("open_questions", [])
+        if not (
+            str(item.get("reason", "")).startswith("required_context_missing:")
+            and context.get(str(item["reason"]).split(":", 1)[1])
+        )
+    ]

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agents.contracts import Assumption, OpenQuestion, stable_contract_id
+from agents.language import language_instruction, response_language
 from agents.llm_json import StructuredLLMError, invoke_json
 from libs.llm import BaseLLM
 
@@ -22,6 +23,13 @@ _QUESTIONS = {
     "product_version": "Which product version is the target environment running?",
     "site": "Which warehouse or site will use this configuration?",
     "environment": "Which environment is targeted (development, test, or production)?",
+}
+_ZH_QUESTIONS = {
+    "business_process": "这个配置要支持哪一个 WMS 业务流程？",
+    "modules": "此次配置涉及哪些 WMS/JDA 模块？",
+    "product_version": "目标环境使用的产品版本是什么？",
+    "site": "这个配置用于哪个仓库或站点？",
+    "environment": "目标是开发、测试还是生产环境？",
 }
 
 
@@ -59,13 +67,16 @@ class RequirementAgent:
         confirmed_context: dict[str, Any],
         recent_turns: list[dict[str, str]],
         requirement_summary: str = "",
+        language: str = "",
     ) -> RequirementExtraction:
+        language = language or response_language(user_message)
         invocation = invoke_json(
             self.llm,
             [
                 {
                     "role": "user",
-                    "content": self.prompt.replace(
+                    "content": language_instruction(language)
+                    + self.prompt.replace(
                         "{confirmed_context}",
                         json.dumps(confirmed_context, ensure_ascii=False, sort_keys=True),
                     )
@@ -84,7 +95,7 @@ class RequirementAgent:
                 raise ValueError("confirmed_context must be a JSON object")
             merged = _merge_confirmed_context(confirmed_context, extracted)
             assumptions = _assumptions(payload.get("assumptions", []), turn_id)
-            questions = _missing_questions(merged, self.max_questions)
+            questions = _missing_questions(merged, self.max_questions, language)
             summary_value = payload.get("summary")
             summary = (
                 summary_value.strip()
@@ -161,7 +172,9 @@ def _assumptions(values: Any, turn_id: str) -> tuple[Assumption, ...]:
     )
 
 
-def _missing_questions(context: dict[str, Any], max_questions: int) -> tuple[OpenQuestion, ...]:
+def _missing_questions(
+    context: dict[str, Any], max_questions: int, language: str = "en"
+) -> tuple[OpenQuestion, ...]:
     missing: list[str] = []
     for field in _REQUIRED_FIELDS:
         value = context.get(field)
@@ -170,7 +183,7 @@ def _missing_questions(context: dict[str, Any], max_questions: int) -> tuple[Ope
     return tuple(
         OpenQuestion(
             question_id=stable_contract_id("question", {"field": field}),
-            text=_QUESTIONS[field],
+            text=(_ZH_QUESTIONS if language == "zh" else _QUESTIONS)[field],
             reason=f"required_context_missing:{field}",
         )
         for field in missing[:max_questions]

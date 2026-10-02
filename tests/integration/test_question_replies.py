@@ -16,11 +16,11 @@ from core.settings import load_settings
 from libs.llm import ChatResponse
 
 
-@pytest.mark.parametrize("mode", ["evidence", "empty", "failure"])
+@pytest.mark.parametrize("mode", ["evidence", "empty", "failure", "evidence_then_empty"])
 def test_questions_produce_persisted_reply_and_resume(tmp_path, mode):
     class NoLLM:
         def chat(self, *args, **kwargs):
-            assert mode == "evidence"
+            assert mode in {"evidence", "evidence_then_empty"}
             return ChatResponse(
                 json.dumps(
                     {
@@ -55,8 +55,9 @@ def test_questions_produce_persisted_reply_and_resume(tmp_path, mode):
                     page_start=2,
                 ),
             )
+            supported = mode == "evidence" or (mode == "evidence_then_empty" and self.calls == 1)
             return KnowledgeSearchResult(
-                query, filters, evidence if mode == "evidence" else (), mode == "evidence", ()
+                query, filters, evidence if supported else (), supported, ()
             )
 
     settings = replace(load_settings().agent, checkpoint_path=tmp_path / "graph.db")
@@ -92,4 +93,12 @@ def test_questions_produce_persisted_reply_and_resume(tmp_path, mode):
         assert all(
             "manual.pdf" in reply and "Synthetic receiving rule" in reply for reply in replies
         )
+        citations = repository.get_revision(result.session.session_id).state["answer_evidence"]
+        assert citations[0]["citation_index"] == 1
+        assert citations[0]["source"] == "manual.pdf"
+        assert result.state.get("evidence_registry", []) == []
+    else:
+        assert result.state["answer_evidence"] == []
+    if mode == "evidence_then_empty":
+        assert repository.get_revision(result.session.session_id, 2).state["answer_evidence"]
     assert repository.list_approvals(result.session.session_id) == ()

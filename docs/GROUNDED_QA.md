@@ -12,6 +12,12 @@ mechanical citation checks, not a proof of semantic entailment. Business review 
 still required. Empty or invalid answers produce explicit failure/gap messages,
 not fabricated instructions or an unlabelled fallback to raw excerpts.
 
+Issue #93 adds a conversation language policy: Chinese/English answers follow the
+user's question by default, or an explicit requested output language. Claims, gap
+explanations and headings use that language. Original quoted evidence and technical
+field names remain unchanged. Wholly wrong-language prose is rejected within the
+existing one-repair limit; this is a script-level check, not full linguistic grading.
+
 The model must distinguish entity scope, examples from requirements and tracking
 from RF scan confirmation. It must explain evidence gaps when the actual setting
 is unavailable. Only cited sources appear in the answer. Image placeholder hashes
