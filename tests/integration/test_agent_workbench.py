@@ -18,6 +18,16 @@ def render(service):
     render_workbench(service)
 
 
+@pytest.fixture(autouse=True)
+def local_workbench_host(monkeypatch):
+    import streamlit as st
+
+    original = st.get_option
+    monkeypatch.setattr(
+        st, "get_option", lambda name: "127.0.0.1" if name == "server.address" else original(name)
+    )
+
+
 def fixture(tmp_path, *, status="paused", enabled=True):
     repo = SessionRepository(tmp_path / "sessions.db")
     repo.create_session(
@@ -268,6 +278,29 @@ def test_cache_maintenance_disabled_during_processing_and_other_dialogs(tmp_path
     button(app, "重命名").click().run()
     assert not app.exception
     assert button(app, "清理应用缓存").disabled
+
+
+@pytest.mark.parametrize("address", [None, "0.0.0.0", "::", "192.168.1.10"])
+def test_cache_maintenance_is_not_exposed_on_remote_capable_hosts(tmp_path, monkeypatch, address):
+    import streamlit as st
+
+    original = st.get_option
+    monkeypatch.setattr(
+        st, "get_option", lambda name: address if name == "server.address" else original(name)
+    )
+    data_clear, resource_clear = Mock(), Mock()
+    monkeypatch.setattr(st.cache_data, "clear", data_clear)
+    monkeypatch.setattr(st.cache_resource, "clear", resource_clear)
+    service, call = fixture(tmp_path)
+    app = AppTest.from_function(render, args=(service,)).run()
+    assert not app.exception
+    assert button(app, "清理应用缓存").disabled
+    app.session_state["workbench_cache_dialog"] = True
+    app.run()
+    assert not any(b.label == "确认清理缓存" for b in app.button)
+    data_clear.assert_not_called()
+    resource_clear.assert_not_called()
+    call.assert_not_called()
 
 
 def test_cache_maintenance_failure_is_generic_and_retry_is_explicit(tmp_path, monkeypatch):

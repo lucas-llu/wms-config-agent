@@ -135,8 +135,14 @@ def _close_cache_dialog():
     st.session_state.pop(_CACHE_DIALOG, None)
 
 
+def _local_maintenance_enabled():
+    # Viewer mode is a UX setting, not authorization. Do not expose global cache
+    # maintenance when this instance may accept remote browser connections.
+    return st.get_option("server.address") in {"127.0.0.1", "::1", "localhost"}
+
+
 def _open_cache_dialog():
-    if not (
+    if _local_maintenance_enabled() and not (
         st.session_state.get(_BUSY)
         or st.session_state.get("workbench_rename_target")
         or st.session_state.get("workbench_delete_target")
@@ -156,7 +162,9 @@ def _confirm_cache_clear():
         _close_cache_dialog()
         st.rerun()
     if confirm.button(
-        "确认清理缓存", use_container_width=True, disabled=bool(st.session_state.get(_BUSY))
+        "确认清理缓存",
+        use_container_width=True,
+        disabled=bool(st.session_state.get(_BUSY)) or not _local_maintenance_enabled(),
     ):
         try:
             st.cache_data.clear()
@@ -399,6 +407,7 @@ def render_workbench(service: WorkbenchService) -> None:
                 help="Ctrl+Alt+Shift+K；Mac 使用 Cmd+Option+Shift+K。清理前必须确认。",
                 use_container_width=True,
                 disabled=not service.enabled
+                or not _local_maintenance_enabled()
                 or busy
                 or bool(
                     st.session_state.get(_CACHE_DIALOG)
@@ -407,6 +416,10 @@ def render_workbench(service: WorkbenchService) -> None:
                 ),
                 on_click=_open_cache_dialog,
             )
+    if st.session_state.get(_CACHE_DIALOG) and (
+        not service.enabled or not _local_maintenance_enabled()
+    ):
+        _close_cache_dialog()
     if st.session_state.get(_CACHE_DIALOG):
         _confirm_cache_clear()
     elif rename_target := st.session_state.get("workbench_rename_target"):

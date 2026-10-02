@@ -81,6 +81,11 @@ does not clear anything. Resource initialization may run again afterward. Persis
 conversations, corpus indexes and exports are not deleted. The shortcut is disabled
 while processing or another management dialog is open, and in read-only Agent mode.
 This is local-instance maintenance, not a per-workspace data-erasure operation.
+It is enabled only when `server.address` explicitly binds the instance to
+`127.0.0.1`, `::1` or `localhost`. Unspecified/all-interface/remote-capable bindings
+and read-only hosts cannot perform it, even with a stale dialog state. Viewer mode
+alone is not authorization; remotely deployed workbenches do not gain this global
+maintenance operation.
 
 The native button shortcut requires Streamlit 1.62 or newer, now reflected in the
 declared dependency minimum. No JavaScript shortcut interceptor or dependency-source
@@ -129,11 +134,11 @@ removal, persisted configuration reply and workspace evidence. Separate real-pro
 checks with synthetic English evidence pass for Chinese, English and an explicit
 English override, all without repair retries. No real user history is changed by QA.
 
-Issue #95 cache/copy refinement: 539 passed, 3 explicit live-test skips, 91.21%
-source coverage; targeted workbench suite 26 passed. Lint/format and offline release
-gates (V1: 1 / Agent MVP: 1 / product: 72) pass. A cold-start synthetic Chrome check
+Issue #95 cache/copy refinement: 543 passed, 3 explicit live-test skips, 91.18%
+source coverage; workbench suite 30 cases passed in the full run. Lint/format and offline release
+gates (V1: 1 / Agent MVP: 1 / product: 76) pass. A cold-start synthetic Chrome check
 verifies the native copy event (without overwriting the system clipboard), ordinary
 `C` and input copy without a dialog, the replacement shortcut from a collapsed
-maintenance section, cancel, explicit clearing and preservation of unsent input.
+maintenance section, cancel, explicit clearing and preservation of unsent input and history.
 No real service cache is cleared during QA. Restart an already-running server and
 refresh its page after installing this startup-configuration change.
