@@ -83,3 +83,25 @@ def test_evidence_gap_does_not_dump_unrelated_excerpts():
 
 def test_image_markers_removed_before_generation():
     assert clean_excerpt("before [IMAGE: abc_1_1] after") == "before after"
+
+
+def test_chinese_question_rejects_english_answer_but_preserves_original_quote():
+    english = payload()
+    english["gap"] = "Confirm the version."
+    english["claims"][0]["text"] = "Set LPN Tracked to No for the slot."
+    llm = FakeLLM(english)
+    with pytest.raises(StructuredLLMError):
+        answer_question(llm, "如何不跟踪 slot ID？", evidence())
+    assert llm.calls == 2
+    chinese = answer_question(FakeLLM(payload()), "如何不跟踪 slot ID？", evidence())
+    assert "原文：For the SLOT handling unit" in chinese.text
+
+
+def test_english_answer_and_explicit_language_override_use_matching_labels():
+    value = payload()
+    value["gap"] = "Confirm the version."
+    value["claims"][0]["text"] = "The slot handling unit uses LPN Tracked = No."
+    result = answer_question(FakeLLM(value), "请用英文回答如何设置 slot？", evidence())
+    assert result.text.startswith("Conclusion")
+    assert "Page: 6" in result.text and "Quote:" in result.text
+    assert "结论" not in result.text and "需要确认" not in result.text

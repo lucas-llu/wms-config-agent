@@ -72,7 +72,7 @@ class WorkbenchService(AgentSessionService):
                 }
                 for item in state.get("answer_evidence", [])
             ],
-            "questions": state.get("open_questions", []),
+            "questions": _pending_questions(state, record.status.value),
             "tasks": tasks,
             "dag": task_graph(tasks, state.get("dependency_edges", [])),
             "evidence": [
@@ -181,3 +181,21 @@ def safe_source(value: Any) -> str:
     if path.drive or path.root or ".." in path.parts or ":" in value:
         return "本地来源路径已隐藏"
     return value
+
+
+def _pending_questions(state: dict[str, Any], status: str) -> list[dict[str, Any]]:
+    if status != "paused" or state.get("pause_reason", "") not in {
+        "",
+        "requirements_missing",
+        "intent_clarification",
+    }:
+        return []
+    context = state.get("confirmed_context", {})
+    return [
+        item
+        for item in state.get("open_questions", [])
+        if not (
+            str(item.get("reason", "")).startswith("required_context_missing:")
+            and context.get(str(item["reason"]).split(":", 1)[1])
+        )
+    ]

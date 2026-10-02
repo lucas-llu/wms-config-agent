@@ -66,6 +66,16 @@ def _agent(llm: ScriptedLLM) -> PlanningAgent:
     )
 
 
+def test_chinese_plan_rejects_english_user_facing_task_titles():
+    llm = ScriptedLLM(_valid_output(), _valid_output(), _valid_output())
+    with pytest.raises(StructuredLLMError):
+        _agent(llm).plan(
+            user_goal="帮我配置入库方案", confirmed_context={}, assumptions=[], previous_tasks=[]
+        )
+    assert len(llm.messages) == 3
+    assert "Response language: Chinese" in llm.messages[0][0]["content"]
+
+
 def test_planning_agent_builds_validated_dag_and_includes_template_prior() -> None:
     llm = ScriptedLLM(_valid_output())
 

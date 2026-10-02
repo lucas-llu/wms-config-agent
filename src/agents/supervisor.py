@@ -11,7 +11,9 @@ from langgraph.types import Command
 
 from agents.budget import TurnBudgetPolicy
 from agents.graph import AgentGraphState, SupervisorGraph
+from agents.language import response_language
 from agents.nodes import IntentClassifier, KnowledgeAgent, PlanningAgent, RequirementAgent
+from agents.replies import workflow_reply
 from agents.repositories import RevisionRecord, SessionRecord
 from agents.runtime import session_checkpoint_config
 from agents.services import SessionService, ValidationService
@@ -122,6 +124,7 @@ class RequirementSessionRunner:
             "status": session.status.value,
             "user_goal": user_message,
             "latest_user_message": user_message,
+            "response_language": response_language(user_message),
             "latest_turn_id": turn.turn_id,
             "recent_turns": [{"role": "user", "content": user_message}],
             "confirmed_context": {},
@@ -163,10 +166,17 @@ class RequirementSessionRunner:
         )
         graph = self.supervisor.compile(checkpointer)
         config = session_checkpoint_config(session_id)
+        snapshot = await graph.aget_state(config)
+        language = response_language(
+            user_message,
+            str(snapshot.values.get("response_language") or response_language(session.goal)),
+        )
         command = Command(
             resume={"message": user_message, "turn_id": turn.turn_id},
             update={
                 "revision": session.current_revision,
+                "response_language": language,
+                "assistant_reply": "",
                 "nodes_executed": 0,
                 "retry_count": 0,
                 "tokens_used": 0,
@@ -174,6 +184,22 @@ class RequirementSessionRunner:
                 "turn_deadline_epoch": self.clock() + self.supervisor.settings.turn_timeout_seconds,
             },
         )
+        # Budget/provider pauses can reach END without an interrupt. A resume alone
+        # then does no work; restart with the saved baseline, never replay the old reply.
+        if not snapshot.interrupts:
+            command = {
+                **snapshot.values,
+                **command.update,
+                "status": "created",
+                "latest_user_message": user_message,
+                "latest_turn_id": turn.turn_id,
+                "recent_turns": [
+                    *snapshot.values.get("recent_turns", []),
+                    {"role": "user", "content": user_message},
+                ][-self.supervisor.settings.max_context_turns :],
+                "open_questions": [],
+                "pause_reason": "",
+            }
         trace = await self._run_graph(graph, command, config, session_id, session.current_revision)
         return await self._persist_result(graph, config, session.current_revision, trace)
 
@@ -236,6 +262,11 @@ class RequirementSessionRunner:
     ) -> WorkflowResult:
         snapshot = await graph.aget_state(config)
         values = dict(snapshot.values)
+        reply = str(values.get("assistant_reply") or "")
+        kind = "question_answer"
+        if not reply:
+            reply, kind = workflow_reply(values)
+        values["assistant_reply"] = reply
         # Bind the completed revision to this turn, never an inherited checkpoint trace.
         values["trace_id"] = trace.trace_id if trace else ""
         revision = self.sessions.update_revision(
@@ -264,28 +295,13 @@ class RequirementSessionRunner:
             trace.finish(status="paused" if interrupts else "ok")
             if self.trace_collector:
                 self.trace_collector.collect(trace)
-        if values.get("assistant_reply"):
-            self.sessions.append_turn(
-                values["session_id"],
-                expected_revision=revision.revision,
-                role="assistant",
-                message=str(values["assistant_reply"]),
-                metadata={"kind": "question_answer"},
-            )
-        elif values.get("status") == "paused" and values.get("open_questions"):
-            question_text = "\n".join(
-                str(item.get("text", "")).strip()
-                for item in values["open_questions"]
-                if str(item.get("text", "")).strip()
-            )
-            if question_text:
-                self.sessions.append_turn(
-                    values["session_id"],
-                    expected_revision=revision.revision,
-                    role="assistant",
-                    message=question_text,
-                    metadata={"kind": values.get("pause_reason", "clarification")},
-                )
+        self.sessions.append_turn(
+            values["session_id"],
+            expected_revision=revision.revision,
+            role="assistant",
+            message=reply,
+            metadata={"kind": kind},
+        )
         return WorkflowResult(
             self.sessions.get_session(values["session_id"]),
             revision,

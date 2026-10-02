@@ -499,6 +499,7 @@ class ConfigurationSessionState(TypedDict, total=False):
     assistant_reply: str
     answer_evidence: list[dict[str, Any]]
     answer_status: str
+    response_language: str
     confirmed_context: dict[str, Any]
     assumptions: list[dict[str, Any]]
     open_questions: list[dict[str, Any]]
@@ -555,6 +556,7 @@ STATE_FIELD_OWNERS = MappingProxyType(
                 "intent_confidence",
                 "intent_reason",
                 "intent_needs_clarification",
+                "response_language",
                 "active_agent",
                 "next_action",
                 "pause_reason",
