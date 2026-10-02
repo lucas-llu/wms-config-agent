@@ -384,7 +384,7 @@ def test_dashboard_navigation_reaches_all_seven_pages(tmp_path: Path, monkeypatc
         ("pages/ingestion_manager.py", "Ingestion"),
         ("pages/ingestion_traces.py", "Ingestion traces"),
         ("pages/query_traces.py", "Query traces"),
-        ("pages/agent_sessions.py", "WMS Assistant"),
+        ("pages/agent_sessions.py", "WMS Workspace"),
         ("pages/evaluation.py", "Evaluation"),
     ]
 

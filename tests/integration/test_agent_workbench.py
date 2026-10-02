@@ -61,7 +61,7 @@ def test_workbench_read_only_render_and_feedback(tmp_path):
     service, call = fixture(tmp_path)
     app = AppTest.from_function(render, args=(service,)).run()
     assert not app.exception
-    assert len(app.tabs) == 4
+    assert len(app.tabs) == 6
     assert not app.json
     assert len(app.chat_message) == 1
     call.assert_not_called()
@@ -274,4 +274,41 @@ def test_sidebar_delete_and_restore_preserve_conversation(tmp_path):
     assert service.repository.get_revision("session:a") == before
     assert len(app.chat_message) == 1
     assert not service.deleted_rows()
+    call.assert_not_called()
+
+
+def test_row_actions_and_search_preserve_other_selected_conversation(tmp_path):
+    service, call = fixture(tmp_path)
+    service.repository.create_session(session_id="session:b", goal="Other conversation")
+    app = AppTest.from_function(render, args=(service,)).run()
+    selection = "workbench_session:workspace:legacy"
+    next(b for b in app.button if b.key == f"select:{selection}:session:a").click().run()
+    next(b for b in app.selectbox if b.label == "查看版本").select(1).run()
+    next(b for b in app.button if b.key == f"delete:{selection}:session:b").click().run()
+    assert not app.exception
+    assert app.session_state[selection] == "session:a"
+    assert next(b for b in app.selectbox if b.label == "查看版本").value == 1
+    button(app, "恢复").click().run()
+    assert app.session_state[selection] == "session:a"
+    app.text_input[0].set_value("no match").run()
+    assert app.session_state[selection] == "session:a"
+    assert len(app.chat_message) == 1
+    call.assert_not_called()
+
+
+def test_rename_menu_targets_its_own_conversation(tmp_path):
+    service, call = fixture(tmp_path)
+    service.repository.create_session(session_id="session:b", goal="Original goal")
+    original = service.repository.get_revision("session:b")
+    app = AppTest.from_function(render, args=(service,)).run()
+    selection = "workbench_session:workspace:legacy"
+    next(b for b in app.button if b.key == f"select:{selection}:session:a").click().run()
+    next(b for b in app.button if b.key == f"rename-action:{selection}:session:b").click().run()
+    assert not app.exception
+    next(t for t in app.text_input if t.label == "对话名称").set_value("改名后的对话")
+    button(app, "保存名称").click().run()
+    assert not app.exception
+    assert service.repository.get_session("session:b").display_title == "改名后的对话"
+    assert service.repository.get_revision("session:b") == original
+    assert app.session_state[selection] == "session:a"
     call.assert_not_called()
