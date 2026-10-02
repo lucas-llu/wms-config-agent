@@ -260,6 +260,7 @@ def test_workspace_catalog_does_not_leak_global_index_counts(tmp_path: Path) -> 
         workspace=policy,
         dense_index=IndexCounter(999),
         sparse_index=IndexCounter(999),
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
     )
 
     snapshot = catalog.knowledge_snapshot()
