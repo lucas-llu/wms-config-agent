@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 
 from agents.contracts import Evidence
 from agents.language import language_instruction, localized, response_language, validate_language
 from agents.llm_json import invoke_json
+from core.evidence_text import clean_evidence_text
 from libs.llm import BaseLLM
 
 
@@ -22,9 +22,7 @@ class GroundedAnswer:
 
 
 def clean_excerpt(text: str) -> str:
-    text = re.sub(r"\[IMAGE:[^\]]*\]", "", text)
-    text = re.sub(r"\b[a-f0-9]{32,}_\d+_\d+\]?", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+    return clean_evidence_text(text)
 
 
 def answer_question(

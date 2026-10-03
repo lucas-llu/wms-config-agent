@@ -750,9 +750,14 @@ def _render_details(service, session_id, revision, view, disabled):
                 else str(item["evidence_id"])
             )
             with st.expander(title, expanded=True):
+                item = service.present_evidence(item)
                 st.text(f"来源：{item['source']} · 页码：{item['page_start'] or '未知'}")
                 st.text(f"文档版本：{item['product_version'] or '未知'}")
                 st.text(item["excerpt"])
+                for picture in item["images"]:
+                    st.image(str(picture["path"]), caption=f"文档插图 · 第 {picture['page'] or '未知'} 页")
+                if item["images_unavailable"]:
+                    st.caption("部分引用图片暂不可用，请检查原文或重新导入文档。")
         for binding in view["bindings"]:
             st.text(f"{binding.get('task_id')}: {binding.get('evidence_status')}")
             st.text("引用：" + ", ".join(binding.get("evidence_ids", [])))

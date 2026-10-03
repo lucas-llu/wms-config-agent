@@ -100,6 +100,18 @@ def test_adapter_reuses_v1_stack_and_maps_citations_to_stable_evidence() -> None
     assert search.calls[0][2] == filters
 
 
+def test_image_ids_and_document_hash_survive_citation_conversion():
+    outcome = _outcome()
+    outcome.results[0].metadata.update(
+        file_hash="doc-hash", images=[{"id": "image:1", "path": "D:/private/ignored.png"}]
+    )
+    adapter, _ = _adapter(outcome)
+    evidence = adapter.search("capacity", filters={}).evidence[0]
+    assert evidence.doc_hash == "doc-hash"
+    assert evidence.image_ids == ("image:1",)
+    assert "D:/private/ignored.png" not in str(evidence.to_dict())
+
+
 def test_insufficient_v1_outcome_never_creates_evidence() -> None:
     adapter, _search = _adapter(_outcome(sufficient=False))
 

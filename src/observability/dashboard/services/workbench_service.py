@@ -8,7 +8,9 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from agents.repositories import SessionRepository
+from core.evidence_text import clean_evidence_text
 from observability.dashboard.services.agent_session_service import AgentSessionService
+from observability.dashboard.services.evidence_images import EvidenceImages
 
 _TOOLS = {
     "continue": "continue_configuration_session",
@@ -37,11 +39,27 @@ class WorkbenchService(AgentSessionService):
         *,
         enabled: bool,
         checkpoint_path: str | Path | None = None,
+        evidence_images: EvidenceImages | None = None,
     ):
         super().__init__(repository)
         self.call_tool = call_tool
         self.enabled = enabled
         self.checkpoint_path = checkpoint_path
+        self.evidence_images = evidence_images
+
+    def present_evidence(self, item: dict[str, Any]) -> dict[str, Any]:
+        images, unavailable = (
+            self.evidence_images.resolve(item, self.repository.workspace)
+            if self.evidence_images
+            else ([], False)
+        )
+        return {
+            **item,
+            "source": safe_source(item.get("source")),
+            "excerpt": clean_evidence_text(str(item.get("excerpt", ""))),
+            "images": images,
+            "images_unavailable": unavailable,
+        }
 
     def view(self, session_id: str, revision: int) -> dict[str, Any]:
         record = self.repository.get_revision(session_id, revision)
@@ -74,6 +92,11 @@ class WorkbenchService(AgentSessionService):
                             "product_version",
                             "module",
                             "citation_index",
+                            "collection",
+                            "doc_hash",
+                            "image_ids",
+                            "site",
+                            "environment",
                         )
                     },
                     "source": safe_source(item.get("source")),
@@ -93,6 +116,11 @@ class WorkbenchService(AgentSessionService):
                             "page_start",
                             "product_version",
                             "module",
+                            "collection",
+                            "doc_hash",
+                            "image_ids",
+                            "site",
+                            "environment",
                         )
                     },
                     "source": safe_source(item.get("source")),
