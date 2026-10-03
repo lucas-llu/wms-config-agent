@@ -68,6 +68,40 @@ class WorkbenchService(AgentSessionService):
         current = self.repository.get_session(session_id)
         state = record.state
         tasks = state.get("configuration_tasks", [])
+        turns = [
+            self._turn_view(session_id, item)
+            for item in self.repository.list_turns(session_id)
+            if item.revision <= revision and item.role in {"user", "assistant"}
+        ]
+        evidence_rounds = []
+        question = current.goal
+        for turn in turns:
+            if turn["role"] == "user":
+                question = turn["message"]
+            else:
+                evidence_rounds.append(
+                    {
+                        "number": len(evidence_rounds) + 1,
+                        "turn_id": turn["turn_id"],
+                        "revision": turn["revision"],
+                        "question": question,
+                        "citations": turn["citations"],
+                        "legacy_evidence": turn["legacy_evidence"],
+                    }
+                )
+        # Some old revisions saved answer sources but no assistant turn. Keep
+        # those sources visible without inventing a historical question number.
+        if not evidence_rounds and state.get("answer_evidence"):
+            evidence_rounds.append(
+                {
+                    "number": None,
+                    "turn_id": f"legacy:{revision}",
+                    "revision": revision,
+                    "question": current.goal,
+                    "citations": state["answer_evidence"],
+                    "legacy_evidence": "",
+                }
+            )
         return {
             "revision": record.revision,
             "current_revision": current.current_revision,
@@ -137,11 +171,8 @@ class WorkbenchService(AgentSessionService):
             "bindings": state.get("task_evidence_bindings", []),
             "findings": state.get("validation_findings", []),
             "conflicts": state.get("conflicts", []),
-            "turns": [
-                self._turn_view(session_id, item)
-                for item in self.repository.list_turns(session_id)
-                if item.revision <= revision and item.role in {"user", "assistant"}
-            ],
+            "turns": turns,
+            "evidence_rounds": evidence_rounds,
             "approvals": [
                 {
                     "revision": item.revision,

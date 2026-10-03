@@ -20,6 +20,8 @@ starts a blank composer. The selected historical revision survives sidebar rerun
 
 The page is a conversation workspace: **对话** contains messages and pending status;
 **工作区** contains task/evidence/review summaries and the existing controlled actions.
+The primary **对话 / 工作区** tab bar stays visible while scrolling long conversations
+on desktop and narrow screens. Workspace detail tabs retain normal document flow.
 Sending from the workspace switches to conversation; operating on a draft retains
 the workspace context. Names are rendered without remote images or raw HTML.
 
@@ -136,7 +138,17 @@ Atomic questions now store only validated cited sources in `answer_evidence`, wi
 their citation indexes, in the immutable conversation revision and assistant-turn
 metadata. Every answer displays a default-collapsed **查看证据** panel below its
 conclusion; source quotes and full retrieved fragments are not printed inline.
-The same sources remain under **本次回答的引用** in the workspace. Pictures resolve
+The workspace **引用证据** view groups all completed answers up to the selected
+revision into default-collapsed rounds, newest first, labelled with the question
+and source count. Each round contains individually collapsed sources. Opening a
+round does not load source images; opening a source does. Round numbering counts
+assistant replies, independently of business revision numbers. Empty/clarification
+rounds state that there are no document citations. Legacy text-only bibliographies
+remain readable in their round; no source metadata is invented. Old snapshots
+without an assistant-turn record appear as an explicitly unnumbered current-version
+group. Current configuration-task evidence remains a separate section tied to the
+selected revision. The history counter counts structured citations across rounds.
+Pictures resolve
 and load only when their panel is opened, with unavailable-image notices and no
 raw image-ID placeholders. See `GROUNDED_QA.md` for image scope and safety limits.
 Task evidence remains in `evidence_registry`; ordinary
