@@ -276,7 +276,7 @@ def _existing_registry(values: list[dict[str, Any]]) -> dict[str, Evidence]:
     registry: dict[str, Evidence] = {}
     for index, value in enumerate(values):
         try:
-            evidence = Evidence(**value)
+            evidence = Evidence(**{**value, "image_ids": tuple(value.get("image_ids", []))})
         except (TypeError, ValueError) as exc:
             raise KnowledgeCollectionError(f"evidence_registry[{index}] is invalid") from exc
         registry[evidence.evidence_id] = evidence

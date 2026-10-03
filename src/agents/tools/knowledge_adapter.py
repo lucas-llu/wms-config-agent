@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
@@ -128,6 +129,16 @@ def _evidence_from_citations(citations: tuple[Citation, ...]) -> tuple[Evidence,
             site=_optional_text(citation.metadata.get("site")),
             environment=_optional_text(citation.metadata.get("environment")),
             collection=_optional_text(citation.metadata.get("collection")),
+            doc_hash=_optional_text(citation.metadata.get("file_hash")),
+            image_ids=tuple(
+                dict.fromkeys(
+                    image["id"]
+                    for image in (citation.metadata.get("images") or [])
+                    if isinstance(image, dict)
+                    and isinstance(image.get("id"), str)
+                    and re.fullmatch(r"[A-Za-z0-9_.:-]+", image["id"])
+                )
+            ),
         )
     return tuple(registry[key] for key in sorted(registry))
 
