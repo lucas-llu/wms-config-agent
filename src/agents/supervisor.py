@@ -127,6 +127,11 @@ class RequirementSessionRunner:
             "response_language": response_language(user_message),
             "latest_turn_id": turn.turn_id,
             "recent_turns": [{"role": "user", "content": user_message}],
+            "memory_history": [
+                {"role": "user", "content": user_message, "sequence": turn.sequence}
+            ],
+            "conversation_summary": "",
+            "memory_through_sequence": 0,
             "confirmed_context": {},
             "assumptions": [],
             "open_questions": [],
@@ -167,6 +172,12 @@ class RequirementSessionRunner:
         graph = self.supervisor.compile(checkpointer)
         config = session_checkpoint_config(session_id)
         snapshot = await graph.aget_state(config)
+        through = int(snapshot.values.get("memory_through_sequence", 0))
+        history = [
+            {"role": item.role, "content": item.message, "sequence": item.sequence}
+            for item in self.sessions.repository.list_turns(session_id)
+            if item.role in {"user", "assistant"} and item.sequence > through
+        ]
         language = response_language(
             user_message,
             str(snapshot.values.get("response_language") or response_language(session.goal)),
@@ -177,6 +188,7 @@ class RequirementSessionRunner:
                 "revision": session.current_revision,
                 "response_language": language,
                 "assistant_reply": "",
+                "memory_history": history,
                 "nodes_executed": 0,
                 "retry_count": 0,
                 "tokens_used": 0,
@@ -199,6 +211,7 @@ class RequirementSessionRunner:
                 ][-self.supervisor.settings.max_context_turns :],
                 "open_questions": [],
                 "pause_reason": "",
+                "next_action": "classify_intent",
             }
         trace = await self._run_graph(graph, command, config, session_id, session.current_revision)
         return await self._persist_result(graph, config, session.current_revision, trace)

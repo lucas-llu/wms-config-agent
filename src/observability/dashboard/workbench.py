@@ -662,6 +662,8 @@ def render_workbench(service: WorkbenchService) -> None:
         default="对话",
     )
     with chat:
+        if view.get("memory_compacted", False):
+            st.caption("较早对话已整理为摘要，原始消息仍保留在下方历史中。")
         for turn in view["turns"]:
             with st.chat_message(
                 turn["role"],

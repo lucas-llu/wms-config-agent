@@ -532,6 +532,12 @@ class ConfigurationSessionState(TypedDict, total=False):
     latest_user_message: str
     latest_turn_id: str
     recent_turns: list[dict[str, str]]
+    memory_history: list[dict[str, Any]]
+    conversation_summary: str
+    memory_through_sequence: int
+    conversation_recent: list[dict[str, str]]
+    conversation_context: str
+    resolved_user_message: str
     requirement_summary: str
     intent_confidence: float
     intent_reason: str
@@ -569,6 +575,12 @@ STATE_FIELD_OWNERS = MappingProxyType(
                 "latest_user_message",
                 "latest_turn_id",
                 "recent_turns",
+                "memory_history",
+                "conversation_summary",
+                "memory_through_sequence",
+                "conversation_recent",
+                "conversation_context",
+                "resolved_user_message",
                 "nodes_executed",
                 "tool_calls_made",
                 "retry_count",

@@ -90,6 +90,8 @@ agent:
   max_retrieval_tasks: 8
   turn_timeout_seconds: 60
   max_context_turns: 8
+  max_context_chars: 16000
+  max_summary_chars: 3000
   approval_required: true
   environment_inspector_enabled: false
   max_tokens_per_turn: 12000

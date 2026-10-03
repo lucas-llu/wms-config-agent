@@ -78,6 +78,7 @@ class WorkbenchService(AgentSessionService):
                 else _NEXT.get(record.status.value, "处理中；刷新查看最新版本。")
             ),
             "context": state.get("confirmed_context", {}),
+            "memory_compacted": bool(state.get("memory_through_sequence", 0)),
             "is_question": state.get("intent") == "atomic_query",
             "answer_status": state.get("answer_status", ""),
             "legacy_answer_evidence": state.get("intent") == "atomic_query"

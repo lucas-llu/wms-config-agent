@@ -5,6 +5,22 @@ import pytest
 from core.settings import SettingsError, load_settings
 
 
+@pytest.mark.parametrize(
+    "old,new",
+    [
+        ("max_context_chars: 16000", "max_context_chars: 0"),
+        ("max_summary_chars: 3000", "max_summary_chars: -1"),
+        ("max_summary_chars: 3000", "max_summary_chars: 16000"),
+    ],
+)
+def test_invalid_conversation_memory_limits_are_rejected(tmp_path, old, new):
+    text = Path("config/settings.yaml").read_text(encoding="utf-8")
+    config = tmp_path / "settings.yaml"
+    config.write_text(text.replace(old, new), encoding="utf-8")
+    with pytest.raises(SettingsError):
+        load_settings(config)
+
+
 def test_load_project_settings() -> None:
     settings = load_settings("config/settings.yaml")
 
@@ -35,6 +51,8 @@ def test_load_project_settings() -> None:
     assert settings.agent.approval_required is True
     assert settings.agent.environment_inspector_enabled is False
     assert settings.agent.max_tokens_per_turn == 12_000
+    assert settings.agent.max_context_chars == 16_000
+    assert settings.agent.max_summary_chars == 3_000
     assert settings.agent.intent_confidence_threshold == 0.65
     assert settings.agent.max_questions_per_turn == 3
     assert settings.agent.intent_prompt_path == Path("config/prompts/agent_intent.txt")

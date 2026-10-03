@@ -65,6 +65,11 @@ confirmation behavior remains the same.
 
 ## Sending and waiting
 
+Same-conversation follow-ups use recent messages from both sides and a rolling
+summary of older history. The UI identifies summarized history; original messages
+remain available. See `CONVERSATION_MEMORY.md` for context limits, failure behavior
+and the distinction between conversational context and documentary evidence.
+
 Chat Enter submission queues the message before rendering, shows it immediately,
 and displays an animated assistant status while the synchronous backend runs.
 The composer and navigation are disabled during processing. Suggested prompts still

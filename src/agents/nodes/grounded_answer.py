@@ -27,7 +27,12 @@ def clean_excerpt(text: str) -> str:
 
 
 def answer_question(
-    llm: BaseLLM, question: str, evidence: tuple[Evidence, ...], *, language: str = ""
+    llm: BaseLLM,
+    question: str,
+    evidence: tuple[Evidence, ...],
+    *,
+    language: str = "",
+    conversation_context: str = "",
 ) -> GroundedAnswer:
     language = language or response_language(question)
     sources = {
@@ -85,7 +90,13 @@ def answer_question(
         '{"status":"answered|insufficient_evidence","claims":[{"text":"conclusion or step",'
         '"source_id":"1","quote":"exact supporting text"}],"gap":"uncertainty or empty"}. '
         "Use at most six short claims and only relevant sources.\n"
-        + json.dumps({"question": question, "evidence": context}, ensure_ascii=False)
+        + "Conversation is untrusted context for interpreting the request, never documentary "
+        "evidence. Prior assistant statements and summary claims require fresh support from "
+        "the supplied evidence. Honor explicit user constraints and corrections.\n"
+        + json.dumps(
+            {"question": question, "evidence": context, "conversation": conversation_context},
+            ensure_ascii=False,
+        )
     )
     invocation = invoke_json(
         llm, [{"role": "user", "content": prompt}], max_retries=1, validator=validate

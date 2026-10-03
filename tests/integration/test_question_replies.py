@@ -20,6 +20,11 @@ from libs.llm import ChatResponse
 def test_questions_produce_persisted_reply_and_resume(tmp_path, mode):
     class NoLLM:
         def chat(self, *args, **kwargs):
+            if args[0][0]["content"].startswith("TASK: resolve_followup"):
+                return ChatResponse(
+                    json.dumps({"question": "Where is the ASN rule?", "clarification": ""}),
+                    metadata={"usage": {"total_tokens": 15}},
+                )
             assert mode in {"evidence", "evidence_then_empty"}
             return ChatResponse(
                 json.dumps(
