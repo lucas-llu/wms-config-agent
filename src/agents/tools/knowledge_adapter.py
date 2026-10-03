@@ -56,7 +56,9 @@ class KnowledgeAdapter:
         outcome = replace(outcome, results=reranked.results)
         response = self.response_builder.build(outcome)
         evidence = (
-            _evidence_from_citations(response.citations)
+            _evidence_from_citations(
+                response.citations, {r.chunk_id: r.text for r in outcome.results}
+            )
             if response.status == "evidence_found"
             else ()
         )
@@ -101,7 +103,9 @@ def evidence_registry_fingerprint(evidence: tuple[Evidence, ...]) -> str:
     )
 
 
-def _evidence_from_citations(citations: tuple[Citation, ...]) -> tuple[Evidence, ...]:
+def _evidence_from_citations(
+    citations: tuple[Citation, ...], full_text: dict[str, str] | None = None
+) -> tuple[Evidence, ...]:
     registry: dict[str, Evidence] = {}
     for citation in citations:
         source = _safe_source(citation.source)
@@ -130,6 +134,7 @@ def _evidence_from_citations(citations: tuple[Citation, ...]) -> tuple[Evidence,
             environment=_optional_text(citation.metadata.get("environment")),
             collection=_optional_text(citation.metadata.get("collection")),
             doc_hash=_optional_text(citation.metadata.get("file_hash")),
+            full_excerpt=(full_text or {}).get(citation.chunk_id),
             image_ids=tuple(
                 dict.fromkeys(
                     image["id"]

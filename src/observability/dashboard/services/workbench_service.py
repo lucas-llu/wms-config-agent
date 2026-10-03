@@ -10,6 +10,7 @@ from typing import Any
 from agents.repositories import SessionRepository
 from core.evidence_text import clean_evidence_text
 from observability.dashboard.services.agent_session_service import AgentSessionService
+from observability.dashboard.services.answer_evidence import split_answer_evidence
 from observability.dashboard.services.evidence_images import EvidenceImages
 
 _TOOLS = {
@@ -48,15 +49,16 @@ class WorkbenchService(AgentSessionService):
         self.evidence_images = evidence_images
 
     def present_evidence(self, item: dict[str, Any]) -> dict[str, Any]:
+        excerpt = str(item.get("full_excerpt") or item.get("excerpt") or "")
         images, unavailable = (
-            self.evidence_images.resolve(item, self.repository.workspace)
+            self.evidence_images.resolve({**item, "excerpt": excerpt}, self.repository.workspace)
             if self.evidence_images
             else ([], False)
         )
         return {
             **item,
             "source": safe_source(item.get("source")),
-            "excerpt": clean_evidence_text(str(item.get("excerpt", ""))),
+            "excerpt": clean_evidence_text(excerpt),
             "images": images,
             "images_unavailable": unavailable,
         }
@@ -97,6 +99,8 @@ class WorkbenchService(AgentSessionService):
                             "image_ids",
                             "site",
                             "environment",
+                            "supporting_quotes",
+                            "full_excerpt",
                         )
                     },
                     "source": safe_source(item.get("source")),
@@ -115,12 +119,14 @@ class WorkbenchService(AgentSessionService):
                             "excerpt",
                             "page_start",
                             "product_version",
+                            "page_end",
                             "module",
                             "collection",
                             "doc_hash",
                             "image_ids",
                             "site",
                             "environment",
+                            "full_excerpt",
                         )
                     },
                     "source": safe_source(item.get("source")),
@@ -131,7 +137,7 @@ class WorkbenchService(AgentSessionService):
             "findings": state.get("validation_findings", []),
             "conflicts": state.get("conflicts", []),
             "turns": [
-                {"role": item.role, "message": item.message, "revision": item.revision}
+                self._turn_view(session_id, item)
                 for item in self.repository.list_turns(session_id)
                 if item.revision <= revision and item.role in {"user", "assistant"}
             ],
@@ -146,6 +152,35 @@ class WorkbenchService(AgentSessionService):
                 if item.revision <= revision
             ],
         }
+
+    def _turn_view(self, session_id, turn) -> dict[str, Any]:
+        result = {
+            "role": turn.role,
+            "message": turn.message,
+            "revision": turn.revision,
+            "turn_id": turn.turn_id,
+            "citations": [],
+            "legacy_evidence": "",
+        }
+        if turn.role != "assistant":
+            return result
+        result["message"], result["legacy_evidence"] = split_answer_evidence(turn.message)
+        if "citations" in turn.metadata:
+            result["citations"] = turn.metadata["citations"]
+        else:
+            state = self.repository.get_revision(session_id, turn.revision).state
+            if state.get("pause_reason") == "question_answered":
+                result["citations"] = state.get("answer_evidence", [])
+            elif turn.metadata.get("kind") in {"configuration_result", "validation_result"}:
+                used = {
+                    identifier
+                    for binding in state.get("task_evidence_bindings", [])
+                    for identifier in binding.get("evidence_ids", [])
+                }
+                result["citations"] = [
+                    e for e in state.get("evidence_registry", []) if e.get("evidence_id") in used
+                ]
+        return result
 
     def start(self, goal: str) -> dict[str, Any]:
         if not self.enabled or not goal.strip():

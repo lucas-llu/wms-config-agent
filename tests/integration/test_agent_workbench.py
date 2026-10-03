@@ -576,3 +576,96 @@ def test_bin_controls_are_disabled_while_a_reply_is_running(tmp_path):
     for label in ("全选", "恢复", "删除所选", "清空回收站"):
         assert button(app, label).disabled
     assert next(c for c in app.checkbox if c.key == "trash-selected:workspace:legacy:b").disabled
+
+
+def test_each_answer_uses_its_own_evidence_and_old_bibliography_is_folded(tmp_path):
+    service, _ = fixture(tmp_path)
+    repo = service.repository
+    first = {
+        "evidence_id": "e:first",
+        "source": "first.pdf",
+        "citation_index": 1,
+        "page_start": 1,
+        "excerpt": "First original source. [IMAGE: short_1_1]",
+    }
+    second = {
+        "evidence_id": "e:second",
+        "source": "second.pdf",
+        "citation_index": 1,
+        "page_start": 2,
+        "excerpt": "Second original source.",
+    }
+    repo.update_revision(
+        session_id="session:a",
+        expected_revision=2,
+        actor="test",
+        reason="first",
+        state_update={"pause_reason": "question_answered", "answer_evidence": [first]},
+    )
+    repo.append_turn(
+        session_id="session:a",
+        expected_revision=3,
+        role="assistant",
+        message="First answer [1]\n\n引用依据\n[1] first.pdf\n原文：First original source.",
+    )
+    repo.update_revision(
+        session_id="session:a",
+        expected_revision=3,
+        actor="test",
+        reason="second",
+        state_update={"answer_evidence": [second]},
+    )
+    repo.append_turn(
+        session_id="session:a",
+        expected_revision=4,
+        role="assistant",
+        message="Second answer [1]",
+        metadata={"citations": [second]},
+    )
+    turns = [t for t in service.view("session:a", 4)["turns"] if t["role"] == "assistant"]
+    assert turns[0]["citations"][0]["source"] == "first.pdf"
+    assert turns[1]["citations"][0]["source"] == "second.pdf"
+    assert "first.pdf" not in turns[0]["message"]
+    app = AppTest.from_function(render, args=(service,)).run()
+    assert not app.exception
+    assert not any("original source." in t.value for t in app.text)
+    assert not any("引用依据" in m.value for m in app.markdown)
+    key = f"answer-evidence:workspace:legacy:session:a:{turns[0]['turn_id']}"
+    assert not app.session_state[key]
+    app.session_state[key] = True
+    app.run()
+    assert not app.exception
+    assert any(t.value == "First original source." for t in app.text)
+    assert not any(t.value == "Second original source." for t in app.text)
+    assert repo.list_turns("session:a")[1].message.endswith("原文：First original source.")
+
+
+def test_expander_defers_image_resolution_until_opened(tmp_path):
+    from unittest.mock import patch
+
+    service, _ = fixture(tmp_path)
+    repo = service.repository
+    citations = [
+        {
+            "evidence_id": "e:1",
+            "source": "manual.pdf",
+            "excerpt": "Source evidence",
+            "page_start": 1,
+            "citation_index": 1,
+        }
+    ]
+    turn = repo.append_turn(
+        session_id="session:a",
+        expected_revision=2,
+        role="assistant",
+        message="Answer [1]",
+        metadata={"citations": citations},
+    )
+    with patch.object(service, "present_evidence", wraps=service.present_evidence) as present:
+        app = AppTest.from_function(render, args=(service,)).run()
+        assert not app.exception
+        present.assert_not_called()
+        app.session_state[f"answer-evidence:workspace:legacy:session:a:{turn.turn_id}"] = True
+        app.run()
+        assert not app.exception
+        present.assert_called_once()

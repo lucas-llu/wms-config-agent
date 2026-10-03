@@ -385,7 +385,15 @@ class SupervisorGraph:
                         reply = answer.text
                         answer_status = answer.status
                         answer_evidence = [
-                            {**item.to_dict(), "citation_index": index}
+                            {
+                                **item.to_dict(),
+                                "citation_index": index,
+                                "supporting_quotes": [
+                                    quote
+                                    for source_id, quote in answer.supporting_quotes
+                                    if source_id == index
+                                ],
+                            }
                             for index, item in enumerate(result.evidence[:5], 1)
                             if index in answer.cited_source_ids
                         ]

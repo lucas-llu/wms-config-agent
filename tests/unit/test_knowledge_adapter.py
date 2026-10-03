@@ -112,6 +112,19 @@ def test_image_ids_and_document_hash_survive_citation_conversion():
     assert "D:/private/ignored.png" not in str(evidence.to_dict())
 
 
+def test_full_display_excerpt_does_not_increase_llm_excerpt_budget():
+    from dataclasses import replace
+
+    outcome = _outcome()
+    full = "Supported source text. " * 120
+    result = replace(outcome.results[0], text=full)
+    outcome = replace(outcome, results=(result,))
+    adapter, _ = _adapter(outcome)
+    evidence = adapter.search("capacity", filters={}).evidence[0]
+    assert evidence.full_excerpt == full
+    assert len(evidence.excerpt) <= 501
+
+
 def test_insufficient_v1_outcome_never_creates_evidence() -> None:
     adapter, _search = _adapter(_outcome(sufficient=False))
 

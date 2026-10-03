@@ -300,7 +300,7 @@ class RequirementSessionRunner:
             expected_revision=revision.revision,
             role="assistant",
             message=reply,
-            metadata={"kind": kind},
+            metadata={"kind": kind, "citations": _turn_citations(values, kind)},
         )
         return WorkflowResult(
             self.sessions.get_session(values["session_id"]),
@@ -309,3 +309,18 @@ class RequirementSessionRunner:
             tuple(snapshot.next),
             interrupts,
         )
+
+
+def _turn_citations(state: dict[str, Any], kind: str) -> list[dict[str, Any]]:
+    if state.get("pause_reason") == "question_answered":
+        return list(state.get("answer_evidence", []))
+    if kind in {"configuration_result", "validation_result"}:
+        used = {
+            identifier
+            for binding in state.get("task_evidence_bindings", [])
+            for identifier in binding.get("evidence_ids", [])
+        }
+        return [
+            item for item in state.get("evidence_registry", []) if item.get("evidence_id") in used
+        ]
+    return []
