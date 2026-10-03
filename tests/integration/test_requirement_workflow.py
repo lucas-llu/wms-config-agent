@@ -133,7 +133,15 @@ def _planning_output() -> dict[str, object]:
 
 def test_three_turn_requirements_resume_across_restarts(tmp_path: Path) -> None:
     settings = _settings(tmp_path / "agent", max_context_turns=2)
-    llm = ScriptedLLM(*_requirement_outputs(), _planning_output())
+    requirements = _requirement_outputs()
+    llm = ScriptedLLM(
+        requirements[0],
+        {"summary": "User wants a complete inbound appointment configuration plan."},
+        requirements[1],
+        {"summary": "User wants inbound appointments; version is 2024.1. Site is pending."},
+        requirements[2],
+        _planning_output(),
+    )
 
     async def start_turn():
         sessions = SessionService(SessionRepository(settings.session_db_path))
@@ -404,7 +412,16 @@ def test_noninterrupt_budget_pause_can_resume_without_replaying_old_state(tmp_pa
         normal = replace(settings, max_nodes_per_turn=20)
         async with open_configured_checkpointer(normal) as saver:
             return await RequirementSessionRunner(
-                supervisor=Supervisor(llm=ScriptedLLM(_requirement_outputs()[0]), settings=normal),
+                supervisor=Supervisor(
+                    llm=ScriptedLLM(
+                        {
+                            "question": "Build a complete inbound configuration plan",
+                            "clarification": "",
+                        },
+                        _requirement_outputs()[0],
+                    ),
+                    settings=normal,
+                ),
                 sessions=SessionService(repository),
             ).continue_session(
                 first.session.session_id,

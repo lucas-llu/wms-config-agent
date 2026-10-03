@@ -11,8 +11,9 @@ from langgraph.types import interrupt
 
 from agents.budget import TurnBudgetPolicy
 from agents.contracts import IntentType, OpenQuestion, SessionStatus, stable_contract_id
+from agents.conversation_memory import ContextLimitError, prepare_memory, resolve_followup
 from agents.language import localized, response_language
-from agents.llm_json import StructuredLLMError
+from agents.llm_json import StructuredLLMError, invoke_json
 from agents.nodes import (
     IntentClassifier,
     KnowledgeAgent,
@@ -61,6 +62,12 @@ class AgentGraphState(TypedDict, total=False):
     latest_user_message: str
     latest_turn_id: str
     recent_turns: list[dict[str, str]]
+    memory_history: list[dict[str, Any]]
+    conversation_summary: str
+    memory_through_sequence: int
+    conversation_recent: list[dict[str, str]]
+    conversation_context: str
+    resolved_user_message: str
     requirement_summary: str
     confirmed_context: Annotated[dict[str, Any], merge_context]
     assumptions: Annotated[list[dict[str, Any]], merge_assumptions]
@@ -174,6 +181,7 @@ class SupervisorGraph:
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
         builder = StateGraph(AgentGraphState)
+        builder.add_node("prepare_memory", self._prepare_memory)
         builder.add_node("classify_intent", self._classify_intent)
         builder.add_node("answer_question", self._answer_question)
         builder.add_node("await_question", self._await_question)
@@ -192,7 +200,12 @@ class SupervisorGraph:
             builder.add_node("pause_validation", self._pause_validation)
             builder.add_node("await_validation", self._await_validation)
             builder.add_node("complete_validation", self._complete_validation)
-        builder.add_edge(START, "classify_intent")
+        builder.add_edge(START, "prepare_memory")
+        builder.add_conditional_edges(
+            "prepare_memory",
+            self._route_after_memory,
+            {"classify": "classify_intent", "requirements": "extract_requirements", "end": END},
+        )
         builder.add_conditional_edges(
             "classify_intent",
             self._route_after_classification,
@@ -211,7 +224,7 @@ class SupervisorGraph:
         builder.add_conditional_edges(
             "await_question",
             self._route_after_await,
-            {"continue": "classify_intent", "end": END},
+            {"continue": "prepare_memory", "end": END},
         )
         builder.add_conditional_edges(
             "pause_intent", self._route_pause, {"await": "await_intent", "end": END}
@@ -219,7 +232,7 @@ class SupervisorGraph:
         builder.add_conditional_edges(
             "await_intent",
             self._route_after_await,
-            {"continue": "classify_intent", "end": END},
+            {"continue": "prepare_memory", "end": END},
         )
         builder.add_conditional_edges(
             "extract_requirements",
@@ -238,7 +251,7 @@ class SupervisorGraph:
         builder.add_conditional_edges(
             "await_requirements",
             self._route_after_await,
-            {"continue": "extract_requirements", "end": END},
+            {"continue": "prepare_memory", "end": END},
         )
         builder.add_edge("complete_requirements", "plan_tasks")
         if self.knowledge_agent is None:
@@ -269,17 +282,140 @@ class SupervisorGraph:
             builder.add_conditional_edges(
                 "await_validation",
                 self._route_after_await,
-                {"continue": "extract_requirements", "end": END},
+                {"continue": "prepare_memory", "end": END},
             )
             builder.add_edge("complete_validation", END)
         return builder.compile(checkpointer=checkpointer, name="configuration-supervisor")
+
+    def _prepare_memory(self, state: AgentGraphState) -> dict[str, Any]:
+        update: dict[str, Any] = {"resolved_user_message": "", "memory_history": []}
+
+        def invoke(prompt, validator):
+            current = {**state, **update}
+            entered = self.budget.enter_node(current, "memory")
+            update.update(entered.update)
+            if not entered.allowed:
+                raise ContextLimitError("Turn budget exhausted")
+            # Conservative byte-based input estimate; actual provider usage is
+            # accounted below. This is independent of the model context capacity.
+            remaining = self.settings.max_tokens_per_turn - int(current.get("tokens_used", 0))
+            if len(prompt.encode("utf-8")) + 1024 > remaining:
+                update.update(self.budget.pause_update(current, "token_budget_exceeded", "memory"))
+                raise ContextLimitError("Insufficient turn budget for memory request")
+            try:
+                result = invoke_json(
+                    self.classifier.llm,
+                    [{"role": "user", "content": prompt}],
+                    max_retries=0,
+                    validator=validator,
+                )
+            except StructuredLLMError as exc:
+                update.update(
+                    self.budget.account_llm(
+                        current,
+                        retries=exc.retries,
+                        tokens_used=exc.tokens_used,
+                        node_name="memory",
+                    ).update
+                )
+                raise
+            accounted = self.budget.account_llm(
+                current, retries=result.retries, tokens_used=result.tokens_used, node_name="memory"
+            )
+            update.update(accounted.update)
+            if not accounted.allowed:
+                raise ContextLimitError("Turn budget exhausted")
+            return result.payload
+
+        try:
+            update.update(
+                prepare_memory(
+                    state.get("memory_history", []),
+                    summary=state.get("conversation_summary", ""),
+                    through=state.get("memory_through_sequence", 0),
+                    confirmed=dict(state.get("confirmed_context", {})),
+                    settings=self.settings,
+                    invoke=invoke,
+                )
+            )
+            if state.get("next_action") != "extract_requirements" and (
+                len(update.get("conversation_recent", [])) > 1 or update.get("conversation_summary")
+            ):
+                resolved = resolve_followup(
+                    state["latest_user_message"],
+                    update["conversation_context"],
+                    invoke,
+                    language=_language(state),
+                )
+                if resolved["clarification"]:
+                    return {
+                        **update,
+                        "status": "paused",
+                        "pause_reason": "context_reference_invalid",
+                        "assistant_reply": resolved["clarification"],
+                        "answer_evidence": [],
+                        "answer_status": "context_paused",
+                        "next_action": "clarify_reference",
+                    }
+                update["resolved_user_message"] = resolved["question"].strip()
+            return update
+        except (ContextLimitError, StructuredLLMError) as exc:
+            reason = update.get("pause_reason") or (
+                "memory_output_invalid"
+                if isinstance(exc, StructuredLLMError)
+                else "context_limit_exceeded"
+            )
+            if reason == "memory_output_invalid":
+                reply = localized(
+                    _language(state),
+                    "本轮历史摘要或追问整理失败，原始对话已保留。请稍后重试，"
+                    "或直接说明涉及的配置及本次问题。",
+                    "History summarization or follow-up resolution failed. Original messages "
+                    "are saved. Retry later or specify the configuration and current question.",
+                )
+            elif reason == "context_limit_exceeded":
+                reply = localized(
+                    _language(state),
+                    "本轮内容超过对话上下文上限，无法在保留必要内容的情况下完成整理。"
+                    "原始对话已保留。请缩短过长输入；若历史或已确认需求过多，"
+                    "请新建对话并提供本次所需背景。",
+                    "This conversation exceeds the context limit and cannot be compacted "
+                    "without losing required content. Original messages are saved. Shorten "
+                    "oversized input; for excessive history or requirements, start a new "
+                    "conversation with the relevant background.",
+                )
+            else:
+                reply = localized(
+                    _language(state),
+                    "整理对话上下文时达到本轮处理预算或时间上限，已暂停处理并保留原始对话。"
+                    "请稍后重试，或缩小本次问题范围。",
+                    "Context preparation reached the turn budget or time limit. Processing "
+                    "paused and original messages are saved. Retry later or narrow the request.",
+                )
+            return {
+                **update,
+                "status": "paused",
+                "pause_reason": reason,
+                "assistant_reply": reply,
+                "answer_evidence": [],
+                "answer_status": "context_paused",
+                "next_action": "clarify_context",
+            }
+
+    @staticmethod
+    def _route_after_memory(state: AgentGraphState) -> str:
+        if _is_budget_or_failure_pause(state):
+            return "end"
+        return "requirements" if state.get("next_action") == "extract_requirements" else "classify"
 
     def _classify_intent(self, state: AgentGraphState) -> dict[str, Any]:
         entered = self.budget.enter_node(state, "supervisor")
         if not entered.allowed:
             return entered.update
         try:
-            result = self.classifier.classify(state["latest_user_message"])
+            result = self.classifier.classify(
+                state.get("resolved_user_message") or state["latest_user_message"]
+            )
         except StructuredLLMError as exc:
             return self._structured_failure(
                 state, entered.update, exc, "intent_output_invalid", "supervisor"
@@ -355,14 +491,17 @@ class SupervisorGraph:
                     filters = self.workspace.filters({}) if self.workspace else {}
                     calls = 1
                     result = self.knowledge_agent.adapter.search(
-                        state["latest_user_message"], filters=filters, top_k=5
+                        state.get("resolved_user_message") or state["latest_user_message"],
+                        filters=filters,
+                        top_k=5,
                     )
                     if result.evidence_sufficient and result.evidence:
                         answer = answer_question(
                             self.classifier.llm,
-                            state["latest_user_message"],
+                            state.get("resolved_user_message") or state["latest_user_message"],
                             result.evidence,
                             language=language,
+                            conversation_context=state.get("conversation_context", ""),
                         )
                         accounted = self.budget.account_llm(
                             state,
@@ -464,6 +603,7 @@ class SupervisorGraph:
             "assistant_reply": "",
             "answer_evidence": [],
             "answer_status": "",
+            "next_action": "classify_intent",
             "pause_reason": "",
             "open_questions": [],
         }
@@ -521,8 +661,9 @@ class SupervisorGraph:
                 user_message=state["latest_user_message"],
                 turn_id=state["latest_turn_id"],
                 confirmed_context=dict(state.get("confirmed_context", {})),
-                recent_turns=list(state.get("recent_turns", [])),
+                recent_turns=list(state.get("conversation_recent", state.get("recent_turns", []))),
                 requirement_summary=str(state.get("requirement_summary", "")),
+                conversation_summary=state.get("conversation_summary", ""),
                 language=_language(state),
             )
         except StructuredLLMError as exc:
