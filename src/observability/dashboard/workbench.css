@@ -36,8 +36,38 @@ section[data-testid="stSidebar"] [style*="cursor: col-resize"]:hover {
 [class*="st-key-answer-anchor-"] {
   scroll-margin-top: 7rem;
 }
-.st-key-return-scroll-effect {
+.st-key-floating-return-control {
+  height: 0;
+  min-height: 0;
+}
+.wb-return-arrow {
   display: none;
+  position: fixed;
+  right: 1.5rem;
+  top: 50%;
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 50%;
+  background: var(--ui-bg, #fff);
+  color: var(--ui-ink);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+[data-testid="stTabs"][class*="st-key-workbench_view-"]:has(
+  [class*="st-key-answer-anchor-"] details[open]
+) .wb-return-arrow {
+  display: flex;
+}
+.wb-return-arrow span { font-size: 25px; line-height: 1; }
+.wb-return-arrow:hover { background: var(--ui-fill); }
+.wb-return-arrow:focus-visible { outline: 2px solid var(--ui-ink); outline-offset: 3px; }
+.wb-return-arrow:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 640px) {
+  .wb-return-arrow { right: 1rem; }
 }
 
 /* ---------- sidebar: brand ---------- */
