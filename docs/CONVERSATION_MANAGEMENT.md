@@ -57,6 +57,11 @@ The sidebar's **对话轮次** selector keeps the existing history-selection beh
 The sidebar can be resized using its right edge. Restore actions retain a fixed
 action width, and the cache shortcut hint sits below its button so labels remain
 horizontal even in a narrow sidebar. Keyboard shortcut binding is unchanged.
+Recycle-bin titles use a single ellipsized line. The conversation action menu is
+compact, and management dialogs use a 420px maximum width that fits narrow screens.
+The brand area has a distinct gap before New conversation, with consistent spacing
+between top-level sidebar elements. These are presentation changes; selection and
+confirmation behavior remains the same.
 
 ## Sending and waiting
 
