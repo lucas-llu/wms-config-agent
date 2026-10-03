@@ -53,6 +53,10 @@ is conversation-record management rather than secure erasure of every artifact.
 
 The current redesign is preserved. Chat spacing is increased and the composer owns
 one outer focus border, with matching inner corners and a visible keyboard focus.
+The sidebar's **对话轮次** selector keeps the existing history-selection behavior.
+The sidebar can be resized using its right edge. Restore actions retain a fixed
+action width, and the cache shortcut hint sits below its button so labels remain
+horizontal even in a narrow sidebar. Keyboard shortcut binding is unchanged.
 
 ## Sending and waiting
 

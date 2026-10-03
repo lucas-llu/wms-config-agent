@@ -5,15 +5,12 @@
 /* ---------- framework chrome ---------- */
 [data-testid="stExpandSidebarButton"] { visibility: visible; }
 
-section[data-testid="stSidebar"][aria-expanded="true"] {
-  min-width: 284px !important;
-  max-width: 284px !important;
-}
-section[data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
-  width: 284px !important;
-}
+/* Leave width to the native sidebar resize handle. */
 section[data-testid="stSidebar"] > div:first-child {
   padding-right: 0.9rem;
+}
+section[data-testid="stSidebar"] [style*="cursor: col-resize"]:hover {
+  background: rgba(13, 13, 13, 0.08);
 }
 
 .stMainBlockContainer {
@@ -421,6 +418,22 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 }
 
 /* ---------- dialogs ---------- */
+[class*="st-key-trash-row-"] [data-testid="stColumn"]:first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+[class*="st-key-trash-row-"] [data-testid="stColumn"]:last-child {
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+}
+.st-key-workbench_clear_cache kbd {
+  display: none;
+}
+.st-key-workbench_clear_cache button [data-testid="stMarkdownContainer"] p,
+.st-key-recycle-bin-content button [data-testid="stMarkdownContainer"] p {
+  white-space: nowrap;
+}
 .st-key-recycle-bin-content button[kind="tertiary"] {
   border: 0;
   background: transparent;
