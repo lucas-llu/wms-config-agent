@@ -755,7 +755,10 @@ def _render_details(service, session_id, revision, view, disabled):
                 st.text(f"文档版本：{item['product_version'] or '未知'}")
                 st.text(item["excerpt"])
                 for picture in item["images"]:
-                    st.image(str(picture["path"]), caption=f"文档插图 · 第 {picture['page'] or '未知'} 页")
+                    st.image(
+                        str(picture["path"]),
+                        caption=f"文档插图 · 第 {picture['page'] or '未知'} 页",
+                    )
                 if item["images_unavailable"]:
                     st.caption("部分引用图片暂不可用，请检查原文或重新导入文档。")
         for binding in view["bindings"]:

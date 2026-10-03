@@ -133,7 +133,7 @@ def _evidence_from_citations(citations: tuple[Citation, ...]) -> tuple[Evidence,
             image_ids=tuple(
                 dict.fromkeys(
                     image["id"]
-                for image in (citation.metadata.get("images") or [])
+                    for image in (citation.metadata.get("images") or [])
                     if isinstance(image, dict)
                     and isinstance(image.get("id"), str)
                     and re.fullmatch(r"[A-Za-z0-9_.:-]+", image["id"])
