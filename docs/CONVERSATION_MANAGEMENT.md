@@ -138,12 +138,14 @@ Atomic questions now store only validated cited sources in `answer_evidence`, wi
 their citation indexes, in the immutable conversation revision and assistant-turn
 metadata. Every answer displays a default-collapsed **查看证据** panel below its
 conclusion; source quotes and full retrieved fragments are not printed inline.
-An opened chat evidence panel has **返回本轮回答** buttons at both ends. Either
-button closes only that panel and scrolls/focuses the corresponding assistant
-answer below the persistent navigation. It also works in historical views and
-does not switch sessions/revisions or submit a model request. A one-shot scroll
-effect uses only a server-generated hashed anchor, never conversation/source
-text as JavaScript; stale targets outside the current view are ignored.
+When chat evidence is open, a fixed upward arrow on the right lets the user return
+to the corresponding answer from the middle of long excerpts/images. It only
+scrolls and transfers focus: evidence remains open until explicitly collapsed.
+With multiple panels open, the visible panel nearest the viewport midpoint selects
+the answer. The arrow disappears when all chat evidence is closed or Workspace is
+shown, and works in historical views. This is a local browser action with no
+request or session/revision change. Only a server-generated hashed button ID is
+inserted into trusted presentation JavaScript; source/message content is not.
 The workspace **引用证据** view groups all completed answers up to the selected
 revision into default-collapsed rounds, newest first, labelled with the question
 and source count. Each round contains individually collapsed sources. Opening a
