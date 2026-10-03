@@ -12,6 +12,9 @@ section[data-testid="stSidebar"] > div:first-child {
 section[data-testid="stSidebar"] [style*="cursor: col-resize"]:hover {
   background: rgba(13, 13, 13, 0.08);
 }
+[data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] {
+  gap: 1rem;
+}
 
 .stMainBlockContainer {
   max-width: 800px;
@@ -25,6 +28,11 @@ section[data-testid="stSidebar"] [style*="cursor: col-resize"]:hover {
   align-items: center;
   gap: 10px;
   padding: 4px 4px 6px;
+  margin-bottom: 8px;
+}
+/* Native Markdown has a negative bottom margin that crowds the brand/actions. */
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]:has(> .wb-brand) {
+  margin-bottom: 0;
 }
 .wb-brand-mark {
   display: inline-flex;
@@ -120,20 +128,30 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
 }
 
 /* conversation row context menu */
+[data-testid="stPopoverBody"]:has([class*="st-key-conversation-menu-"]) {
+  width: 176px;
+  min-width: 176px;
+  padding: 6px;
+  border-radius: 10px;
+}
+[data-testid="stPopoverBody"]:has([class*="st-key-conversation-menu-"])
+  [data-testid="stVerticalBlock"] {
+  gap: 2px;
+}
 [class*="st-key-conversation-menu-"] {
-  min-width: 178px;
-  padding: 4px;
+  min-width: 0;
+  padding: 0;
 }
 [class*="st-key-conversation-menu-"] [data-testid="stVerticalBlock"] {
-  gap: 3px;
+  gap: 2px;
 }
 [class*="st-key-conversation-menu-"] button {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  min-height: 40px;
+  min-height: 34px;
   justify-content: flex-start;
-  padding: 9px 12px;
+  padding: 7px 10px;
   box-shadow: none;
   font-size: 0.875rem;
 }
@@ -427,6 +445,23 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
   width: 64px;
   min-width: 64px;
 }
+[class*="st-key-trash-row-"] [data-testid="stCheckbox"],
+[class*="st-key-trash-row-"] [data-testid="stCheckbox"] label {
+  min-width: 0;
+  width: 100%;
+}
+[class*="st-key-trash-row-"] [data-testid="stWidgetLabel"] {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+[class*="st-key-trash-row-"] [data-testid="stCheckbox"] [data-testid="stMarkdownContainer"] p {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
 .st-key-workbench_clear_cache kbd {
   display: none;
 }
@@ -464,6 +499,16 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
   padding: 7px 12px;
   border-radius: 8px;
   background: var(--ui-fill);
+}
+[role="dialog"]:has(.st-key-conversation-rename-dialog),
+[role="dialog"]:has(.st-key-conversation-delete-dialog),
+[role="dialog"]:has(.st-key-conversation-purge-dialog) {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+}
+.st-key-conversation-rename-dialog [data-testid="stForm"] {
+  border: 0;
+  padding: 0;
 }
 .st-key-conversation-rename-dialog,
 .st-key-conversation-delete-dialog {
