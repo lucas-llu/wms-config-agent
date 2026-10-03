@@ -20,6 +20,47 @@ _FAILED = "workbench_failed_message"
 _CACHE_DIALOG = "workbench_cache_dialog"
 _CACHE_SHORTCUT = "Ctrl+Alt+Shift+K"
 _PURGE_DIALOG = "workbench_purge_dialog"
+_RETURN_SCROLL = "workbench_return_scroll"
+
+
+def _answer_anchor(workspace_id, session_id, turn_id):
+    identity = f"{workspace_id}:{session_id}:{turn_id}"
+    return "answer-anchor-" + hashlib.sha256(identity.encode()).hexdigest()[:24]
+
+
+def _return_to_answer(expander_key, anchor, scope):
+    st.session_state[expander_key] = False
+    st.session_state[_RETURN_SCROLL] = {"anchor": anchor, "scope": scope}
+
+
+def _return_button(expander_key, anchor, scope, position, busy):
+    st.button(
+        "返回本轮回答",
+        icon=":material/arrow_upward:",
+        type="tertiary",
+        key=f"return-answer:{expander_key}:{position}",
+        disabled=busy,
+        on_click=_return_to_answer,
+        args=(expander_key, anchor, scope),
+    )
+
+
+def _render_return_scroll(scope, anchors):
+    request = st.session_state.pop(_RETURN_SCROLL, None)
+    if not request or request["scope"] != scope or request["anchor"] not in anchors:
+        return
+    # Only a server-generated hex anchor enters this trusted one-shot script.
+    # No message/source content is interpolated or evaluated as JavaScript.
+    anchor = request["anchor"]
+    with st.container(key="return-scroll-effect"):
+        st.html(
+            "<script>(() => { requestAnimationFrame(() => requestAnimationFrame(() => {"
+            f"const target = document.querySelector('.st-key-{anchor}');"
+            "if (target) { target.scrollIntoView({block: 'start', behavior: 'instant'});"
+            "target.tabIndex = -1; target.focus({preventScroll: true}); }"
+            "})); })();</script>",
+            unsafe_allow_javascript=True,
+        )
 
 
 def _queue_message(key, workspace_id, session_id, revision):
@@ -664,6 +705,8 @@ def render_workbench(service: WorkbenchService) -> None:
     with chat:
         if view.get("memory_compacted", False):
             st.caption("较早对话已整理为摘要，原始消息仍保留在下方历史中。")
+        return_scope = f"{workspace.workspace_id}:{session_id}:{revision}"
+        anchors = []
         for turn in view["turns"]:
             with st.chat_message(
                 turn["role"],
@@ -672,19 +715,30 @@ def render_workbench(service: WorkbenchService) -> None:
                 if turn["role"] == "user":
                     st.text(turn["message"])
                 else:
-                    st.markdown(_safe_markdown(turn["message"]))
-                    if turn["citations"] or turn["legacy_evidence"]:
-                        count = len(turn["citations"])
-                        with st.expander(
-                            f"查看证据（{count}）" if count else "查看证据",
-                            expanded=False,
-                            key=f"answer-evidence:{workspace.workspace_id}:{session_id}:{turn['turn_id']}",
-                            on_change="rerun",
-                        ) as evidence_panel:
-                            if evidence_panel.open:
-                                _render_answer_sources(service, turn["citations"])
-                                if turn["legacy_evidence"] and not turn["citations"]:
-                                    st.text(turn["legacy_evidence"])
+                    anchor = _answer_anchor(workspace.workspace_id, session_id, turn["turn_id"])
+                    anchors.append(anchor)
+                    with st.container(key=anchor):
+                        st.markdown(_safe_markdown(turn["message"]))
+                        if turn["citations"] or turn["legacy_evidence"]:
+                            count = len(turn["citations"])
+                            expander_key = (
+                                f"answer-evidence:{workspace.workspace_id}:"
+                                f"{session_id}:{turn['turn_id']}"
+                            )
+                            with st.expander(
+                                f"查看证据（{count}）" if count else "查看证据",
+                                expanded=False,
+                                key=expander_key,
+                                on_change="rerun",
+                            ) as evidence_panel:
+                                if evidence_panel.open:
+                                    _return_button(expander_key, anchor, return_scope, "top", busy)
+                                    _render_answer_sources(service, turn["citations"])
+                                    if turn["legacy_evidence"] and not turn["citations"]:
+                                        st.text(turn["legacy_evidence"])
+                                    _return_button(
+                                        expander_key, anchor, return_scope, "bottom", busy
+                                    )
         if not view["turns"]:
             st.info("这个版本还没有对话记录。")
         _render_failed(workspace.workspace_id, session_id, view["turns"])
@@ -711,6 +765,7 @@ def render_workbench(service: WorkbenchService) -> None:
             }.get(view["status"], "待验证" if view["tasks"] else "尚未生成方案"),
         )
         _render_details(service, session_id, revision, view, disabled)
+    _render_return_scroll(return_scope, anchors)
     if entry:
         _process_message(service, entry, indicator)
         return

@@ -33,6 +33,13 @@ section[data-testid="stSidebar"] [style*="cursor: col-resize"]:hover {
   box-shadow: 0 6px 10px -10px rgba(0, 0, 0, 0.25);
 }
 
+[class*="st-key-answer-anchor-"] {
+  scroll-margin-top: 7rem;
+}
+.st-key-return-scroll-effect {
+  display: none;
+}
+
 /* ---------- sidebar: brand ---------- */
 .wb-brand {
   display: flex;

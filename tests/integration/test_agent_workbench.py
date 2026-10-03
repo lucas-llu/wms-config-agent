@@ -761,3 +761,32 @@ def test_empty_and_legacy_evidence_rounds_remain_visible(tmp_path):
     assert not app.exception
     assert any(c.value == "本轮未产生可引用的文档证据。" for c in app.caption)
     assert any(e.label == "历史引用原文" for e in app.expander)
+
+
+def test_return_to_answer_closes_only_target_evidence_without_backend_or_history_changes(tmp_path):
+    service, call = fixture(tmp_path)
+    repo = service.repository
+    turn = repo.append_turn(
+        session_id="session:a",
+        expected_revision=2,
+        role="assistant",
+        message="Answer [1]",
+        metadata={
+            "citations": [{"evidence_id": "e:1", "source": "test.pdf", "excerpt": "Long source"}]
+        },
+    )
+    before = repo.list_turns("session:a"), repo.list_revisions("session:a")
+    app = AppTest.from_function(render, args=(service,)).run()
+    key = f"answer-evidence:workspace:legacy:session:a:{turn.turn_id}"
+    app.session_state[key] = True
+    app.run()
+    assert not app.exception
+    back = [b for b in app.button if b.label == "返回本轮回答"]
+    assert len(back) == 2
+    back[-1].click().run()
+    assert not app.exception
+    assert not app.session_state[key]
+    assert not any(b.label == "返回本轮回答" for b in app.button)
+    assert (repo.list_turns("session:a"), repo.list_revisions("session:a")) == before
+    assert next(s for s in app.selectbox if s.label == "对话轮次").value == 2
+    call.assert_not_called()
