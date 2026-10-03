@@ -349,6 +349,8 @@ def test_qa_citations_visible_without_configuration_draft(tmp_path):
     )
     app = AppTest.from_function(render, args=(service,)).run()
     assert not app.exception
+    app.session_state["round-evidence:session:a:legacy:3"] = True
+    app.run()
     assert any(item.label == "[1] qa.pdf" for item in app.expander)
     assert any("知识问答" in item.value for item in app.info)
     assert button(app, "验证草稿").disabled
@@ -669,3 +671,93 @@ def test_expander_defers_image_resolution_until_opened(tmp_path):
         app.run()
         assert not app.exception
         present.assert_called_once()
+
+
+def test_workspace_evidence_groups_preserve_each_round_and_filter_historical_versions(tmp_path):
+    service, _ = fixture(tmp_path)
+    repo = service.repository
+    first = {"evidence_id": "same-id", "source": "first.pdf", "excerpt": "First snapshot"}
+    second = {"evidence_id": "same-id", "source": "second.pdf", "excerpt": "Second snapshot"}
+    first_turn = repo.append_turn(
+        session_id="session:a",
+        expected_revision=2,
+        role="assistant",
+        message="First answer",
+        metadata={"citations": [first, {**first, "source": "extra.pdf"}]},
+    )
+    repo.append_turn(
+        session_id="session:a", expected_revision=2, role="user", message="Next question"
+    )
+    repo.update_revision(
+        session_id="session:a",
+        expected_revision=2,
+        actor="test",
+        reason="next",
+        state_update={"answer_evidence": [second]},
+    )
+    repo.append_turn(
+        session_id="session:a",
+        expected_revision=3,
+        role="assistant",
+        message="Second",
+        metadata={"citations": [second]},
+    )
+    view = service.view("session:a", 3)
+    assert [r["number"] for r in view["evidence_rounds"]] == [1, 2]
+    assert [r["question"] for r in view["evidence_rounds"]] == ["Goal", "Next question"]
+    assert view["evidence_rounds"][0]["citations"][0]["excerpt"] == "First snapshot"
+    assert view["evidence_rounds"][1]["citations"][0]["excerpt"] == "Second snapshot"
+    old = service.view("session:a", 2)
+    assert len(old["evidence_rounds"]) == 1
+    assert old["evidence_rounds"][0]["turn_id"] == first_turn.turn_id
+    assert "Second snapshot" not in str(old["evidence_rounds"])
+    from unittest.mock import patch
+
+    with patch.object(service, "present_evidence", wraps=service.present_evidence) as present:
+        app = AppTest.from_function(render, args=(service,)).run()
+        assert not app.exception
+        present.assert_not_called()
+        groups = [e.label for e in app.expander if e.label.startswith("第 ")]
+        assert groups[0].startswith("第 2 轮") and groups[1].startswith("第 1 轮")
+        key = f"round-evidence:session:a:{first_turn.turn_id}"
+        app.session_state[key] = True
+        app.run()
+        assert not app.exception
+        assert any(e.label == "extra.pdf" for e in app.expander)
+        present.assert_not_called()  # Opening a round does not load any source images.
+        app.session_state[key] = True
+        app.session_state[f"{key}:source:0"] = True
+        app.run()
+        assert not app.exception
+        present.assert_called_once()
+        assert any(t.value == "First snapshot" for t in app.text)
+        assert not any(t.value == "Second snapshot" for t in app.text)
+        app.session_state[key] = False
+        present.reset_mock()
+        app.run()
+        present.assert_not_called()
+
+
+def test_empty_and_legacy_evidence_rounds_remain_visible(tmp_path):
+    service, _ = fixture(tmp_path)
+    repo = service.repository
+    empty = repo.append_turn(
+        session_id="session:a",
+        expected_revision=2,
+        role="assistant",
+        message="Need clarification",
+        metadata={"citations": []},
+    )
+    legacy = repo.append_turn(
+        session_id="session:a",
+        expected_revision=2,
+        role="assistant",
+        message="Answer\n\n引用依据\n[1] legacy.pdf\nOriginal source",
+    )
+    app = AppTest.from_function(render, args=(service,)).run()
+    app.session_state[f"round-evidence:session:a:{empty.turn_id}"] = True
+    app.session_state[f"round-evidence:session:a:{legacy.turn_id}"] = True
+    app.run()
+    assert not app.exception
+    assert any(c.value == "本轮未产生可引用的文档证据。" for c in app.caption)
+    assert any(e.label == "历史引用原文" for e in app.expander)

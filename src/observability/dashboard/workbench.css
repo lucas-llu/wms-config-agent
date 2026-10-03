@@ -22,6 +22,17 @@ section[data-testid="stSidebar"] [style*="cursor: col-resize"]:hover {
   padding-bottom: 2.75rem;
 }
 
+/* Keep the primary conversation/workspace navigation reachable in long chats.
+   Scope to the keyed outer tabs so workspace detail tabs retain normal flow. */
+[data-testid="stTabs"][class*="st-key-workbench_view-"] > div > [role="tablist"] {
+  position: sticky;
+  top: 3.75rem;
+  z-index: 20;
+  background: var(--ui-bg, #fff);
+  border-bottom: 1px solid var(--ui-line);
+  box-shadow: 0 6px 10px -10px rgba(0, 0, 0, 0.25);
+}
+
 /* ---------- sidebar: brand ---------- */
 .wb-brand {
   display: flex;

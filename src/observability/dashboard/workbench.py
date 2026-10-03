@@ -11,7 +11,7 @@ import streamlit as st
 
 from agents.repositories.feedback_repository import FEEDBACK_KINDS, REGENERATION_REASONS
 from core.evidence_text import clean_evidence_text
-from observability.dashboard.services.workbench_service import WorkbenchService
+from observability.dashboard.services.workbench_service import WorkbenchService, safe_source
 from observability.dashboard.theme import apply_global_theme
 
 _BUSY = "workbench_busy"
@@ -695,10 +695,12 @@ def render_workbench(service: WorkbenchService) -> None:
                 for question in view["questions"]:
                     st.text(str(question.get("text", "待补充需求")))
     with workspace_panel:
-        st.caption("当前工作区内容绑定这条对话和所选版本。")
+        st.caption("引用证据按问答轮次累计展示；配置草稿与审查仍对应所选版本。")
         tasks, sources, review = st.columns(3)
         tasks.metric("配置任务", len(view["tasks"]))
-        sources.metric("证据片段", len(view["answer_evidence"]) + len(view["evidence"]))
+        sources.metric(
+            "历史引用", sum(len(r["citations"]) for r in view.get("evidence_rounds", []))
+        )
         review.metric(
             "审查状态",
             {
@@ -748,30 +750,40 @@ def _render_details(service, session_id, revision, view, disabled):
                     st.text(label)
                     _text_values(task.get(field) or "尚未提供")
     with evidence:
-        if view["answer_evidence"]:
-            st.subheader("本次回答的引用")
-        elif view["legacy_answer_evidence"]:
-            st.info("这条历史回答尚未保存结构化引用。重新提问后可在这里查看对应证据。")
-        elif view["is_question"]:
-            st.info("本轮尚未形成通过校验的引用，回答中的证据缺口仍需补充。")
+        st.subheader("按轮次查看引用")
+        rounds = view.get("evidence_rounds", [])
+        if not rounds:
+            st.info("当前版本尚无回答引用记录。")
+        for group in reversed(rounds):
+            title = f"第 {group['number']} 轮" if group["number"] else "当前版本（未记录回答轮次）"
+            question = _history_title(group["question"])
+            count = len(group["citations"])
+            count_label = (
+                "历史引用" if not count and group["legacy_evidence"] else f"{count} 份证据"
+            )
+            scope = f"round-evidence:{session_id}:{group['turn_id']}"
+            with st.expander(
+                f"{title} · {_safe_markdown(question)} · {count_label}",
+                expanded=False,
+                key=scope,
+                on_change="rerun",
+            ) as round_panel:
+                if round_panel.open:
+                    st.text(group["question"])
+                    for index, item in enumerate(group["citations"]):
+                        _render_source_expander(service, item, f"{scope}:source:{index}")
+                    if not group["citations"]:
+                        if group["legacy_evidence"]:
+                            with st.expander("历史引用原文", expanded=False):
+                                st.text(group["legacy_evidence"])
+                        else:
+                            st.caption("本轮未产生可引用的文档证据。")
         if view["evidence"]:
-            st.subheader("配置任务的证据")
+            st.subheader("当前配置任务的证据")
         elif not view["is_question"]:
             st.info("尚无配置任务证据；请先完成需求与规划，再检查证据覆盖。")
-        for item in [*view["answer_evidence"], *view["evidence"]]:
-            title = (
-                f"[{item['citation_index']}] {item['source']}"
-                if item.get("citation_index")
-                else str(item["evidence_id"])
-            )
-            with st.expander(
-                title,
-                expanded=False,
-                key=f"workspace-evidence:{session_id}:{revision}:{item['evidence_id']}",
-                on_change="rerun",
-            ) as source_panel:
-                if source_panel.open:
-                    _render_answer_sources(service, [item])
+        for index, item in enumerate(view["evidence"]):
+            _render_source_expander(service, item, f"task-evidence:{session_id}:{revision}:{index}")
         for binding in view["bindings"]:
             st.text(f"{binding.get('task_id')}: {binding.get('evidence_status')}")
             st.text("引用：" + ", ".join(binding.get("evidence_ids", [])))
@@ -821,6 +833,19 @@ def _render_details(service, session_id, revision, view, disabled):
                 )
         if st.button("查看反馈汇总", disabled=not service.enabled):
             _submit(lambda: service.act("summary", session_id, revision), refresh=False)
+
+
+def _render_source_expander(service, item, key):
+    number = item.get("citation_index")
+    prefix = f"[{number}] " if number else ""
+    with st.expander(
+        prefix + _safe_markdown(safe_source(item.get("source"))),
+        expanded=False,
+        key=key,
+        on_change="rerun",
+    ) as source_panel:
+        if source_panel.open:
+            _render_answer_sources(service, [item])
 
 
 def _render_answer_sources(service, sources):
