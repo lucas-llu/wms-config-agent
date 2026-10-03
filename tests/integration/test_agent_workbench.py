@@ -87,7 +87,7 @@ def test_workbench_read_only_render_and_feedback(tmp_path):
 def test_historical_view_disables_mutations_but_allows_feedback(tmp_path):
     service, call = fixture(tmp_path)
     app = AppTest.from_function(render, args=(service,)).run()
-    next(item for item in app.selectbox if item.label == "查看版本").select(1).run()
+    next(item for item in app.selectbox if item.label == "对话轮次").select(1).run()
     assert app.chat_input[0].disabled
     for label in ("验证草稿", "提交审查", "导出已批准方案"):
         assert button(app, label).disabled
@@ -394,12 +394,12 @@ def test_row_actions_and_search_preserve_other_selected_conversation(tmp_path):
     app = AppTest.from_function(render, args=(service,)).run()
     selection = "workbench_session:workspace:legacy"
     next(b for b in app.button if b.key == f"select:{selection}:session:a").click().run()
-    next(b for b in app.selectbox if b.label == "查看版本").select(1).run()
+    next(b for b in app.selectbox if b.label == "对话轮次").select(1).run()
     next(b for b in app.button if b.key == f"delete:{selection}:session:b").click().run()
     button(app, "确认删除").click().run()
     assert not app.exception
     assert app.session_state[selection] == "session:a"
-    assert next(b for b in app.selectbox if b.label == "查看版本").value == 1
+    assert next(b for b in app.selectbox if b.label == "对话轮次").value == 1
     button(app, "恢复").click().run()
     assert app.session_state[selection] == "session:a"
     app.text_input[0].set_value("no match").run()
@@ -450,7 +450,7 @@ def test_clarification_completion_selects_latest_and_removes_prompt(tmp_path):
     assert any(e.label == "需要补充的信息" for e in app.expander)
     app.chat_input[0].set_value("站点是 DC01").run()
     assert not app.exception
-    assert next(b for b in app.selectbox if b.label == "查看版本").value == 3
+    assert next(b for b in app.selectbox if b.label == "对话轮次").value == 3
     assert not any(e.label == "需要补充的信息" for e in app.expander)
     assert any("需求已补齐" in m.value for m in app.markdown)
     assert call.call_count == 1

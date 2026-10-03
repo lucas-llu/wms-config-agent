@@ -214,19 +214,25 @@ def _render_recycle_bin(service, busy):
         )
         with st.container(height=260 if len(rows) > 4 else "content", border=False):
             for row in rows:
-                select, restore = st.columns([3, 1], gap="small", vertical_alignment="center")
-                select.checkbox(
-                    _history_title(row["goal"]),
-                    key=keys[row["session_id"]],
-                    disabled=busy,
-                )
-                if restore.button(
-                    "恢复",
-                    key=f"restore:{workspace_id}:{row['session_id']}",
-                    disabled=busy,
-                    type="tertiary",
-                ):
-                    _restore_conversation(service, row["session_id"])
+                identity = hashlib.sha256(row["session_id"].encode()).hexdigest()[:12]
+                with st.container(key=f"trash-row-{identity}"):
+                    select, restore = st.columns(
+                        [3, 1], gap="small", vertical_alignment="center", wrap=False
+                    )
+                    select.checkbox(
+                        _history_title(row["goal"]),
+                        key=keys[row["session_id"]],
+                        disabled=busy,
+                    )
+                    if restore.button(
+                        "恢复",
+                        key=f"restore:{workspace_id}:{row['session_id']}",
+                        disabled=busy,
+                        type="tertiary",
+                        width="stretch",
+                        wrap=False,
+                    ):
+                        _restore_conversation(service, row["session_id"])
         st.caption(f"已选 {len(selected)} / {len(rows)} 条")
         with st.container(key="trash-actions"):
             delete, clear = st.columns(2)
@@ -518,6 +524,7 @@ def render_workbench(service: WorkbenchService) -> None:
                 shortcut=_CACHE_SHORTCUT,
                 help="Ctrl+Alt+Shift+K；Mac 使用 Cmd+Option+Shift+K。清理前必须确认。",
                 use_container_width=True,
+                wrap=False,
                 disabled=not service.enabled
                 or not _local_maintenance_enabled()
                 or busy
@@ -529,6 +536,7 @@ def render_workbench(service: WorkbenchService) -> None:
                 ),
                 on_click=_open_cache_dialog,
             )
+            st.caption("快捷键：Ctrl + Alt + Shift + K")
     if st.session_state.get(_CACHE_DIALOG) and (
         not service.enabled or not _local_maintenance_enabled()
     ):
@@ -623,7 +631,7 @@ def render_workbench(service: WorkbenchService) -> None:
         st.session_state[revision_key] = selected_revision
     with st.sidebar:
         revision = st.selectbox(
-            "查看版本",
+            "对话轮次",
             versions,
             key=revision_key,
             disabled=busy,
