@@ -27,6 +27,28 @@ to avoid truncating the relevant paragraph; the V1 query tool remains unchanged.
 Existing per-turn budget accounting applies to answer generation. A bounded single
 repair attempt is allowed. No approval, export or WMS mutation occurs when answering.
 
+## Collapsed evidence and local document pictures
+
+Answers contain conclusions and small numbered citation markers, not an inline
+bibliography or long source excerpts. Each assistant turn has its own **查看证据**
+expander, closed by default. Its immutable source snapshot contains validated
+quotes, source/page/version information and the complete retrieved chunk (not the
+whole PDF). `full_excerpt` is retained for display; generation still uses the
+bounded `excerpt`, so the provider's evidence budget is unchanged.
+
+Opening the panel resolves pictures from the local read-only image index by
+collection, document hash and cited page range. Workspace restrictions apply;
+paths must remain under configured image roots, with a supported raster type and
+a 5 MB per-image limit. Unavailable pictures show a notice, not raw placeholder
+hashes or remote URLs. `[IMAGE: ...]` markers and truncated hash fragments are
+removed from displayed excerpts. Closing the panel removes its image elements.
+
+Legacy inline bibliographies are split only in the display, without rewriting
+stored messages. Where structured evidence exists, it comes from that turn's own
+revision, never the latest answer. A legacy text-only source cannot manufacture
+pictures or source metadata. Displaying pictures does not mean the text-only model
+has read or validated their contents; the OCR/vision limitation below still applies.
+
 ## Known limitation: image-only configuration fields
 
 The trolley example exposed an independent retrieval limitation: the slot handling

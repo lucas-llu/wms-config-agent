@@ -128,14 +128,21 @@ patch is used.
 ## Draft, evidence and approval
 
 Atomic questions now store only validated cited sources in `answer_evidence`, with
-their citation indexes, in the immutable conversation revision. They are displayed
-under **本次回答的引用**. Task evidence remains in `evidence_registry`; ordinary
+their citation indexes, in the immutable conversation revision and assistant-turn
+metadata. Every answer displays a default-collapsed **查看证据** panel below its
+conclusion; source quotes and full retrieved fragments are not printed inline.
+The same sources remain under **本次回答的引用** in the workspace. Pictures resolve
+and load only when their panel is opened, with unavailable-image notices and no
+raw image-ID placeholders. See `GROUNDED_QA.md` for image scope and safety limits.
+Task evidence remains in `evidence_registry`; ordinary
 answers do not turn into configuration evidence or approved drafts.
 
 Questions without a configuration plan explicitly explain why the draft/review
 areas are empty. Draft validation is unavailable when there are no tasks. Existing
-answers from before this change have no structured source snapshot; the panel asks
-the user to re-ask, rather than inventing or retrospectively changing citations.
+answers with an older structured snapshot use their own immutable revision, never
+the newest evidence. Older inline bibliographies are folded for display without
+rewriting stored turns. If no structured snapshot exists, only the old bibliography
+text is shown; citations and image metadata are never invented.
 
 ## Verification
 

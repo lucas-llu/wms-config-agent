@@ -8,7 +8,9 @@ import streamlit as st
 
 from agents.repositories import SessionRepository
 from core.settings import load_settings
+from ingestion.storage import ImageStorage
 from mcp_server.app import create_protocol_handler
+from observability.dashboard.services.evidence_images import EvidenceImages
 from observability.dashboard.services.workbench_service import WorkbenchService
 from observability.dashboard.workbench import render_workbench
 
@@ -27,6 +29,14 @@ try:
         call_tool,
         enabled=settings.agent.enabled,
         checkpoint_path=settings.agent.checkpoint_path,
+        evidence_images=EvidenceImages(
+            ImageStorage(
+                settings.ingestion.image_storage.root_path,
+                settings.ingestion.image_storage.database_path,
+                read_only=True,
+            ),
+            [settings.ingestion.image_storage.root_path],
+        ),
     )
     render_workbench(service)
 except Exception:

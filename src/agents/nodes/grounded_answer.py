@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 
 from agents.contracts import Evidence
 from agents.language import language_instruction, localized, response_language, validate_language
 from agents.llm_json import invoke_json
+from core.evidence_text import clean_evidence_text
 from libs.llm import BaseLLM
 
 
@@ -19,12 +19,11 @@ class GroundedAnswer:
     retries: int
     cited_source_ids: tuple[int, ...] = ()
     status: str = "answered"
+    supporting_quotes: tuple[tuple[int, str], ...] = ()
 
 
 def clean_excerpt(text: str) -> str:
-    text = re.sub(r"\[IMAGE:[^\]]*\]", "", text)
-    text = re.sub(r"\b[a-f0-9]{32,}_\d+_\d+\]?", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+    return clean_evidence_text(text)
 
 
 def answer_question(
@@ -105,17 +104,6 @@ def answer_question(
         lines.append(f"- {claim['text']} [{claim['source_id']}]")
     if payload["gap"]:
         lines.extend(["", localized(language, "需要确认：", "To confirm: ") + payload["gap"]])
-    if payload["claims"]:
-        lines.extend(["", localized(language, "引用依据", "Supporting evidence")])
-    for claim in payload["claims"]:
-        item = sources[claim["source_id"]]["item"]
-        page = item.page_start or localized(language, "未知", "unknown")
-        lines.append(
-            f"[{claim['source_id']}] {item.source} · "
-            + localized(language, "页码：", "Page: ")
-            + str(page)
-        )
-        lines.append(localized(language, "原文：", "Quote: ") + clean_excerpt(claim["quote"]))
     lines.extend(
         [
             "",
@@ -132,4 +120,10 @@ def answer_question(
         invocation.retries,
         tuple(sorted({int(claim["source_id"]) for claim in payload["claims"]})),
         payload["status"],
+        tuple(
+            dict.fromkeys(
+                (int(claim["source_id"]), clean_excerpt(claim["quote"]))
+                for claim in payload["claims"]
+            )
+        ),
     )

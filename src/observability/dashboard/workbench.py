@@ -10,6 +10,7 @@ from pathlib import Path
 import streamlit as st
 
 from agents.repositories.feedback_repository import FEEDBACK_KINDS, REGENERATION_REASONS
+from core.evidence_text import clean_evidence_text
 from observability.dashboard.services.workbench_service import WorkbenchService
 from observability.dashboard.theme import apply_global_theme
 
@@ -670,6 +671,18 @@ def render_workbench(service: WorkbenchService) -> None:
                     st.text(turn["message"])
                 else:
                     st.markdown(_safe_markdown(turn["message"]))
+                    if turn["citations"] or turn["legacy_evidence"]:
+                        count = len(turn["citations"])
+                        with st.expander(
+                            f"查看证据（{count}）" if count else "查看证据",
+                            expanded=False,
+                            key=f"answer-evidence:{workspace.workspace_id}:{session_id}:{turn['turn_id']}",
+                            on_change="rerun",
+                        ) as evidence_panel:
+                            if evidence_panel.open:
+                                _render_answer_sources(service, turn["citations"])
+                                if turn["legacy_evidence"] and not turn["citations"]:
+                                    st.text(turn["legacy_evidence"])
         if not view["turns"]:
             st.info("这个版本还没有对话记录。")
         _render_failed(workspace.workspace_id, session_id, view["turns"])
@@ -749,10 +762,14 @@ def _render_details(service, session_id, revision, view, disabled):
                 if item.get("citation_index")
                 else str(item["evidence_id"])
             )
-            with st.expander(title, expanded=True):
-                st.text(f"来源：{item['source']} · 页码：{item['page_start'] or '未知'}")
-                st.text(f"文档版本：{item['product_version'] or '未知'}")
-                st.text(item["excerpt"])
+            with st.expander(
+                title,
+                expanded=False,
+                key=f"workspace-evidence:{session_id}:{revision}:{item['evidence_id']}",
+                on_change="rerun",
+            ) as source_panel:
+                if source_panel.open:
+                    _render_answer_sources(service, [item])
         for binding in view["bindings"]:
             st.text(f"{binding.get('task_id')}: {binding.get('evidence_status')}")
             st.text("引用：" + ", ".join(binding.get("evidence_ids", [])))
@@ -802,3 +819,28 @@ def _render_details(service, session_id, revision, view, disabled):
                 )
         if st.button("查看反馈汇总", disabled=not service.enabled):
             _submit(lambda: service.act("summary", session_id, revision), refresh=False)
+
+
+def _render_answer_sources(service, sources):
+    for index, raw in enumerate(sources, 1):
+        item = service.present_evidence(raw)
+        number = item.get("citation_index") or index
+        st.markdown(f"**[{number}]** {_safe_markdown(item['source'])}")
+        first, last = item.get("page_start"), item.get("page_end")
+        pages = f"{first}–{last}" if first and last and first != last else str(first or "未知")
+        st.caption(f"页码：{pages} · 文档版本：{item.get('product_version') or '未知'}")
+        if item.get("supporting_quotes"):
+            st.caption("回答引用的原文")
+            for quote in dict.fromkeys(item["supporting_quotes"]):
+                st.text(clean_evidence_text(quote))
+        st.caption("检索到的原文片段")
+        st.text(item["excerpt"])
+        for picture in item["images"]:
+            try:
+                st.image(
+                    str(picture["path"]), caption=f"文档插图 · 第 {picture['page'] or '未知'} 页"
+                )
+            except (OSError, ValueError):
+                st.caption("这张图片暂时无法加载，请查看原文。")
+        if item["images_unavailable"]:
+            st.caption("部分引用图片暂不可用，请检查原文或重新导入文档。")

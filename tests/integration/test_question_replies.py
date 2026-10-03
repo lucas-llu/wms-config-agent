@@ -91,11 +91,19 @@ def test_questions_produce_persisted_reply_and_resume(tmp_path, mode):
     assert all(replies)
     if mode == "evidence":
         assert all(
-            "manual.pdf" in reply and "Synthetic receiving rule" in reply for reply in replies
+            "manual.pdf" not in reply and "Synthetic receiving rule" in reply for reply in replies
         )
         citations = repository.get_revision(result.session.session_id).state["answer_evidence"]
         assert citations[0]["citation_index"] == 1
         assert citations[0]["source"] == "manual.pdf"
+        turns = [
+            t for t in repository.list_turns(result.session.session_id) if t.role == "assistant"
+        ]
+        assert all(t.metadata["citations"][0]["source"] == "manual.pdf" for t in turns)
+        assert all(
+            t.metadata["citations"][0]["supporting_quotes"] == ["Synthetic receiving rule"]
+            for t in turns
+        )
         assert result.state.get("evidence_registry", []) == []
     else:
         assert result.state["answer_evidence"] == []

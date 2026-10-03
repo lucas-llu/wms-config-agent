@@ -278,6 +278,9 @@ class Evidence(SerializableAgentContract):
     site: str | None = None
     environment: str | None = None
     collection: str | None = None
+    doc_hash: str | None = None
+    image_ids: tuple[str, ...] = ()
+    full_excerpt: str | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.evidence_id, "Evidence.evidence_id")
@@ -307,6 +310,9 @@ class Evidence(SerializableAgentContract):
         _validate_optional_text(self.site, "Evidence.site")
         _validate_optional_text(self.environment, "Evidence.environment")
         _validate_optional_text(self.collection, "Evidence.collection")
+        _validate_optional_text(self.doc_hash, "Evidence.doc_hash")
+        _validate_identifiers(self.image_ids, "Evidence.image_ids")
+        _validate_optional_text(self.full_excerpt, "Evidence.full_excerpt")
 
 
 @dataclass(frozen=True, slots=True)
