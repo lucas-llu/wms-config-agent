@@ -12,6 +12,16 @@ import { Api, ApiError } from "../src/api";
 import { Evidence, Welcome, WorkbenchApp } from "../src/Workbench";
 import { fakeAuth, profile, session, workbench } from "./fixtures";
 
+it("closes mobile drawer when selecting account content", async () => {
+  const { user } = fixture();
+  await screen.findByRole("button", { name: /测试用户/ });
+  await user.click(screen.getByRole("button", { name: "打开侧栏" }));
+  expect(document.querySelector(".sidebar")).toHaveClass("opened");
+  await user.click(screen.getByRole("button", { name: /测试用户/ }));
+  expect(document.querySelector(".sidebar")).not.toHaveClass("opened");
+  await screen.findByText("用户中心");
+});
+
 it("shows blocking validation reasons and conflicts without implying approval", async () => {
   const { user } = fixture({
     data: {

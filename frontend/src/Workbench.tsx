@@ -294,6 +294,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     else if (messages.current) messages.current.scrollTop = 0;
   }, [data?.turns.length, pending, busy]);
   const open = async (id: string, revision?: number) => {
+    setSidebarOpen(false);
     const epoch = ++viewEpoch.current;
     setError("");
     const result = await api.request<Workbench>(
@@ -307,6 +308,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     }
   };
   const newChat = () => {
+    setSidebarOpen(false);
     viewEpoch.current++;
     setData(undefined);
     setPending("");
@@ -426,6 +428,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     }
   };
   const userPanel = async (next: "profile" | "devices") => {
+    setSidebarOpen(false);
     setPanel(next);
     if (next === "devices") {
       try {

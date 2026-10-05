@@ -239,7 +239,8 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
             page.locator('input[name="password"]').fill(password)
             page.locator("#kc-login").click()
         page.get_by_role("textbox", name="输入问题").wait_for(timeout=20000)
-        assert page.get_by_text("账号已就绪", exact=False).is_visible()
+        page.get_by_text("账号已就绪", exact=False).wait_for(timeout=15000)
+        assert not page.get_by_role("button", name="发送问题").is_enabled()
         token = [""]
         page.on(
             "request",
@@ -251,8 +252,10 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
         )
         page.get_by_role("button", name="我的账号", exact=False).click()
         page.get_by_text(email, exact=False).wait_for()
-        page.evaluate('window.dispatchEvent(new Event("focus"))')
-        page.wait_for_timeout(300)
+        with page.expect_response(
+            lambda response: response.url.endswith("/v1/me") and response.status == 200
+        ):
+            page.evaluate('window.dispatchEvent(new Event("focus"))')
         old = token[0]
         reset_context = browser.new_context()
         reset_page = reset_context.new_page()
