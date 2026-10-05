@@ -1,0 +1,37 @@
+name: wms-multiuser-p0
+services:
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: p0_admin
+      POSTGRES_PASSWORD: ${P0_DB_PASSWORD:?generate fixture first}
+      POSTGRES_DB: wms_p0
+    ports: ["127.0.0.1:25432:5432"]
+    volumes: ["p0-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U p0_admin -d wms_p0"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7.4.5
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always"]
+    ports: ["127.0.0.1:26379:6379"]
+    volumes: ["p0-redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: p0_admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${P0_ADMIN_PASSWORD:?generate fixture first}
+      KC_HOSTNAME: http://127.0.0.1:28081
+    ports: ["127.0.0.1:28081:8080"]
+    volumes: ["${P0_FIXTURE_DIR:?generate fixture first}/realm.json:/opt/keycloak/data/import/realm.json:ro"]
+volumes:
+  p0-postgres:
+  p0-redis:
