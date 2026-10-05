@@ -15,6 +15,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+p0 = [
+    "fastapi==0.142.2",
+    "httpx==0.28.1",
+    "PyJWT[crypto]==2.15.1",
+    "psycopg[binary,pool]==3.3.6",
+    "redis==8.1.0",
+    "rq==2.12.0",
+    "langgraph==1.2.11",
+    "langgraph-checkpoint==4.2.0",
+    "langgraph-checkpoint-postgres==3.1.2",
+]
 dev = [
     "pytest>=8.3,<9",
     "pytest-cov>=6,<7",
