@@ -364,11 +364,16 @@ def test_real_device_center_revoke_others_preserves_current_browser(browser):
         name, email, password = register_verified(pages[0])
         signin(pages[1], name, password)
         pages[0].get_by_role("button", name="我的账号", exact=False).click()
-        pages[0].get_by_role("button", name="登录设备").click()
+        pages[0].get_by_role("button", name="登录设备", exact=True).click()
         pages[0].locator(".device-row").first.wait_for(timeout=15000)
         assert pages[0].locator(".device-row").count() >= 2
         pages[0].get_by_role("button", name="退出其他设备", exact=True).click()
-        pages[0].get_by_role("dialog").get_by_role("button", name="确认", exact=True).click()
+        with pages[0].expect_response(
+            lambda response: (
+                response.url.endswith("/v1/me/logout-others") and response.status == 200
+            )
+        ):
+            pages[0].get_by_role("dialog").get_by_role("button", name="确认", exact=True).click()
         assert (
             httpx.get(
                 "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
