@@ -925,6 +925,49 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                     >
                       验证草稿
                     </button>
+                    <details
+                      className="validation-report"
+                      open={
+                        !!data.state.validation_findings?.length ||
+                        !!data.state.conflicts?.length
+                      }
+                    >
+                      <summary>验证结果与冲突</summary>
+                      {data.state.validation_findings?.length ? (
+                        <ul>
+                          {data.state.validation_findings.map(
+                            (finding, index) => (
+                              <li key={index}>
+                                <strong>
+                                  {finding.severity === "blocking"
+                                    ? "阻塞"
+                                    : finding.severity === "warning"
+                                      ? "提醒"
+                                      : "信息"}
+                                  ：
+                                </strong>
+                                {finding.message ||
+                                  finding.description ||
+                                  "需要复核该发现"}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <p className="muted">
+                          尚无验证发现；这不代表配置已批准或已在实际环境验证。
+                        </p>
+                      )}
+                      {data.state.conflicts?.map((conflict, index) => (
+                        <p
+                          key={index}
+                          className={conflict.blocking ? "notice" : "muted"}
+                        >
+                          {conflict.blocking ? "需要解决：" : "待复核："}
+                          {conflict.summary}
+                        </p>
+                      ))}
+                    </details>
                   </section>
                   <section className="workspace-card">
                     <h2>审批与导出</h2>

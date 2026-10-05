@@ -12,6 +12,35 @@ import { Api, ApiError } from "../src/api";
 import { Evidence, Welcome, WorkbenchApp } from "../src/Workbench";
 import { fakeAuth, profile, session, workbench } from "./fixtures";
 
+it("shows blocking validation reasons and conflicts without implying approval", async () => {
+  const { user } = fixture({
+    data: {
+      ...workbench,
+      state: {
+        status: "paused",
+        validation_findings: [
+          { severity: "blocking", message: "缺少版本匹配证据" },
+        ],
+        conflicts: [{ summary: "模块适用范围冲突", blocking: true }],
+      },
+    },
+  });
+  await open(user);
+  await user.click(
+    within(document.querySelector(".topbar") as HTMLElement).getByRole(
+      "button",
+      { name: "工作区" },
+    ),
+  );
+  expect(
+    screen.getByText("缺少版本匹配证据", { exact: false }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("模块适用范围冲突", { exact: false }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "提交审查" })).toBeDisabled();
+});
+
 it("approves only after explicit confirmation and refreshes the draft", async () => {
   const { user, request } = fixture({
     data: {

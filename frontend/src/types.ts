@@ -43,6 +43,7 @@ export type Task = {
 };
 export type State = {
   status: string;
+  conflicts?: { summary: string; blocking: boolean; dimension?: string }[];
   open_questions?: { text: string }[];
   configuration_tasks?: Task[];
   conversation_summary?: string;
