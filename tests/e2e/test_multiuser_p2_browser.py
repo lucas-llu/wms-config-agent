@@ -137,11 +137,39 @@ def mail_link(recipient):
     raise AssertionError("Synthetic verification/reset mail not delivered")
 
 
+def register_verified(page):
+    name = "p2-" + uuid.uuid4().hex
+    email = name + "@example.invalid"
+    password = uuid.uuid4().hex + "Aa9!"
+    navigate(page, WEB)
+    page.get_by_role("button", name="创建账号").click()
+    for field, value in [
+        ("username", name),
+        ("firstName", "Synthetic"),
+        ("lastName", "P2"),
+        ("email", email),
+    ]:
+        page.locator('input[name="' + field + '"]').fill(value)
+    assert not page.locator('input[name="password"]').count()
+    page.locator('input[type="submit"],button[type="submit"]').first.click()
+    navigate(page, mail_link(email))
+    page.locator('input[name="password-new"]').fill(password)
+    page.locator('input[name="password-confirm"]').fill(password)
+    page.locator('input[type="submit"],button[type="submit"]').first.click()
+    navigate(page, WEB)
+    if page.get_by_role("button", name="登录工作台").is_visible():
+        signin(page, name, password)
+    page.get_by_text("账号已就绪", exact=False).wait_for(timeout=20000)
+    assert not page.get_by_role("button", name="发送问题").is_enabled()
+    return name, email, password
+
+
 def test_two_real_accounts_private_chat_profile_logout_and_reload(browser):
     contexts = [browser.new_context(viewport={"width": 1360, "height": 900}) for _ in range(2)]
     try:
         pages = [c.new_page() for c in contexts]
         auth = ["", ""]
+        registered = []
         for index, page in enumerate(pages):
 
             def capture(request, index=index):
@@ -149,11 +177,8 @@ def test_two_real_accounts_private_chat_profile_logout_and_reload(browser):
                     auth[index] = request.headers.get("authorization", "")
 
             page.on("request", capture)
-            signin(
-                page,
-                "user-a" if index == 0 else "user-b",
-                os.environ["P0_A_PASSWORD" if index == 0 else "P0_B_PASSWORD"],
-            )
+            name, email, password = register_verified(page)
+            registered.append((name, password))
             response = httpx.get(
                 "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[index]}, timeout=5
             )
@@ -181,9 +206,31 @@ def test_two_real_accounts_private_chat_profile_logout_and_reload(browser):
         )
         b.get_by_role("button", name="刷新对话列表").click()
         assert not b.locator(".conversation-title").count()
+        b.get_by_role("textbox", name="输入问题").fill("SYN_MODE 是什么？")
+        b.get_by_role("button", name="发送问题").click()
+        b.get_by_text("SYN_MODE 为可选项。", exact=False).first.wait_for(timeout=15000)
+        own_b = httpx.get(
+            "http://127.0.0.1:8510/v1/conversations?workspace_id=workspace:p2",
+            headers={"Authorization": auth[1]},
+            timeout=5,
+        ).json()[0]["session_id"]
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/conversations/" + own_b + "/workbench",
+                headers={"Authorization": auth[0]},
+                timeout=5,
+            ).status_code
+            == 404
+        )
         navigate(a, WEB)
         a.locator(".conversation-title").first.click()
         a.get_by_text("SYN_MODE is optional.", exact=False).first.wait_for(timeout=15000)
+        b.get_by_role("button", name="我的账号", exact=False).click()
+        b.get_by_role("button", name="退出当前账号").click()
+        b.get_by_role("button", name="登录工作台").wait_for(timeout=15000)
+        signin(b, *registered[1])
+        b.locator(".conversation-title").first.click()
+        b.get_by_text("SYN_MODE 为可选项。", exact=False).first.wait_for(timeout=15000)
         a.get_by_role("button", name="工作区", exact=True).click()
         a.get_by_text("第 1 次回答", exact=False).wait_for()
         a.get_by_role("button", name="回到当前回答").click()
@@ -197,7 +244,7 @@ def test_two_real_accounts_private_chat_profile_logout_and_reload(browser):
         a.get_by_role("button", name="我的账号", exact=False).click()
         a.get_by_role("button", name="退出当前账号").click()
         a.get_by_role("button", name="登录工作台").wait_for(timeout=15000)
-        signin(a, "user-a", os.environ["P0_A_PASSWORD"])
+        signin(a, *registered[0])
         a.get_by_role("button", name="打开侧栏").click()
         a.locator(".conversation-title").first.click()
         a.get_by_text("SYN_MODE is optional.", exact=False).first.wait_for(timeout=15000)
@@ -209,27 +256,18 @@ def test_two_real_accounts_private_chat_profile_logout_and_reload(browser):
 def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
     context = browser.new_context()
     page = context.new_page()
-    email = "p2-" + uuid.uuid4().hex + "@example.invalid"
-    name = "p2-" + uuid.uuid4().hex
-    password = uuid.uuid4().hex + "Aa9!"
     changed = uuid.uuid4().hex + "Bb9!"
+    refresh = [""]
+
+    def capture_tokens(response):
+        if response.url.endswith("/protocol/openid-connect/token") and response.status == 200:
+            refresh[0] = response.json().get("refresh_token", "")
+
+    page.on("response", capture_tokens)
     try:
-        navigate(page, WEB)
-        page.get_by_role("button", name="创建账号").click()
-        for field, value in [
-            ("username", name),
-            ("firstName", "Synthetic"),
-            ("lastName", "P2"),
-            ("email", email),
-            ("password", password),
-            ("password-confirm", password),
-        ]:
-            page.locator('input[name="' + field + '"]').fill(value)
-        page.locator('input[type="submit"],button[type="submit"]').first.click()
-        link = mail_link(email)
-        navigate(page, link)
-        page.get_by_role("textbox", name="输入问题").wait_for(timeout=20000)
-        assert page.get_by_text("账号已就绪", exact=False).is_visible()
+        name, email, password = register_verified(page)
+        page.get_by_text("账号已就绪", exact=False).wait_for(timeout=15000)
+        assert not page.get_by_role("button", name="发送问题").is_enabled()
         token = [""]
         page.on(
             "request",
@@ -241,9 +279,13 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
         )
         page.get_by_role("button", name="我的账号", exact=False).click()
         page.get_by_text(email, exact=False).wait_for()
-        page.evaluate('window.dispatchEvent(new Event("focus"))')
-        page.wait_for_timeout(300)
+        with page.expect_response(
+            lambda response: response.url.endswith("/v1/me") and response.status == 200
+        ):
+            page.evaluate('window.dispatchEvent(new Event("focus"))')
         old = token[0]
+        old_refresh = refresh[0]
+        assert old_refresh
         reset_context = browser.new_context()
         reset_page = reset_context.new_page()
         navigate(reset_page, WEB)
@@ -261,6 +303,18 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
                 "http://127.0.0.1:8510/v1/me", headers={"Authorization": old}, timeout=5
             ).status_code
             == 401
+        )
+        assert (
+            httpx.post(
+                os.environ["P0_OIDC_ISSUER"] + "/protocol/openid-connect/token",
+                data={
+                    "client_id": "wms-workbench",
+                    "grant_type": "refresh_token",
+                    "refresh_token": old_refresh,
+                },
+                timeout=5,
+            ).status_code
+            == 400
         )
         navigate(reset_page, reset_link)
         assert not reset_page.locator('input[name="password-new"]').count()
@@ -281,15 +335,59 @@ def test_unknown_account_recovery_is_uniform_and_expired_link_is_rejected(browse
             page.get_by_role("button", name="登录工作台").click()
             page.locator('a[href*="reset-credentials"]').click()
             page.locator('input[name="username"]').fill(email)
-            page.locator('input[type="submit"],button[type="submit"]').first.click()
-            page.wait_for_timeout(250)
-            texts.append(page.locator("#kc-content-wrapper").inner_text())
+            with page.expect_navigation(wait_until="domcontentloaded"):
+                page.locator('input[type="submit"],button[type="submit"]').first.click()
+            texts.append(page.locator("body").inner_text())
         assert texts[0] == texts[1]
         link = mail_link("user-a@example.invalid")
         time.sleep(31)  # Real expiry in the disposable 30-second action-token policy.
         page = contexts[0].new_page()
         navigate(page, link)
         assert not page.locator('input[name="password-new"]').count()
+    finally:
+        for context in contexts:
+            context.close()
+
+
+def test_real_device_center_revoke_others_preserves_current_browser(browser):
+    contexts = [browser.new_context(), browser.new_context()]
+    auth = ["", ""]
+    try:
+        pages = [c.new_page() for c in contexts]
+        for index, page in enumerate(pages):
+
+            def capture(request, index=index):
+                if request.url.endswith("/v1/me"):
+                    auth[index] = request.headers.get("authorization", "")
+
+            page.on("request", capture)
+        name, email, password = register_verified(pages[0])
+        signin(pages[1], name, password)
+        pages[0].get_by_role("button", name="我的账号", exact=False).click()
+        pages[0].get_by_role("button", name="登录设备", exact=True).click()
+        pages[0].locator(".device-row").first.wait_for(timeout=15000)
+        assert pages[0].locator(".device-row").count() >= 2
+        pages[0].get_by_role("button", name="退出其他设备", exact=True).click()
+        with pages[0].expect_response(
+            lambda response: (
+                response.url.endswith("/v1/me/logout-others") and response.status == 200
+            )
+        ):
+            pages[0].get_by_role("dialog").get_by_role("button", name="确认", exact=True).click()
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
+            ).status_code
+            == 200
+        )
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[1]}, timeout=5
+            ).status_code
+            == 401
+        )
+        pages[1].evaluate('window.dispatchEvent(new Event("focus"))')
+        pages[1].get_by_text("需要重新确认登录与权限").wait_for(timeout=15000)
     finally:
         for context in contexts:
             context.close()

@@ -25,6 +25,7 @@ class SyntheticModel:
             chinese = "Chinese" in text or "中文" in text
             payload = {
                 "status": "answered",
+                "gap": "",
                 "claims": [
                     {
                         "text": "SYN_MODE 为可选项。" if chinese else "SYN_MODE is optional.",

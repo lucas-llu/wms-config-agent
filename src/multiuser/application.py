@@ -19,10 +19,16 @@ class OwnedApplication:
         workspace = self.store.workspace_for(context, session_id)
         return PostgresSessionRepository(self.store, context, workspace)
 
-    def start(self, context, goal, workspace_id, answer_strategy="standard"):
+    def start(self, context, goal, workspace_id, answer_strategy="standard", identity_check=None):
         repository = PostgresSessionRepository(self.store, context, workspace_id)
         if self.agent:
-            return self.agent.start(context, repository, goal, answer_strategy=answer_strategy)
+            return self.agent.start(
+                context,
+                repository,
+                goal,
+                answer_strategy=answer_strategy,
+                identity_check=identity_check,
+            )
         from agents.services import SessionService
 
         session = SessionService(repository).create_session(goal)
@@ -36,7 +42,13 @@ class OwnedApplication:
         }
 
     def continue_session(
-        self, context, session_id, message, expected_revision, answer_strategy="standard"
+        self,
+        context,
+        session_id,
+        message,
+        expected_revision,
+        answer_strategy="standard",
+        identity_check=None,
     ):
         repository = self.repository(context, session_id)
         if not self.agent:
@@ -54,6 +66,7 @@ class OwnedApplication:
             message,
             expected_revision=expected_revision,
             answer_strategy=answer_strategy,
+            identity_check=identity_check,
         )
 
     def workbench(self, context, session_id, revision=None):
@@ -216,7 +229,7 @@ class OwnedApplication:
             raise AccessDenied("File unavailable")
         return path
 
-    def tool(self, context, name, arguments):
+    def tool(self, context, name, arguments, *, identity_check=None):
         # No host_process identity and no generic registry fallback.
         from multiuser.tools import parse
 
@@ -227,7 +240,9 @@ class OwnedApplication:
         if name == "start_configuration_session":
             if set(arguments) != {"goal", "workspace_id"}:
                 raise ValueError("Invalid start fields")
-            return self.start(context, arguments["goal"], arguments["workspace_id"])
+            return self.start(
+                context, arguments["goal"], arguments["workspace_id"], identity_check=identity_check
+            )
         session_id = arguments.pop("session_id", None)
         repository = self.repository(context, session_id)
         if name == "get_configuration_session" and not arguments:
@@ -236,7 +251,9 @@ class OwnedApplication:
             "message",
             "expected_revision",
         }:
-            return self.continue_session(context, session_id, **arguments)
+            return self.continue_session(
+                context, session_id, **arguments, identity_check=identity_check
+            )
         if name == "validate_configuration_draft" and set(arguments) == {"expected_revision"}:
             return self.validate(context, session_id, **arguments)
         if name == "review_configuration_draft" and set(arguments) == {

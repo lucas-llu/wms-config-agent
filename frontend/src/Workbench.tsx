@@ -176,11 +176,16 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
   const [error, setError] = useState("");
   const [locked, setLocked] = useState(false);
   const [action, setAction] = useState<{
-    type: "rename" | "delete" | "purge" | "devices";
+    type: "rename" | "delete" | "purge" | "empty" | "devices";
     session?: Session;
+    snapshot?: { count: number; fingerprint: string };
   }>();
   const [title, setTitle] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [trashSnapshot, setTrashSnapshot] = useState<{
+    count: number;
+    fingerprint: string;
+  }>();
   const [decision, setDecision] = useState("approve");
   const [comment, setComment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -212,7 +217,16 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       archived: String(listMode === "archived"),
     });
     const rows = await api.request<Session[]>(`${path}?${parameters}`);
-    if (epoch === listEpoch.current) setSessions(rows);
+    const snapshot =
+      listMode === "trash"
+        ? await api.request<{ count: number; fingerprint: string }>(
+            `/v1/trash/snapshot?${new URLSearchParams({ workspace_id: workspace })}`,
+          )
+        : undefined;
+    if (epoch === listEpoch.current) {
+      setSessions(rows);
+      setTrashSnapshot(snapshot);
+    }
   };
   useEffect(() => {
     let active = true;
@@ -275,9 +289,12 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     };
   }, [workspace, query, listMode]);
   useEffect(() => {
-    latest.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+    if (data?.turns.length || pending)
+      latest.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+    else if (messages.current) messages.current.scrollTop = 0;
   }, [data?.turns.length, pending, busy]);
   const open = async (id: string, revision?: number) => {
+    setSidebarOpen(false);
     const epoch = ++viewEpoch.current;
     setError("");
     const result = await api.request<Workbench>(
@@ -291,6 +308,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     }
   };
   const newChat = () => {
+    setSidebarOpen(false);
     viewEpoch.current++;
     setData(undefined);
     setPending("");
@@ -395,12 +413,22 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
         await api.request("/v1/me/logout-others", "POST");
         setDevices(await api.request("/v1/me/devices"));
       }
+      if (action.type === "empty" && action.snapshot) {
+        await api.request(
+          `/v1/trash/empty?${new URLSearchParams({ workspace_id: workspace })}`,
+          "POST",
+          { fingerprint: action.snapshot.fingerprint },
+        );
+        setSelected([]);
+        await list();
+      }
       setAction(undefined);
     } catch (e) {
       handleError(e);
     }
   };
   const userPanel = async (next: "profile" | "devices") => {
+    setSidebarOpen(false);
     setPanel(next);
     if (next === "devices") {
       try {
@@ -447,7 +475,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
         </div>
         <button className="new-chat" disabled={busy} onClick={newChat}>
           <Icon name="plus" />
-          新对话<span>↵</span>
+          新对话<span aria-hidden="true">↵</span>
         </button>
         <label className="search">
           <Icon name="search" />
@@ -580,10 +608,10 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
               </button>
               <button
                 className="danger"
-                onClick={() => {
-                  setSelected(sessions.map((s) => s.session_id));
-                  setAction({ type: "purge" });
-                }}
+                disabled={!trashSnapshot?.count}
+                onClick={() =>
+                  setAction({ type: "empty", snapshot: trashSnapshot })
+                }
               >
                 清空回收站
               </button>
@@ -900,6 +928,49 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                     >
                       验证草稿
                     </button>
+                    <details
+                      className="validation-report"
+                      open={
+                        !!data.state.validation_findings?.length ||
+                        !!data.state.conflicts?.length
+                      }
+                    >
+                      <summary>验证结果与冲突</summary>
+                      {data.state.validation_findings?.length ? (
+                        <ul>
+                          {data.state.validation_findings.map(
+                            (finding, index) => (
+                              <li key={index}>
+                                <strong>
+                                  {finding.severity === "blocking"
+                                    ? "阻塞"
+                                    : finding.severity === "warning"
+                                      ? "提醒"
+                                      : "信息"}
+                                  ：
+                                </strong>
+                                {finding.message ||
+                                  finding.description ||
+                                  "需要复核该发现"}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <p className="muted">
+                          尚无验证发现；这不代表配置已批准或已在实际环境验证。
+                        </p>
+                      )}
+                      {data.state.conflicts?.map((conflict, index) => (
+                        <p
+                          key={index}
+                          className={conflict.blocking ? "notice" : "muted"}
+                        >
+                          {conflict.blocking ? "需要解决：" : "待复核："}
+                          {conflict.summary}
+                        </p>
+                      ))}
+                    </details>
                   </section>
                   <section className="workspace-card">
                     <h2>审批与导出</h2>
@@ -1293,7 +1364,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                 ? "之后可以在回收站恢复。"
                 : action.type === "devices"
                   ? "其他设备需重新登录，当前设备会保留。"
-                  : `将永久删除 ${selected.length} 条对话及关联记录，无法恢复。`}
+                  : `将永久删除 ${action.type === "empty" ? action.snapshot?.count : selected.length} 条对话及关联记录，无法恢复。`}
             </p>
           )}
           <div className="modal-actions">

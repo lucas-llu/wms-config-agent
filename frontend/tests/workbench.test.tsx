@@ -12,6 +12,234 @@ import { Api, ApiError } from "../src/api";
 import { Evidence, Welcome, WorkbenchApp } from "../src/Workbench";
 import { fakeAuth, profile, session, workbench } from "./fixtures";
 
+it("closes mobile drawer when selecting account content", async () => {
+  const { user } = fixture();
+  await screen.findByRole("button", { name: /测试用户/ });
+  await user.click(screen.getByRole("button", { name: "打开侧栏" }));
+  expect(document.querySelector(".sidebar")).toHaveClass("opened");
+  await user.click(screen.getByRole("button", { name: /测试用户/ }));
+  expect(document.querySelector(".sidebar")).not.toHaveClass("opened");
+  await screen.findByText("用户中心");
+});
+
+it("shows blocking validation reasons and conflicts without implying approval", async () => {
+  const { user } = fixture({
+    data: {
+      ...workbench,
+      state: {
+        status: "paused",
+        validation_findings: [
+          { severity: "blocking", message: "缺少版本匹配证据" },
+        ],
+        conflicts: [{ summary: "模块适用范围冲突", blocking: true }],
+      },
+    },
+  });
+  await open(user);
+  await user.click(
+    within(document.querySelector(".topbar") as HTMLElement).getByRole(
+      "button",
+      { name: "工作区" },
+    ),
+  );
+  expect(
+    screen.getByText("缺少版本匹配证据", { exact: false }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("模块适用范围冲突", { exact: false }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "提交审查" })).toBeDisabled();
+});
+
+it("approves only after explicit confirmation and refreshes the draft", async () => {
+  const { user, request } = fixture({
+    data: {
+      ...workbench,
+      state: {
+        status: "review_required",
+        configuration_tasks: [
+          {
+            task_id: "t",
+            title: "配置任务",
+            steps: ["步骤"],
+            validation_steps: ["验证"],
+            rollback_steps: ["回退"],
+          },
+        ],
+      },
+    },
+  });
+  await open(user);
+  await user.click(
+    within(document.querySelector(".topbar") as HTMLElement).getByRole(
+      "button",
+      { name: "工作区" },
+    ),
+  );
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "审查决定" }),
+    "approve",
+  );
+  await user.type(
+    screen.getByRole("textbox", { name: "审查意见" }),
+    "已核对文档",
+  );
+  await user.click(screen.getByLabelText("我确认已检查配置方案与证据"));
+  expect(screen.getByRole("button", { name: "提交审查" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "提交审查" }));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "/v1/conversations/session%3Aa/review",
+      "POST",
+      { expected_revision: 2, decision: "approve", comment: "已核对文档" },
+    ),
+  );
+});
+it("exports approved drafts through authenticated downloads and can validate current drafts", async () => {
+  const { user, request, api } = fixture({
+    data: {
+      ...workbench,
+      state: { status: "approved" },
+      approvals: [
+        { revision: 1, decision: "approve", actor: "A", comment: "通过" },
+      ],
+    },
+    handler: (path, method) =>
+      path.endsWith("/exports") && method === "POST"
+        ? { export_id: "export:a" }
+        : undefined,
+  });
+  await open(user);
+  await user.click(
+    within(document.querySelector(".topbar") as HTMLElement).getByRole(
+      "button",
+      { name: "工作区" },
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "导出 JSON" }));
+  await waitFor(() =>
+    expect(api.download).toHaveBeenCalledWith(
+      "/v1/conversations/session%3Aa/exports/export%3Aa/download",
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "验证草稿" }));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "/v1/conversations/session%3Aa/validate",
+      "POST",
+      { expected_revision: 2 },
+    ),
+  );
+});
+it("archives, unarchives and restores through owned endpoints", async () => {
+  const { user, request } = fixture();
+  await screen.findByRole("button", { name: "Trolley 配置" });
+  await user.click(screen.getByLabelText("操作 Trolley 配置"));
+  await user.click(screen.getByText("归档", { selector: ".menu button" }));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "/v1/conversations/session%3Aa/archive",
+      "POST",
+      undefined,
+    ),
+  );
+  await user.click(
+    within(document.querySelector(".list-tabs") as HTMLElement).getByRole(
+      "button",
+      { name: "归档" },
+    ),
+  );
+  await user.click(screen.getByText("取消归档"));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "/v1/conversations/session%3Aa/unarchive",
+      "POST",
+      undefined,
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "回收站" }));
+  await user.click(await screen.findByText("恢复"));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "/v1/conversations/session%3Aa/restore",
+      "POST",
+      undefined,
+    ),
+  );
+});
+it("resizes, searches, toggles mobile navigation and starts a clean conversation", async () => {
+  const { user, request } = fixture();
+  await open(user);
+  fireEvent.change(screen.getByRole("slider", { name: "侧栏宽度" }), {
+    target: { value: "350" },
+  });
+  expect(document.querySelector(".shell")).toHaveStyle({
+    "--sidebar-width": "350px",
+  });
+  await user.type(screen.getByRole("textbox", { name: "搜索对话" }), "Trolley");
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(expect.stringContaining("q=Trolley")),
+  );
+  await user.click(screen.getByRole("button", { name: "打开侧栏" }));
+  await user.click(screen.getByRole("button", { name: "关闭侧栏" }));
+  await user.click(screen.getByRole("button", { name: "刷新对话列表" }));
+  await user.click(screen.getByRole("button", { name: "新对话" }));
+  await screen.findByText("今天，想完成哪项配置？");
+  await user.click(screen.getByText("梳理入库收货配置流程"));
+  expect(screen.getByRole("textbox", { name: "输入问题" })).toHaveValue(
+    "梳理入库收货配置流程",
+  );
+});
+it("copies and records feedback, never replacing evidence from earlier turns", async () => {
+  const { user, request } = fixture();
+  const copy = vi.fn(async () => {});
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: copy },
+    configurable: true,
+  });
+  await open(user);
+  await user.click(screen.getByRole("button", { name: "复制回答" }));
+  expect(copy).toHaveBeenCalledWith("先确认适用范围。");
+  await user.click(screen.getByText("有帮助"));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "/v1/conversations/session%3Aa/feedback",
+      "POST",
+      { revision: 2, kind: "thumbs_up" },
+    ),
+  );
+});
+it("revokes an individual other device and logs out even after backend logout failure", async () => {
+  const { user, request, auth } = fixture();
+  await user.click(await screen.findByRole("button", { name: /测试用户/ }));
+  await user.click(screen.getByText("登录设备"));
+  await screen.findByText("其他浏览器");
+  await user.click(
+    screen.getByText("退出", { selector: ".device-row button" }),
+  );
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("/v1/me/devices/device%3Ab", "DELETE"),
+  );
+  await user.click(screen.getByText("个人资料"));
+  await user.click(screen.getByText("退出当前账号"));
+  await waitFor(() => expect(auth.logout).toHaveBeenCalled());
+});
+it("keeps uncertain delivery visible, does not retry writes, and lets the user dismiss errors", async () => {
+  const { user, request } = fixture({
+    handler: (path, method) =>
+      method === "POST" && path === "/v1/conversations"
+        ? Promise.reject(new Error("连接中断"))
+        : undefined,
+  });
+  await screen.findByRole("button", { name: "Trolley 配置" });
+  await user.type(screen.getByRole("textbox", { name: "输入问题" }), "新问题");
+  await user.click(screen.getByRole("button", { name: "发送问题" }));
+  await screen.findByRole("alert");
+  expect(request.mock.calls.filter((c) => c[1] === "POST")).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "关闭提示" }));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 function fixture(
   options: {
     profile?: typeof profile;
@@ -26,6 +254,8 @@ function fixture(
         if (custom !== undefined) return custom;
       }
       if (path === "/v1/me") return options.profile || profile;
+      if (path.startsWith("/v1/trash/snapshot?"))
+        return { count: 1, fingerprint: "a".repeat(64) };
       if (path.includes("/workbench")) return options.data || workbench;
       if (
         path.startsWith("/v1/conversations?") ||
@@ -215,9 +445,9 @@ it("supports trash multiselect and explicit empty-bin confirmation", async () =>
   await user.click(within(screen.getByRole("dialog")).getByText("确认"));
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
-      "/v1/trash/purge?workspace_id=workspace%3Atest",
+      "/v1/trash/empty?workspace_id=workspace%3Atest",
       "POST",
-      { expected_revisions: { "session:a": 2 } },
+      { fingerprint: "a".repeat(64) },
     ),
   );
 });

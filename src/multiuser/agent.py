@@ -63,8 +63,10 @@ class UserAgent:
         ) as pool:
             yield UserPostgresSaver(pool, context)
 
-    def runner(self, context, repository):
+    def runner(self, context, repository, identity_check=None):
         def guard():
+            if identity_check:
+                identity_check()
             with self.store.transaction(context) as connection:
                 repository._check_policy(connection)
 
@@ -89,14 +91,17 @@ class UserAgent:
             "message": result.state.get("assistant_reply", ""),
         }
 
-    def start(self, context, repository, goal, *, answer_strategy="standard"):
+    def start(self, context, repository, goal, *, answer_strategy="standard", identity_check=None):
         async def run():
             async with self.saver(context) as saver:
-                return await self.runner(context, repository).start(
+                return await self.runner(context, repository, identity_check).start(
                     goal, checkpointer=saver, answer_strategy=answer_strategy
                 )
 
-        return self.result(asyncio.run(run()))
+        result = asyncio.run(run())
+        if identity_check:
+            identity_check()
+        return self.result(result)
 
     def continue_session(
         self,
@@ -107,6 +112,7 @@ class UserAgent:
         *,
         expected_revision,
         answer_strategy="standard",
+        identity_check=None,
     ):
         # P3 will replace this single-process safety guard with durable run leases.
         # Conversation revisions also use database optimistic protection.
@@ -123,10 +129,13 @@ class UserAgent:
 
             async def run():
                 async with self.saver(context) as saver:
-                    return await self.runner(context, repository).continue_session(
+                    return await self.runner(context, repository, identity_check).continue_session(
                         session_id, message, checkpointer=saver, answer_strategy=answer_strategy
                     )
 
-            return self.result(asyncio.run(run()))
+            result = asyncio.run(run())
+            if identity_check:
+                identity_check()
+            return self.result(result)
         finally:
             lock.release()

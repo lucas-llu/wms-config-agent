@@ -4,7 +4,6 @@ import json
 from dataclasses import replace
 
 import pytest
-from scripts.evaluate_evidence_decisions import NoNetworkLLM, evaluate_cases
 
 from agents.contracts import Evidence
 from agents.nodes.grounded_answer import answer_question
@@ -13,6 +12,7 @@ from agents.supervisor import Supervisor
 from agents.tools import KnowledgeSearchResult
 from core.settings import load_settings
 from libs.llm import ChatResponse
+from scripts.evaluate_evidence_decisions import NoNetworkLLM, evaluate_cases
 
 
 class AnswerLLM:
