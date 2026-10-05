@@ -57,6 +57,24 @@ def login(username, password):
         browser = playwright.chromium.launch(headless=True)
         try:
             page = browser.new_page()
+            failures, navigation = [], []
+
+            def failed(request):
+                url = urlsplit(request.url)
+                failures.append(
+                    {
+                        "origin": url.scheme + "://" + url.netloc,
+                        "path": url.path,
+                        "error": request.failure,
+                    }
+                )
+
+            def navigated(frame):
+                url = urlsplit(frame.url)
+                navigation.append({"origin": url.scheme + "://" + url.netloc, "path": url.path})
+
+            page.on("requestfailed", failed)
+            page.on("framenavigated", navigated)
             # This loopback RP endpoint is test-owned; the real IDP must redirect
             # to it with an authorization code. No password grant or token bypass.
             callback_pattern = re.compile(r"^" + re.escape(redirect) + r"\?.*$")
@@ -67,7 +85,10 @@ def login(username, password):
             page.locator('input[name="username"]').fill(username)
             page.locator('input[name="password"]').fill(password)
             page.locator('[name="login"]').click()
-            page.wait_for_url(callback_pattern, timeout=20_000)
+            try:
+                page.wait_for_url(callback_pattern, timeout=20_000)
+            except Exception as exc:
+                raise AssertionError({"failures": failures, "navigation": navigation}) from exc
             location = urlsplit(page.url)
         finally:
             browser.close()

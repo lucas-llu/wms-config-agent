@@ -37,6 +37,9 @@ jobs:
       - name: Report synthetic admission baseline
         if: always()
         run: python scripts/report_p0.py
+      - name: Identity service failure diagnostics
+        if: failure()
+        run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml logs --no-color keycloak | grep -E 'WARN|ERROR' || true
       - name: Stop this job's disposable resources
         if: always()
         run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml down --volumes
