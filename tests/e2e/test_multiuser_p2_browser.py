@@ -347,3 +347,42 @@ def test_unknown_account_recovery_is_uniform_and_expired_link_is_rejected(browse
     finally:
         for context in contexts:
             context.close()
+
+
+def test_real_device_center_revoke_others_preserves_current_browser(browser):
+    contexts = [browser.new_context(), browser.new_context()]
+    auth = ["", ""]
+    try:
+        pages = [c.new_page() for c in contexts]
+        for index, page in enumerate(pages):
+
+            def capture(request, index=index):
+                if request.url.endswith("/v1/me"):
+                    auth[index] = request.headers.get("authorization", "")
+
+            page.on("request", capture)
+        name, email, password = register_verified(pages[0])
+        signin(pages[1], name, password)
+        pages[0].get_by_role("button", name="我的账号", exact=False).click()
+        pages[0].get_by_role("button", name="登录设备").click()
+        pages[0].locator(".device-row").first.wait_for(timeout=15000)
+        assert pages[0].locator(".device-row").count() >= 2
+        pages[0].get_by_role("button", name="退出其他设备", exact=True).click()
+        pages[0].get_by_role("dialog").get_by_role("button", name="确认", exact=True).click()
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
+            ).status_code
+            == 200
+        )
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[1]}, timeout=5
+            ).status_code
+            == 401
+        )
+        pages[1].evaluate('window.dispatchEvent(new Event("focus"))')
+        pages[1].get_by_text("需要重新确认登录与权限").wait_for(timeout=15000)
+    finally:
+        for context in contexts:
+            context.close()
