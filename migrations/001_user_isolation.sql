@@ -106,6 +106,14 @@ CREATE TABLE agent_business.resources (
  kind text NOT NULL CHECK(kind IN ('run','event','attachment','usage','image','evidence')),
  payload_json text NOT NULL,storage_key text
 );
+-- Bound owner/workspace listings and parent-scoped resource lookups.
+CREATE INDEX sessions_owner_listing ON agent_business.sessions
+ (owner_user_id,workspace_id,updated_at DESC,session_id);
+CREATE INDEX resources_parent_kind ON agent_business.resources(session_id,kind,resource_id);
+CREATE INDEX approvals_parent ON agent_business.approvals(session_id,revision);
+CREATE INDEX decisions_parent ON agent_business.decisions(session_id,revision);
+CREATE INDEX exports_parent ON agent_business.exports(session_id,revision);
+CREATE INDEX feedback_parent ON agent_business.feedback_signals(session_id,revision);
 ALTER TABLE agent_business.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_business.sessions FORCE ROW LEVEL SECURITY;
 CREATE POLICY private_sessions ON agent_business.sessions
