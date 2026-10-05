@@ -44,7 +44,9 @@ class OwnedApplication:
             raise SessionRevisionConflict(
                 session_id, expected_revision, repository.get_session(session_id).current_revision
             )
-        return self.agent.continue_session(context, repository, session_id, message)
+        return self.agent.continue_session(
+            context, repository, session_id, message, expected_revision=expected_revision
+        )
 
     def validate(self, context, session_id, expected_revision):
         repository = self.repository(context, session_id)

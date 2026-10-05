@@ -1,4 +1,5 @@
 import json
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from unittest.mock import Mock
 
@@ -7,11 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents.contracts import Evidence
+from agents.repositories import SessionRevisionConflict
 from agents.tools import KnowledgeSearchResult
 from agents.workspace import Workspace, WorkspaceScopeError
 from api.users import create_app
 from multiuser.access import AccessDenied, UserContext, context_values
-from multiuser.agent import GuardedKnowledge, GuardedLLM
+from multiuser.agent import GuardedKnowledge, GuardedLLM, UserAgent
+from multiuser.application import OwnedApplication
 from multiuser.identity import IdentityUnavailable, InvalidIdentity, Principal
 from multiuser.session_auth import TokenIntrospector
 from multiuser.session_repository import Connection, Row
@@ -64,6 +67,61 @@ def test_introspection_service_failure_is_closed(status):
     intro.close()
     with pytest.raises(ValueError):
         TokenIntrospector("https://id.example.invalid", "api", "")
+
+
+@pytest.mark.parametrize("body", [b"null", b"[]", b"not-json"])
+def test_malformed_success_response_is_service_unavailable_not_internal_error(body):
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, content=body))
+    )
+    intro = TokenIntrospector("https://id.example.invalid", "api", "synthetic", client=client)
+    with pytest.raises(IdentityUnavailable):
+        intro.check("synthetic", Principal("https://id.example.invalid", "A"))
+    intro.close()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        AccessDenied("PRIVATE permission"),
+        RuntimeError("PRIVATE details"),
+        ValueError("PRIVATE details"),
+    ],
+)
+def test_mcp_execution_errors_are_opaque_tool_results_and_unknown_tools_protocol_errors(error):
+    verifier, intro, application = Mock(), Mock(), Mock()
+    application.store.resolve.return_value = UserContext("A", "issuer", "sub", "sid", 1, 2)
+    application.tool.side_effect = error
+    headers = {"Authorization": "Bearer synthetic"}
+    with TestClient(create_app(verifier, intro, application)) as client:
+        result = client.post(
+            "/mcp",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_configuration_session",
+                    "arguments": {"session_id": "private"},
+                },
+            },
+        )
+        assert result.status_code == 200
+        assert result.json()["id"] == 1 and result.json()["result"]["isError"] is True
+        assert "PRIVATE" not in result.text
+        result = client.post(
+            "/mcp",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "host_process", "arguments": {}},
+            },
+        )
+        assert result.status_code == 200
+        assert result.json()["error"]["code"] == -32602
 
 
 @pytest.mark.parametrize(
@@ -230,3 +288,42 @@ def test_bootstrap_composes_scoped_service_or_closes_on_start_failure(monkeypatc
             result = client.get("/v1/me", headers={"Origin": "https://wms.example.invalid"})
             assert result.status_code == 401
         store.close.assert_called_once()
+
+
+def test_continue_rechecks_expected_revision_after_acquiring_conversation_lock(tmp_path):
+    store = Mock()
+    agent = UserAgent(store, "synthetic", Mock(), Mock())
+
+    @asynccontextmanager
+    async def must_not_open(context):
+        raise AssertionError("A stale request must not start checkpoint/model execution")
+        yield  # pragma: no cover
+
+    agent.saver = must_not_open
+    application = OwnedApplication(store, export_root=tmp_path, agent=agent)
+    repository = Mock()
+    repository.get_session.side_effect = [Mock(current_revision=1), Mock(current_revision=2)]
+    application.repository = Mock(return_value=repository)
+    with pytest.raises(SessionRevisionConflict):
+        application.continue_session(
+            UserContext("A", "issuer", "sub", "sid", 1, 2), "session:a", "new question", 1
+        )
+
+
+def test_active_attachment_is_download_not_inline_same_origin_page(tmp_path):
+    verifier, intro, application = Mock(), Mock(), Mock()
+    application.store.resolve.return_value = UserContext("A", "issuer", "sub", "sid", 1, 2)
+    path = tmp_path / "synthetic.html"
+    path.write_text("<script>/* synthetic only */</script>", encoding="utf-8")
+    application.file.return_value = application.export_file.return_value = path
+    headers = {"Authorization": "Bearer synthetic"}
+    with TestClient(create_app(verifier, intro, application)) as client:
+        for url in (
+            "/v1/conversations/s/files/attachment/f",
+            "/v1/conversations/s/exports/e/download",
+        ):
+            result = client.get(url, headers=headers)
+            assert result.status_code == 200
+            assert result.headers["content-disposition"].startswith("attachment;")
+            assert result.headers["content-type"] == "application/octet-stream"
+            assert result.headers["x-content-type-options"] == "nosniff"
