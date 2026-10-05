@@ -11,7 +11,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: wms-quality-${{ github.run_id }}
+      WMS_P0_LIVE: "1"
+      WMS_P1_LIVE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,6 +49,16 @@ jobs:
         run: python -m ruff check src tests scripts main.py
       - name: Format check
         run: python -m ruff format --check src tests scripts main.py
+      - name: Install isolated login browser
+        run: python -m playwright install --with-deps chromium
+      - name: Generate disposable test identities
+        run: python scripts/prepare_p0_fixture.py
+      - name: Start isolated identity and databases
+        run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml up -d
+      - name: Prepare real non-owner RLS runtime
+        run: |
+          python scripts/wait_p0_services.py
+          python scripts/prepare_p1_database.py
       - name: Test with coverage gate
         run: >-
           python -m pytest
@@ -56,3 +70,6 @@ jobs:
         run: python -m pytest tests/e2e/test_recall_benchmark.py -q
       - name: Product release gates
         run: python scripts/run_product_release.py
+      - name: Stop disposable services
+        if: always()
+        run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml down --volumes

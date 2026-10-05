@@ -16,12 +16,17 @@ def prepare(root):
         "P0_ADMIN_PASSWORD": secrets.token_urlsafe(24),
         "P0_A_PASSWORD": secrets.token_urlsafe(24),
         "P0_B_PASSWORD": secrets.token_urlsafe(24),
+        "P1_DB_PASSWORD": secrets.token_urlsafe(24),
+        "P1_API_CLIENT_SECRET": secrets.token_urlsafe(24),
         "P0_FIXTURE_DIR": root.as_posix(),
         "P0_REDIS_URL": "redis://127.0.0.1:26379/0",
         "P0_OIDC_ISSUER": "http://127.0.0.1:28081/realms/wms-p0",
     }
     values["P0_POSTGRES_DSN"] = (
         "postgresql://p0_admin:" + values["P0_DB_PASSWORD"] + "@127.0.0.1:25432/wms_p0"
+    )
+    values["P1_POSTGRES_DSN"] = (
+        "postgresql://p1_runtime:" + values["P1_DB_PASSWORD"] + "@127.0.0.1:25432/wms_p0"
     )
     realm = {
         "realm": "wms-p0",
@@ -48,7 +53,15 @@ def prepare(root):
                         },
                     }
                 ],
-            }
+            },
+            {
+                "clientId": "wms-api",
+                "publicClient": False,
+                "secret": values["P1_API_CLIENT_SECRET"],
+                "standardFlowEnabled": False,
+                "directAccessGrantsEnabled": False,
+                "serviceAccountsEnabled": False,
+            },
         ],
         "users": [
             {
@@ -71,7 +84,7 @@ def prepare(root):
     (root / "realm.json").chmod(0o644)
     if target := os.getenv("GITHUB_ENV"):
         for key, value in values.items():
-            if "PASSWORD" in key or key == "P0_POSTGRES_DSN":
+            if any(s in key for s in ("PASSWORD", "SECRET", "DSN")):
                 print("::add-mask::" + value)
         with Path(target).open("a", encoding="utf-8") as output:
             output.write("\n".join(f"{k}={v}" for k, v in values.items()) + "\n")
