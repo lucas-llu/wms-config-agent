@@ -447,7 +447,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
         </div>
         <button className="new-chat" disabled={busy} onClick={newChat}>
           <Icon name="plus" />
-          新对话<span>↵</span>
+          新对话<span aria-hidden="true">↵</span>
         </button>
         <label className="search">
           <Icon name="search" />

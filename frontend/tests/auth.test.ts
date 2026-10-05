@@ -1,10 +1,99 @@
-import {afterEach,expect,it,vi} from 'vitest';
-import {authenticate} from '../src/auth';
+import { afterEach, expect, it, vi } from "vitest";
+import { authenticate } from "../src/auth";
 
-const keycloak=vi.hoisted(()=>({init:vi.fn(async()=>true),updateToken:vi.fn(async()=>true),token:'synthetic',login:vi.fn(async()=>{}),register:vi.fn(async()=>{}),logout:vi.fn(async()=>{})}));
-vi.mock('keycloak-js',()=>({default:class {constructor(){return keycloak;}}}));
-afterEach(()=>vi.unstubAllGlobals());
-it('uses PKCE and memory-only tokens with fixed redirect origin',async()=>{vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({issuer:'https://id.example.invalid/realms/test',client_id:'wms-workbench'}))));const {auth,authenticated}=await authenticate();expect(authenticated).toBe(true);expect(keycloak.init).toHaveBeenCalledWith(expect.objectContaining({pkceMethod:'S256',responseMode:'fragment',scope:'openid email profile'}));expect(await auth.token()).toBe('synthetic');await auth.login();await auth.register();await auth.recover();await auth.changePassword();await auth.logout();expect(keycloak.login).toHaveBeenCalledWith(expect.objectContaining({action:'UPDATE_PASSWORD',maxAge:0}));expect(localStorage.length).toBe(0);keycloak.token='';await expect(auth.token()).rejects.toThrow('重新登录');keycloak.token='synthetic';});
-it.each(['http://evil.invalid/realms/test','https://id.example.invalid/','https://id.example.invalid/realms/test'])('fails closed on untrusted or missing configuration %s',async issuer=>{vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({issuer,client_id:issuer.endsWith('/test') && issuer.startsWith('https:')?'':'wms'}))));await expect(authenticate()).rejects.toThrow();});
-it('accepts only explicit loopback HTTP for isolated prototypes',async()=>{vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({issuer:'http://127.0.0.1:28081/realms/test',client_id:'wms'}))));expect((await authenticate()).authenticated).toBe(true);});
-it('does not open login when config endpoint is unavailable',async()=>{vi.stubGlobal('fetch',vi.fn(async()=>new Response(null,{status:503})));await expect(authenticate()).rejects.toThrow('尚未配置');});
+const keycloak = vi.hoisted(() => ({
+  init: vi.fn(async () => true),
+  updateToken: vi.fn(async () => true),
+  token: "synthetic",
+  login: vi.fn(async () => {}),
+  register: vi.fn(async () => {}),
+  logout: vi.fn(async () => {}),
+}));
+vi.mock("keycloak-js", () => ({
+  default: class {
+    constructor() {
+      return keycloak;
+    }
+  },
+}));
+afterEach(() => vi.unstubAllGlobals());
+it("uses PKCE and memory-only tokens with fixed redirect origin", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            issuer: "https://id.example.invalid/realms/test",
+            client_id: "wms-workbench",
+          }),
+        ),
+    ),
+  );
+  const { auth, authenticated } = await authenticate();
+  expect(authenticated).toBe(true);
+  expect(keycloak.init).toHaveBeenCalledWith(
+    expect.objectContaining({
+      pkceMethod: "S256",
+      responseMode: "fragment",
+      scope: "openid email profile",
+    }),
+  );
+  expect(await auth.token()).toBe("synthetic");
+  await auth.login();
+  await auth.register();
+  await auth.recover();
+  await auth.changePassword();
+  await auth.logout();
+  expect(keycloak.login).toHaveBeenCalledWith(
+    expect.objectContaining({ action: "UPDATE_PASSWORD", maxAge: 0 }),
+  );
+  expect(localStorage.length).toBe(0);
+  keycloak.token = "";
+  await expect(auth.token()).rejects.toThrow("重新登录");
+  keycloak.token = "synthetic";
+});
+it.each([
+  "http://evil.invalid/realms/test",
+  "https://id.example.invalid/",
+  "https://id.example.invalid/realms/test",
+])("fails closed on untrusted or missing configuration %s", async (issuer) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            issuer,
+            client_id:
+              issuer.endsWith("/test") && issuer.startsWith("https:")
+                ? ""
+                : "wms",
+          }),
+        ),
+    ),
+  );
+  await expect(authenticate()).rejects.toThrow();
+});
+it("accepts only explicit loopback HTTP for isolated prototypes", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            issuer: "http://127.0.0.1:28081/realms/test",
+            client_id: "wms",
+          }),
+        ),
+    ),
+  );
+  expect((await authenticate()).authenticated).toBe(true);
+});
+it("does not open login when config endpoint is unavailable", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(null, { status: 503 })),
+  );
+  await expect(authenticate()).rejects.toThrow("尚未配置");
+});

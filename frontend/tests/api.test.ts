@@ -3,7 +3,10 @@ import { Api, ApiError, resource } from "../src/api";
 import { fakeAuth } from "./fixtures";
 afterEach(() => vi.unstubAllGlobals());
 it("gets a fresh in-memory token; never sends it to a foreign URL or retries writes", async () => {
-  const fetcher = vi.fn(async () => new Response("{}"));
+  const fetcher = vi.fn(
+    async (_url: RequestInfo | URL, _options?: RequestInit) =>
+      new Response("{}"),
+  );
   vi.stubGlobal("fetch", fetcher);
   const api = new Api(fakeAuth());
   await api.request("/v1/me");

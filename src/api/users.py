@@ -114,6 +114,9 @@ def create_app(
             principal = verifier.verify(credentials.credentials)
             introspector.check(credentials.credentials, principal)
             request.state.access_token = credentials.credentials
+            request.state.identity_check = lambda: introspector.check(
+                credentials.credentials, principal
+            )
             return application.store.resolve(principal)
         except InvalidIdentity as exc:
             raise HTTPException(401, "Invalid session") from exc
@@ -209,8 +212,10 @@ def create_app(
         return {"purged": repo.purge_deleted_sessions(body.expected_revisions)}
 
     @app.post("/v1/conversations")
-    def start(body: Start, context: CurrentUser):
-        return application.start(context, **body.model_dump())
+    def start(body: Start, request: Request, context: CurrentUser):
+        return application.start(
+            context, **body.model_dump(), identity_check=request.state.identity_check
+        )
 
     @app.get("/v1/conversations/{session_id}")
     def get(session_id: str, context: CurrentUser):
@@ -258,8 +263,10 @@ def create_app(
         return {"status": "unarchived"}
 
     @app.post("/v1/conversations/{session_id}/continue")
-    def continue_session(session_id: str, body: Continue, context: CurrentUser):
-        return application.continue_session(context, session_id, **body.model_dump())
+    def continue_session(session_id: str, body: Continue, request: Request, context: CurrentUser):
+        return application.continue_session(
+            context, session_id, **body.model_dump(), identity_check=request.state.identity_check
+        )
 
     @app.post("/v1/conversations/{session_id}/review")
     def review(session_id: str, body: Review, context: CurrentUser):
@@ -339,8 +346,10 @@ def create_app(
         return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
     @app.post("/v1/tools/call")
-    def tool(body: Tool, context: CurrentUser):
-        return application.tool(context, body.name, body.arguments)
+    def tool(body: Tool, request: Request, context: CurrentUser):
+        return application.tool(
+            context, body.name, body.arguments, identity_check=request.state.identity_check
+        )
 
     @app.get("/mcp")
     def mcp_get(context: CurrentUser):
@@ -383,7 +392,11 @@ def create_app(
                     "error": {"code": -32602, "message": "Invalid tool or parameters"},
                 }
             try:
-                data = jsonable_encoder(application.tool(context, arguments.name, parsed))
+                data = jsonable_encoder(
+                    application.tool(
+                        context, arguments.name, parsed, identity_check=request.state.identity_check
+                    )
+                )
             except (
                 AccessDenied,
                 SessionNotFoundError,
