@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 import uuid
-from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -17,6 +16,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from langgraph.types import Command
+from playwright.sync_api import sync_playwright
 
 from agents.runtime import build_runtime_probe_graph
 from api.p0 import create_app
@@ -30,15 +30,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class LoginForm(HTMLParser):
-    action = None
-
-    def handle_starttag(self, tag, attrs):
-        attrs = dict(attrs)
-        if tag == "form" and attrs.get("id") == "kc-form-login":
-            self.action = attrs.get("action")
-
-
 def login(username, password):
     issuer = os.environ["P0_OIDC_ISSUER"]
     state, verifier = uuid.uuid4().hex, uuid.uuid4().hex + uuid.uuid4().hex
@@ -46,31 +37,41 @@ def login(username, password):
         base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     )
     redirect = "http://127.0.0.1:18080/callback"
-    with httpx.Client(timeout=15, follow_redirects=False) as client:
-        response = client.get(
-            issuer
-            + "/protocol/openid-connect/auth?"
-            + urlencode(
-                {
-                    "client_id": "wms-p0-cli",
-                    "response_type": "code",
-                    "scope": "openid",
-                    "redirect_uri": redirect,
-                    "state": state,
-                    "code_challenge": challenge,
-                    "code_challenge_method": "S256",
-                }
-            )
+    authorize = (
+        issuer
+        + "/protocol/openid-connect/auth?"
+        + urlencode(
+            {
+                "client_id": "wms-p0-cli",
+                "response_type": "code",
+                "scope": "openid",
+                "redirect_uri": redirect,
+                "state": state,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            }
         )
-        parser = LoginForm()
-        parser.feed(response.text)
-        assert parser.action
-        response = client.post(parser.action, data={"username": username, "password": password})
-        assert response.status_code == 302
-        location = urlsplit(response.headers["location"])
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            # This loopback RP endpoint is test-owned; the real IDP must redirect
+            # to it with an authorization code. No password grant or token bypass.
+            page.route(redirect + "**", lambda route: route.fulfill(status=200, body="P0 callback"))
+            page.goto(authorize)
+            page.locator('input[name="username"]').fill(username)
+            page.locator('input[name="password"]').fill(password)
+            page.locator('[name="login"]').click()
+            page.wait_for_url(redirect + "?**", timeout=20_000)
+            location = urlsplit(page.url)
+        finally:
+            browser.close()
         assert location.netloc == "127.0.0.1:18080" and location.path == "/callback"
         params = parse_qs(location.query)
         assert params["state"] == [state]
+        assert params.get("iss", [issuer]) == [issuer]
+    with httpx.Client(timeout=15, follow_redirects=False) as client:
         response = client.post(
             issuer + "/protocol/openid-connect/token",
             data={
