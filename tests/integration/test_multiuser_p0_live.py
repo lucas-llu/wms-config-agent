@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -58,12 +59,15 @@ def login(username, password):
             page = browser.new_page()
             # This loopback RP endpoint is test-owned; the real IDP must redirect
             # to it with an authorization code. No password grant or token bypass.
-            page.route(redirect + "**", lambda route: route.fulfill(status=200, body="P0 callback"))
+            callback_pattern = re.compile(r"^" + re.escape(redirect) + r"\?.*$")
+            page.route(
+                callback_pattern, lambda route: route.fulfill(status=200, body="P0 callback")
+            )
             page.goto(authorize)
             page.locator('input[name="username"]').fill(username)
             page.locator('input[name="password"]').fill(password)
             page.locator('[name="login"]').click()
-            page.wait_for_url(redirect + "?**", timeout=20_000)
+            page.wait_for_url(callback_pattern, timeout=20_000)
             location = urlsplit(page.url)
         finally:
             browser.close()
