@@ -1,4 +1,5 @@
 import json
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from unittest.mock import Mock
 
@@ -7,11 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents.contracts import Evidence
+from agents.repositories import SessionRevisionConflict
 from agents.tools import KnowledgeSearchResult
 from agents.workspace import Workspace, WorkspaceScopeError
 from api.users import create_app
 from multiuser.access import AccessDenied, UserContext, context_values
-from multiuser.agent import GuardedKnowledge, GuardedLLM
+from multiuser.agent import GuardedKnowledge, GuardedLLM, UserAgent
+from multiuser.application import OwnedApplication
 from multiuser.identity import IdentityUnavailable, InvalidIdentity, Principal
 from multiuser.session_auth import TokenIntrospector
 from multiuser.session_repository import Connection, Row
@@ -285,3 +288,23 @@ def test_bootstrap_composes_scoped_service_or_closes_on_start_failure(monkeypatc
             result = client.get("/v1/me", headers={"Origin": "https://wms.example.invalid"})
             assert result.status_code == 401
         store.close.assert_called_once()
+
+
+def test_continue_rechecks_expected_revision_after_acquiring_conversation_lock(tmp_path):
+    store = Mock()
+    agent = UserAgent(store, "synthetic", Mock(), Mock())
+
+    @asynccontextmanager
+    async def must_not_open(context):
+        raise AssertionError("A stale request must not start checkpoint/model execution")
+        yield  # pragma: no cover
+
+    agent.saver = must_not_open
+    application = OwnedApplication(store, export_root=tmp_path, agent=agent)
+    repository = Mock()
+    repository.get_session.side_effect = [Mock(current_revision=1), Mock(current_revision=2)]
+    application.repository = Mock(return_value=repository)
+    with pytest.raises(SessionRevisionConflict):
+        application.continue_session(
+            UserContext("A", "issuer", "sub", "sid", 1, 2), "session:a", "new question", 1
+        )

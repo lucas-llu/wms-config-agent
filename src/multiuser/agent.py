@@ -96,7 +96,7 @@ class UserAgent:
 
         return self.result(asyncio.run(run()))
 
-    def continue_session(self, context, repository, session_id, message):
+    def continue_session(self, context, repository, session_id, message, *, expected_revision):
         # P3 will replace this single-process safety guard with durable run leases.
         # Conversation revisions also use database optimistic protection.
         with self.lock:
@@ -104,6 +104,11 @@ class UserAgent:
         if not lock.acquire(blocking=False):
             raise RuntimeError("Conversation is busy")
         try:
+            actual = repository.get_session(session_id).current_revision
+            if actual != expected_revision:
+                from agents.repositories import SessionRevisionConflict
+
+                raise SessionRevisionConflict(session_id, expected_revision, actual)
 
             async def run():
                 async with self.saver(context) as saver:
