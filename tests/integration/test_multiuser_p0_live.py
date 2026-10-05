@@ -4,12 +4,15 @@ import asyncio
 import base64
 import hashlib
 import os
+import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 import uuid
-from html.parser import HTMLParser
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -17,6 +20,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from langgraph.types import Command
+from playwright.sync_api import sync_playwright
 
 from agents.runtime import build_runtime_probe_graph
 from api.p0 import create_app
@@ -30,13 +34,30 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class LoginForm(HTMLParser):
-    action = None
+@contextmanager
+def callback_listener(state):
+    class Callback(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass  # Authorization codes never enter access logs.
 
-    def handle_starttag(self, tag, attrs):
-        attrs = dict(attrs)
-        if tag == "form" and attrs.get("id") == "kc-form-login":
-            self.action = attrs.get("action")
+        def do_GET(self):
+            parsed = urlsplit(self.path)
+            if parsed.path != "/callback" or parse_qs(parsed.query).get("state") != [state]:
+                self.send_error(400)
+                return
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"P0 callback")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 18080), Callback)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def login(username, password):
@@ -46,31 +67,62 @@ def login(username, password):
         base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     )
     redirect = "http://127.0.0.1:18080/callback"
-    with httpx.Client(timeout=15, follow_redirects=False) as client:
-        response = client.get(
-            issuer
-            + "/protocol/openid-connect/auth?"
-            + urlencode(
-                {
-                    "client_id": "wms-p0-cli",
-                    "response_type": "code",
-                    "scope": "openid",
-                    "redirect_uri": redirect,
-                    "state": state,
-                    "code_challenge": challenge,
-                    "code_challenge_method": "S256",
-                }
-            )
+    authorize = (
+        issuer
+        + "/protocol/openid-connect/auth?"
+        + urlencode(
+            {
+                "client_id": "wms-p0-cli",
+                "response_type": "code",
+                "scope": "openid",
+                "redirect_uri": redirect,
+                "state": state,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            }
         )
-        parser = LoginForm()
-        parser.feed(response.text)
-        assert parser.action
-        response = client.post(parser.action, data={"username": username, "password": password})
-        assert response.status_code == 302
-        location = urlsplit(response.headers["location"])
+    )
+    with callback_listener(state), sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            failures, navigation = [], []
+
+            def failed(request):
+                url = urlsplit(request.url)
+                failures.append(
+                    {
+                        "origin": url.scheme + "://" + url.netloc,
+                        "path": url.path,
+                        "error": request.failure,
+                    }
+                )
+
+            def navigated(frame):
+                url = urlsplit(frame.url)
+                navigation.append({"origin": url.scheme + "://" + url.netloc, "path": url.path})
+
+            page.on("requestfailed", failed)
+            page.on("framenavigated", navigated)
+            # A real loopback RP receives the IDP redirect. Browser route handlers
+            # only intercept the first URL of a redirect chain, not this callback.
+            callback_pattern = re.compile(r"^" + re.escape(redirect) + r"\?.*$")
+            page.goto(authorize)
+            page.locator('input[name="username"]').fill(username)
+            page.locator('input[name="password"]').fill(password)
+            page.locator('[name="login"]').click()
+            try:
+                page.wait_for_url(callback_pattern, timeout=20_000)
+            except Exception as exc:
+                raise AssertionError({"failures": failures, "navigation": navigation}) from exc
+            location = urlsplit(page.url)
+        finally:
+            browser.close()
         assert location.netloc == "127.0.0.1:18080" and location.path == "/callback"
         params = parse_qs(location.query)
         assert params["state"] == [state]
+        assert params.get("iss", [issuer]) == [issuer]
+    with httpx.Client(timeout=15, follow_redirects=False) as client:
         response = client.post(
             issuer + "/protocol/openid-connect/token",
             data={

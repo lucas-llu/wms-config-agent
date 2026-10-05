@@ -14,6 +14,7 @@ P0 是独立原型与架构决策，不代表现有 Streamlit 已可安全对外
 | Redis / redis-py / RQ | 7.4.5 / 8.1.0 / 2.12.0 | outbox、独立 Worker、重复投递、硬中断和租约恢复 |
 | Keycloak / PyJWT | 26.7.4 / 2.15.1 | 真实 Authorization Code + S256 PKCE → access token → API |
 | FastAPI / httpx | 0.142.2 / 0.28.1 | `/health` 与受认证保护的 `/v1/me` |
+| Playwright | 1.63.0 | 真实 Chromium 登录表单、会话 Cookie 与授权码回调 |
 
 版本是本次兼容基线，升级必须重新运行门禁。完整 Python 依赖由 `uv.lock` 管理。
 本机未安装 Docker/可用 WSL，真实容器测试在 GitHub Actions 的隔离 Linux Runner 执行；

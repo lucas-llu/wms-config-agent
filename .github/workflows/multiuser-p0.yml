@@ -22,6 +22,10 @@ jobs:
           python -m pip install uv==0.11.6
           uv export --locked --extra dev --extra p0 --no-hashes --no-emit-project -o /tmp/wms-requirements.txt
           python -m pip install -r /tmp/wms-requirements.txt -e ".[dev,p0]"
+      - name: Install prototype browser
+        # Browser cookies/form behavior is part of the real OIDC login probe.
+        # Install only in the disposable Linux test runner.
+        run: python -m playwright install --with-deps chromium
       - name: Generate disposable synthetic identities
         run: python scripts/prepare_p0_fixture.py
       - name: Start isolated services
@@ -33,6 +37,9 @@ jobs:
       - name: Report synthetic admission baseline
         if: always()
         run: python scripts/report_p0.py
+      - name: Identity service failure diagnostics
+        if: failure()
+        run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml logs --no-color keycloak | grep -E 'WARN|ERROR' || true
       - name: Stop this job's disposable resources
         if: always()
         run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml down --volumes
