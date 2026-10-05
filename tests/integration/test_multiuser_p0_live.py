@@ -8,8 +8,11 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 import uuid
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -29,6 +32,32 @@ from workers.p0 import dispatch_pending, probe_queue, redis_client
 pytestmark = pytest.mark.skipif(
     os.getenv("WMS_P0_LIVE") != "1", reason="P0 requires disposable services"
 )
+
+
+@contextmanager
+def callback_listener(state):
+    class Callback(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass  # Authorization codes never enter access logs.
+
+        def do_GET(self):
+            parsed = urlsplit(self.path)
+            if parsed.path != "/callback" or parse_qs(parsed.query).get("state") != [state]:
+                self.send_error(400)
+                return
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"P0 callback")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 18080), Callback)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def login(username, password):
@@ -53,7 +82,7 @@ def login(username, password):
             }
         )
     )
-    with sync_playwright() as playwright:
+    with callback_listener(state), sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
             page = browser.new_page()
@@ -75,12 +104,9 @@ def login(username, password):
 
             page.on("requestfailed", failed)
             page.on("framenavigated", navigated)
-            # This loopback RP endpoint is test-owned; the real IDP must redirect
-            # to it with an authorization code. No password grant or token bypass.
+            # A real loopback RP receives the IDP redirect. Browser route handlers
+            # only intercept the first URL of a redirect chain, not this callback.
             callback_pattern = re.compile(r"^" + re.escape(redirect) + r"\?.*$")
-            page.route(
-                callback_pattern, lambda route: route.fulfill(status=200, body="P0 callback")
-            )
             page.goto(authorize)
             page.locator('input[name="username"]').fill(username)
             page.locator('input[name="password"]').fill(password)
