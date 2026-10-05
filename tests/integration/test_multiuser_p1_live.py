@@ -7,6 +7,7 @@ import time
 import uuid
 from dataclasses import asdict, replace
 
+import httpx
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
@@ -604,3 +605,18 @@ def test_existing_agent_two_turns_use_private_pg_memory_and_checkpoints(system):
         == "2024.1"
     )
     assert client.get("/v1/conversations/" + session_id, headers=headers[1]).status_code == 404
+
+
+def test_identity_provider_logout_revokes_still_signed_access_token(system):
+    client, _, _, _, _, _, _ = system
+    issuer = os.environ["P0_OIDC_ISSUER"]
+    credentials = login("user-a", os.environ["P0_A_PASSWORD"], include_tokens=True)
+    headers = {"Authorization": "Bearer " + credentials["access_token"]}
+    assert client.get("/v1/me", headers=headers).status_code == 200
+    result = httpx.post(
+        issuer + "/protocol/openid-connect/logout",
+        data={"client_id": "wms-p0-cli", "refresh_token": credentials["refresh_token"]},
+        timeout=10,
+    )
+    assert result.status_code == 204
+    assert client.get("/v1/me", headers=headers).status_code == 401

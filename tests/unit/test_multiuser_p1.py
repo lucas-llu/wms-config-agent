@@ -195,3 +195,38 @@ def test_api_origin_protocol_and_payload_validation():
             == 422
         )
     assert json.dumps(schemas())
+
+
+@pytest.mark.parametrize("empty_index", [False, True])
+def test_bootstrap_composes_scoped_service_or_closes_on_start_failure(monkeypatch, empty_index):
+    from api import bootstrap
+    from core.settings import load_settings
+
+    monkeypatch.setenv("WMS_OIDC_ISSUER", "https://id.example.invalid")
+    monkeypatch.setenv("WMS_USER_DB_DSN", "synthetic-runtime-dsn")
+    monkeypatch.setenv("WMS_API_CLIENT_SECRET", "synthetic-secret")
+    monkeypatch.setenv("WMS_WEB_ORIGINS", "https://wms.example.invalid")
+    verifier, intro, store, vector, sparse, agent = [Mock() for _ in range(6)]
+    monkeypatch.setattr(bootstrap, "OIDCVerifier", Mock(return_value=verifier))
+    monkeypatch.setattr(bootstrap, "TokenIntrospector", Mock(return_value=intro))
+    monkeypatch.setattr(bootstrap, "AccessStore", Mock(return_value=store))
+    monkeypatch.setattr(bootstrap, "load_settings", Mock(return_value=load_settings()))
+    monkeypatch.setattr(bootstrap.VectorStoreFactory, "create", Mock(return_value=vector))
+    monkeypatch.setattr(bootstrap, "BM25Indexer", Mock(return_value=sparse))
+    vector.count.return_value = 0 if empty_index else 1
+    sparse.count.return_value = 1
+    for factory in (bootstrap.EmbeddingFactory, bootstrap.RerankerFactory, bootstrap.LLMFactory):
+        monkeypatch.setattr(factory, "create", Mock(return_value=Mock()))
+    monkeypatch.setattr(bootstrap, "HybridSearch", Mock(return_value=Mock()))
+    monkeypatch.setattr(bootstrap, "UserAgent", Mock(return_value=agent))
+    if empty_index:
+        with pytest.raises(RuntimeError, match="index is required"):
+            bootstrap.from_environment()
+        store.close.assert_called_once()
+        intro.close.assert_called_once()
+        verifier.close.assert_called_once()
+    else:
+        with TestClient(bootstrap.from_environment()) as client:
+            result = client.get("/v1/me", headers={"Origin": "https://wms.example.invalid"})
+            assert result.status_code == 401
+        store.close.assert_called_once()
