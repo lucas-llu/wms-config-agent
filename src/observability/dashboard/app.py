@@ -17,6 +17,7 @@ def main() -> None:
             st.Page(page_root / "ingestion_manager.py", title="Ingestion", icon="📥"),
             st.Page(page_root / "ingestion_traces.py", title="Ingestion traces", icon="🧭"),
             st.Page(page_root / "query_traces.py", title="Query traces", icon="🔎"),
+            st.Page(page_root / "agent_sessions.py", title="Agent sessions", icon="🤖"),
             st.Page(page_root / "evaluation.py", title="Evaluation", icon="📊"),
         ]
     )

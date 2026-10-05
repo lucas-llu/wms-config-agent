@@ -4,11 +4,11 @@ project:
 
 llm:
   provider: openai_compatible
-  model: ox-alpha-free
+  model: deepseek-v4.1-flash
   base_url: https://opencode.ai/zen/go/v1/chat/completions
   api_key_env: WMS_LLM_API_KEY
   timeout_seconds: 60
-  max_tokens: 1024
+  max_tokens: 8192
   temperature: 0
   max_retries: 2
   retry_backoff_seconds: 0.5
@@ -77,3 +77,27 @@ evaluation:
 observability:
   enabled: true
   trace_file: logs/traces.jsonl
+
+agent:
+  workspace_id: workspace:legacy
+  enabled: false
+  runtime: langgraph
+  checkpoint_path: data/db/agent_checkpoints.db
+  session_db_path: data/db/configuration_sessions.db
+  export_root: data/exports
+  max_nodes_per_turn: 16
+  max_self_repair_rounds: 2
+  max_retrieval_tasks: 8
+  turn_timeout_seconds: 60
+  max_context_turns: 8
+  max_context_chars: 16000
+  max_summary_chars: 3000
+  approval_required: true
+  environment_inspector_enabled: false
+  max_tokens_per_turn: 12000
+  intent_confidence_threshold: 0.65
+  max_questions_per_turn: 3
+  intent_prompt_path: config/prompts/agent_intent.txt
+  requirement_prompt_path: config/prompts/agent_requirement.txt
+  planning_prompt_path: config/prompts/agent_planning.txt
+  planning_template_path: config/templates/inbound_appointment_receiving.json

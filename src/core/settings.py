@@ -122,6 +122,34 @@ class ObservabilitySettings:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentSettings:
+    """Configuration for the opt-in V2 agent runtime."""
+
+    enabled: bool
+    runtime: str
+    checkpoint_path: Path
+    session_db_path: Path
+    export_root: Path
+    max_nodes_per_turn: int
+    max_self_repair_rounds: int
+    max_retrieval_tasks: int
+    turn_timeout_seconds: float
+    max_context_turns: int
+    approval_required: bool
+    environment_inspector_enabled: bool
+    workspace_id: str = "workspace:legacy"
+    max_tokens_per_turn: int = 12_000
+    max_context_chars: int = 16_000
+    max_summary_chars: int = 3_000
+    intent_confidence_threshold: float = 0.65
+    max_questions_per_turn: int = 3
+    intent_prompt_path: Path = Path("config/prompts/agent_intent.txt")
+    requirement_prompt_path: Path = Path("config/prompts/agent_requirement.txt")
+    planning_prompt_path: Path = Path("config/prompts/agent_planning.txt")
+    planning_template_path: Path = Path("config/templates/inbound_appointment_receiving.json")
+
+
+@dataclass(frozen=True, slots=True)
 class Settings:
     """Validated settings used to construct application components."""
 
@@ -136,6 +164,7 @@ class Settings:
     rerank: RerankSettings
     evaluation: EvaluationSettings
     observability: ObservabilitySettings
+    agent: AgentSettings
 
 
 def load_settings(path: str | Path = "config/settings.yaml") -> Settings:
@@ -188,6 +217,14 @@ def validate_settings(settings: Settings) -> None:
         "retrieval.rrf_k": settings.retrieval.rrf_k,
         "retrieval.max_chunks_per_document": (settings.retrieval.max_chunks_per_document),
         "rerank.top_m": settings.rerank.top_m,
+        "agent.max_nodes_per_turn": settings.agent.max_nodes_per_turn,
+        "agent.max_retrieval_tasks": settings.agent.max_retrieval_tasks,
+        "agent.turn_timeout_seconds": settings.agent.turn_timeout_seconds,
+        "agent.max_context_turns": settings.agent.max_context_turns,
+        "agent.max_context_chars": settings.agent.max_context_chars,
+        "agent.max_summary_chars": settings.agent.max_summary_chars,
+        "agent.max_tokens_per_turn": settings.agent.max_tokens_per_turn,
+        "agent.max_questions_per_turn": settings.agent.max_questions_per_turn,
     }
     for field_path, value in positive_values.items():
         if value <= 0:
@@ -210,6 +247,22 @@ def validate_settings(settings: Settings) -> None:
         raise SettingsError("Setting retrieval.min_fused_score must be non-negative")
     if not settings.evaluation.backends:
         raise SettingsError("Missing required setting: evaluation.backends")
+    if settings.agent.runtime != "langgraph":
+        raise SettingsError("Setting agent.runtime must be 'langgraph'")
+    if settings.agent.max_summary_chars >= settings.agent.max_context_chars:
+        raise SettingsError("agent.max_summary_chars must be smaller than agent.max_context_chars")
+    if settings.agent.max_self_repair_rounds < 0:
+        raise SettingsError("Setting agent.max_self_repair_rounds must be non-negative")
+    if settings.agent.checkpoint_path == settings.agent.session_db_path:
+        raise SettingsError(
+            "Settings agent.checkpoint_path and agent.session_db_path must be different files"
+        )
+    if not 0 < settings.agent.intent_confidence_threshold <= 1:
+        raise SettingsError(
+            "Setting agent.intent_confidence_threshold must be greater than 0 and at most 1"
+        )
+    if settings.agent.enabled and not settings.agent.approval_required:
+        raise SettingsError("Setting agent.approval_required must be true when agent is enabled")
 
     for field_path, provider in (
         ("llm", settings.llm),
@@ -258,6 +311,7 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
     rerank = _section(raw, "rerank")
     evaluation = _section(raw, "evaluation")
     observability = _section(raw, "observability")
+    agent = _optional_section(raw, "agent")
 
     backends = _required(evaluation, "backends", "evaluation.backends")
     if not isinstance(backends, list) or not all(isinstance(item, str) for item in backends):
@@ -455,6 +509,106 @@ def _build_settings(raw: dict[str, Any]) -> Settings:
         observability=ObservabilitySettings(
             enabled=_required_bool(observability, "enabled", "observability.enabled"),
             trace_file=Path(_required_str(observability, "trace_file", "observability.trace_file")),
+        ),
+        agent=AgentSettings(
+            workspace_id=_optional_non_empty_str(
+                agent.get("workspace_id"), "agent.workspace_id", default="workspace:legacy"
+            ),
+            enabled=_optional_bool(agent.get("enabled"), "agent.enabled", default=False),
+            runtime=_optional_non_empty_str(
+                agent.get("runtime"), "agent.runtime", default="langgraph"
+            ),
+            checkpoint_path=Path(
+                _optional_non_empty_str(
+                    agent.get("checkpoint_path"),
+                    "agent.checkpoint_path",
+                    default="data/db/agent_checkpoints.db",
+                )
+            ),
+            session_db_path=Path(
+                _optional_non_empty_str(
+                    agent.get("session_db_path"),
+                    "agent.session_db_path",
+                    default="data/db/configuration_sessions.db",
+                )
+            ),
+            export_root=Path(
+                _optional_non_empty_str(
+                    agent.get("export_root"), "agent.export_root", default="data/exports"
+                )
+            ),
+            max_nodes_per_turn=_optional_int(
+                agent.get("max_nodes_per_turn"), "agent.max_nodes_per_turn", default=16
+            ),
+            max_self_repair_rounds=_optional_int(
+                agent.get("max_self_repair_rounds"),
+                "agent.max_self_repair_rounds",
+                default=2,
+            ),
+            max_retrieval_tasks=_optional_int(
+                agent.get("max_retrieval_tasks"), "agent.max_retrieval_tasks", default=8
+            ),
+            turn_timeout_seconds=_optional_number(
+                agent.get("turn_timeout_seconds"), "agent.turn_timeout_seconds", default=60.0
+            ),
+            max_context_turns=_optional_int(
+                agent.get("max_context_turns"), "agent.max_context_turns", default=8
+            ),
+            max_context_chars=_optional_int(
+                agent.get("max_context_chars"), "agent.max_context_chars", default=16_000
+            ),
+            max_summary_chars=_optional_int(
+                agent.get("max_summary_chars"), "agent.max_summary_chars", default=3_000
+            ),
+            approval_required=_optional_bool(
+                agent.get("approval_required"), "agent.approval_required", default=True
+            ),
+            environment_inspector_enabled=_optional_bool(
+                agent.get("environment_inspector_enabled"),
+                "agent.environment_inspector_enabled",
+                default=False,
+            ),
+            max_tokens_per_turn=_optional_int(
+                agent.get("max_tokens_per_turn"), "agent.max_tokens_per_turn", default=12_000
+            ),
+            intent_confidence_threshold=_optional_number(
+                agent.get("intent_confidence_threshold"),
+                "agent.intent_confidence_threshold",
+                default=0.65,
+            ),
+            max_questions_per_turn=_optional_int(
+                agent.get("max_questions_per_turn"),
+                "agent.max_questions_per_turn",
+                default=3,
+            ),
+            intent_prompt_path=Path(
+                _optional_non_empty_str(
+                    agent.get("intent_prompt_path"),
+                    "agent.intent_prompt_path",
+                    default="config/prompts/agent_intent.txt",
+                )
+            ),
+            requirement_prompt_path=Path(
+                _optional_non_empty_str(
+                    agent.get("requirement_prompt_path"),
+                    "agent.requirement_prompt_path",
+                    default="config/prompts/agent_requirement.txt",
+                )
+            ),
+            planning_prompt_path=Path(
+                _optional_non_empty_str(
+                    agent.get("planning_prompt_path"),
+                    "agent.planning_prompt_path",
+                    default="config/prompts/agent_planning.txt",
+                )
+            ),
+            planning_template_path=Path(
+                _optional_non_empty_str(
+                    agent.get("planning_template_path"),
+                    "agent.planning_template_path",
+                    default="config/templates/inbound_appointment_receiving.json",
+                )
+            ),
         ),
     )
 

@@ -6,15 +6,23 @@ compatible implementation. The committed development configuration targets OpenC
 ```yaml
 llm:
   provider: openai_compatible
-  model: ox-alpha-free
+  model: deepseek-v4.1-flash
   base_url: https://opencode.ai/zen/go/v1/chat/completions
   api_key_env: WMS_LLM_API_KEY
   timeout_seconds: 60
-  max_tokens: 1024
+  max_tokens: 8192
   temperature: 0
   max_retries: 2
   retry_backoff_seconds: 0.5
 ```
+
+This model passed connectivity and repeated synthetic acceptance with an 8192 output cap
+and thinking enabled. Fresh revalidation on 2026-09-27 passed live text transformation,
+intent and three consecutive isolated multi-turn canary rounds. The 12000 Agent turn
+budget remains unchanged; real-corpus canary acceptance is still required. OpenCode
+requests include the documented opaque conversation header, without impersonating
+another client.
+See [Canary readiness](CANARY_READINESS.md) for remaining entry checks.
 
 No credential is stored in YAML, `.env.example`, test output, traces, or Git. Supply the key only
 to the process environment. This PowerShell pattern avoids placing the key in shell history:

@@ -1,0 +1,63 @@
+# Grounded knowledge answers
+
+Issue #78 replaces the workbench's raw excerpt dump with a generated conclusion
+and supporting citations. Atomic questions retrieve up to five scoped snippets;
+only those snippets and the question are sent to the configured LLM. This is a
+change from local-only extractive question delivery. Do not enable this workflow
+for documents not approved for the configured external provider.
+
+The answer uses structured claims, source IDs and exact quotes. Unknown source IDs,
+missing claims and quotes absent from the supplied evidence are rejected. These are
+mechanical citation checks, not a proof of semantic entailment. Business review is
+still required. Empty or invalid answers produce explicit failure/gap messages,
+not fabricated instructions or an unlabelled fallback to raw excerpts.
+
+Issue #93 adds a conversation language policy: Chinese/English answers follow the
+user's question by default, or an explicit requested output language. Claims, gap
+explanations and headings use that language. Original quoted evidence and technical
+field names remain unchanged. Wholly wrong-language prose is rejected within the
+existing one-repair limit; this is a script-level check, not full linguistic grading.
+
+The model must distinguish entity scope, examples from requirements and tracking
+from RF scan confirmation. It must explain evidence gaps when the actual setting
+is unavailable. Only cited sources appear in the answer. Image placeholder hashes
+are stripped before generation. Agent citation excerpts can use up to 1800 characters
+to avoid truncating the relevant paragraph; the V1 query tool remains unchanged.
+
+Existing per-turn budget accounting applies to answer generation. A bounded single
+repair attempt is allowed. No approval, export or WMS mutation occurs when answering.
+
+## Collapsed evidence and local document pictures
+
+Answers contain conclusions and small numbered citation markers, not an inline
+bibliography or long source excerpts. Each assistant turn has its own **查看证据**
+expander, closed by default. Its immutable source snapshot contains validated
+quotes, source/page/version information and the complete retrieved chunk (not the
+whole PDF). `full_excerpt` is retained for display; generation still uses the
+bounded `excerpt`, so the provider's evidence budget is unchanged.
+
+Opening the panel resolves pictures from the local read-only image index by
+collection, document hash and cited page range. Workspace restrictions apply;
+paths must remain under configured image roots, with a supported raster type and
+a 5 MB per-image limit. Unavailable pictures show a notice, not raw placeholder
+hashes or remote URLs. `[IMAGE: ...]` markers and truncated hash fragments are
+removed from displayed excerpts. Closing the panel removes its image elements.
+
+Legacy inline bibliographies are split only in the display, without rewriting
+stored messages. Where structured evidence exists, it comes from that turn's own
+revision, never the latest answer. A legacy text-only source cannot manufacture
+pictures or source metadata. Displaying pictures does not mean the text-only model
+has read or validated their contents; the OCR/vision limitation below still applies.
+
+## Known limitation: image-only configuration fields
+
+The trolley example exposed an independent retrieval limitation: the slot handling
+unit attributes are shown in a screenshot on page 6, while the trolley's settings
+are described on page 7. The text index cannot infer image-only values. Human visual
+inspection confirmed that the slot example shows Serialized=No and LPN Tracked=No;
+the trolley instructions specify LPN Tracked=Yes. This human finding is not silently
+injected as a general system rule or fabricated as a retrieved text quote.
+
+Therefore generated answers may correctly request screenshot/source verification.
+Reliable automated answers to image-only fields require a separately validated
+OCR/vision ingestion path. Do not equate no ID tracking with skipping RF slot scans.

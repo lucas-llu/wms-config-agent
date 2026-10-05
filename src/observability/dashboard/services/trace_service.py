@@ -15,7 +15,7 @@ _SECRET_VALUE = re.compile(
     r"(?i)(?:bearer\s+\S+|sk-[A-Za-z0-9_-]{12,}|"
     r"(?:api[_-]?key|password|secret|token)\s*[:=]\s*\S+)"
 )
-_ALLOWED_TRACE_TYPES = {"ingestion", "query"}
+_ALLOWED_TRACE_TYPES = {"agent", "ingestion", "query"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +139,24 @@ class TraceService:
             ],
             "rankings": rankings if isinstance(rankings, dict) else {},
         }
+
+    @staticmethod
+    def agent_events(record: TraceRecord) -> list[dict[str, Any]]:
+        return [
+            {
+                "Event": stage.details.get("event", ""),
+                "Session": stage.details.get("session_id", ""),
+                "Revision": stage.details.get("revision", ""),
+                "Graph": stage.details.get("graph", ""),
+                "Node": stage.details.get("node", ""),
+                "Tool": stage.details.get("tool", ""),
+                "Interrupt": stage.details.get("interrupt", ""),
+                "Approval": stage.details.get("approval", ""),
+                "Budget": stage.details.get("budget", {}),
+            }
+            for stage in record.stages
+            if stage.name == "agent_event"
+        ]
 
     def _read_recent(self) -> tuple[list[TraceRecord], int, bool]:
         if not self.path.is_file():

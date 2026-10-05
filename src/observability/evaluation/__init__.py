@@ -1,5 +1,12 @@
 """RAG evaluation orchestration."""
 
+from observability.evaluation.agent_evaluation import (
+    AgentEvaluationReport,
+    AgentEvaluationRunner,
+    AgentGoldenDataset,
+    AgentGoldenScenario,
+    AgentScenarioResult,
+)
 from observability.evaluation.baseline_comparator import (
     BaselineComparator,
     BaselineComparisonError,
@@ -18,6 +25,11 @@ from observability.evaluation.retrieval_benchmark import (
 )
 
 __all__ = [
+    "AgentEvaluationReport",
+    "AgentEvaluationRunner",
+    "AgentGoldenDataset",
+    "AgentGoldenScenario",
+    "AgentScenarioResult",
     "BenchmarkCase",
     "BenchmarkCaseResult",
     "BenchmarkDataset",

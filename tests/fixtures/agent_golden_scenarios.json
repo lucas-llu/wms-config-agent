@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "wms-agent-public-golden-v1",
+  "thresholds": {
+    "intent_accuracy_min": 0.95,
+    "required_field_completion_min": 1.0,
+    "duplicate_question_avoidance_min": 0.95,
+    "dag_validity_min": 1.0,
+    "task_coverage_min": 0.9,
+    "citation_coverage_min": 1.0,
+    "citation_support_min": 0.95,
+    "conflict_detection_min": 0.95,
+    "evidence_gap_blocking_min": 1.0,
+    "invalidation_accuracy_min": 1.0,
+    "solution_completeness_min": 0.95,
+    "recovery_success_min": 1.0,
+    "session_isolation_min": 1.0,
+    "unauthorized_tool_calls_max": 0.0
+  },
+  "scenarios": [
+    {"scenario_id": "normal-inbound", "category": "normal_solution", "description": "Complete an inbound appointment solution and export it after approval."},
+    {"scenario_id": "change-site", "category": "requirement_change", "description": "Change the confirmed site and invalidate derived state."},
+    {"scenario_id": "missing-evidence", "category": "evidence_gap", "description": "Exhaust targeted retrieval and pause before review."},
+    {"scenario_id": "version-conflict", "category": "version_conflict", "description": "Preserve conflicting version evidence and block review."},
+    {"scenario_id": "restart-resume", "category": "interrupt_recovery", "description": "Resume the same session after reopening persistence."},
+    {"scenario_id": "parallel-sessions", "category": "session_isolation", "description": "Interleave two sessions without state leakage."}
+  ]
+}
