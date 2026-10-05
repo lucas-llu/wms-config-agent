@@ -421,7 +421,7 @@ details[open] > summary:before {
   margin: auto;
 }
 .chat-welcome {
-  padding: clamp(20px, 9vh, 120px) 0 30px;
+  padding: clamp(8px, 3vh, 40px) 0 15px;
   max-width: 580px;
   margin: auto;
   text-align: center;
@@ -444,9 +444,10 @@ details[open] > summary:before {
 }
 .suggestions {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  margin: 33px auto;
-  max-width: 420px;
+  margin: 26px auto 18px;
+  max-width: 720px;
 }
 .suggestions button {
   justify-content: flex-start;
@@ -1064,6 +1065,10 @@ details[open] > summary:before {
   }
 }
 @media (max-width: 700px) {
+  .suggestions {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+  }
   .sidebar {
     width: 210px;
     min-width: 210px;

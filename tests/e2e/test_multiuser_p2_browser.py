@@ -221,13 +221,23 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
             ("firstName", "Synthetic"),
             ("lastName", "P2"),
             ("email", email),
-            ("password", password),
-            ("password-confirm", password),
         ]:
             page.locator('input[name="' + field + '"]').fill(value)
+        assert not page.locator('input[name="password"]').count()
         page.locator('input[type="submit"],button[type="submit"]').first.click()
         link = mail_link(email)
         navigate(page, link)
+        page.locator('input[name="password-new"]').fill(password)
+        page.locator('input[name="password-confirm"]').fill(password)
+        page.locator('input[type="submit"],button[type="submit"]').first.click()
+        # The server-side password policy can revoke the setup session too;
+        # confirm the account using a fresh normal login, never reuse old tokens.
+        navigate(page, WEB)
+        if page.get_by_role("button", name="登录工作台").is_visible():
+            page.get_by_role("button", name="登录工作台").click()
+            page.locator('input[name="username"]').fill(name)
+            page.locator('input[name="password"]').fill(password)
+            page.locator("#kc-login").click()
         page.get_by_role("textbox", name="输入问题").wait_for(timeout=20000)
         assert page.get_by_text("账号已就绪", exact=False).is_visible()
         token = [""]
@@ -281,9 +291,9 @@ def test_unknown_account_recovery_is_uniform_and_expired_link_is_rejected(browse
             page.get_by_role("button", name="登录工作台").click()
             page.locator('a[href*="reset-credentials"]').click()
             page.locator('input[name="username"]').fill(email)
-            page.locator('input[type="submit"],button[type="submit"]').first.click()
-            page.wait_for_timeout(250)
-            texts.append(page.locator("#kc-content-wrapper").inner_text())
+            with page.expect_navigation(wait_until="domcontentloaded"):
+                page.locator('input[type="submit"],button[type="submit"]').first.click()
+            texts.append(page.locator("body").inner_text())
         assert texts[0] == texts[1]
         link = mail_link("user-a@example.invalid")
         time.sleep(31)  # Real expiry in the disposable 30-second action-token policy.

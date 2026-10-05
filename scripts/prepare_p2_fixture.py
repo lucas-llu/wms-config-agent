@@ -11,6 +11,7 @@ def prepare(root=Path("data/p0-fixture")):
         raise ValueError("Only the disposable fixture may be changed")
     realm.update(
         registrationAllowed=True,
+        requiredCredentials=["password"],
         verifyEmail=True,
         resetPasswordAllowed=True,
         loginTheme="wms",

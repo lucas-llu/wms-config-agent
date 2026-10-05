@@ -289,7 +289,9 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     };
   }, [workspace, query, listMode]);
   useEffect(() => {
-    latest.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+    if (data?.turns.length || pending)
+      latest.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+    else if (messages.current) messages.current.scrollTop = 0;
   }, [data?.turns.length, pending, busy]);
   const open = async (id: string, revision?: number) => {
     const epoch = ++viewEpoch.current;
