@@ -84,7 +84,7 @@ def test_empty_trash_handles_more_than_one_page_and_preserves_other_owner(system
     from multiuser.session_repository import PostgresSessionRepository
 
     repos = [PostgresSessionRepository(store, c, workspace.workspace_id) for c in contexts]
-    for index in range(101):
+    for _index in range(101):
         row = SessionService(repos[0]).create_session("Synthetic trash")
         repos[0].delete_session(row.session_id)
     other = SessionService(repos[1]).create_session("Other owner")
