@@ -1,7 +1,21 @@
-"""Read-only WMS MCP tools."""
+"""WMS MCP tools."""
 
+from mcp_server.tools.agent_capabilities import AgentCapabilitiesTool
+from mcp_server.tools.configuration_sessions import (
+    ConfigurationSessionApplication,
+    ConfigurationSessionTools,
+)
 from mcp_server.tools.get_document_summary import GetDocumentSummaryTool
+from mcp_server.tools.get_knowledge_catalog import GetKnowledgeCatalogTool
 from mcp_server.tools.list_collections import ListCollectionsTool
 from mcp_server.tools.query_knowledge_hub import QueryKnowledgeHubTool
 
-__all__ = ["GetDocumentSummaryTool", "ListCollectionsTool", "QueryKnowledgeHubTool"]
+__all__ = [
+    "AgentCapabilitiesTool",
+    "ConfigurationSessionApplication",
+    "ConfigurationSessionTools",
+    "GetDocumentSummaryTool",
+    "GetKnowledgeCatalogTool",
+    "ListCollectionsTool",
+    "QueryKnowledgeHubTool",
+]

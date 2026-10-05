@@ -106,6 +106,3 @@ traces.jsonl
 .env.*.local
 secrets.yaml
 nonexistent_traces.jsonl/
-
-# Alternative package manager lock files
-uv.lock

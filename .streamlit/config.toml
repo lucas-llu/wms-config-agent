@@ -1,0 +1,28 @@
+[client]
+# Apply before the first browser session: the legacy developer C shortcut must
+# not interfere with copying. Cache maintenance uses the workbench's own button.
+toolbarMode = "viewer"
+
+[theme]
+# ChatGPT-inspired light design system: monochrome ink on white with quiet
+# gray surfaces. Widget-specific polish lives in dashboard/theme.css and
+# dashboard/workbench.css.
+base = "light"
+primaryColor = "#0d0d0d"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f4f4"
+textColor = "#0d0d0d"
+linkColor = "#1a4fd6"
+codeBackgroundColor = "#f4f4f4"
+borderColor = "#e2e2e2"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "large"
+buttonRadius = "large"
+
+[theme.sidebar]
+backgroundColor = "#f9f9f9"
+secondaryBackgroundColor = "#ececec"
+textColor = "#0d0d0d"
+primaryColor = "#0d0d0d"
+linkColor = "#1a4fd6"

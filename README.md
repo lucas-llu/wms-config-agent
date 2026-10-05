@@ -156,11 +156,17 @@ After both indexes exist, start the newline-delimited JSON-RPC stdio server:
 .\.venv\Scripts\python.exe scripts\start_mcp_server.py
 ```
 
-The server exposes three read-only tools:
+It exposes four read-only tools:
 
-- `query_wms_knowledge` — returns evidence excerpts with source/page citations.
-- `list_wms_collections` — returns privacy-safe corpus counts.
-- `get_wms_document_summary` — returns an extractive document summary.
+- `query_wms_knowledge` returns evidence excerpts with source/page citations.
+- `list_wms_collections` returns privacy-safe corpus counts.
+- `get_wms_document_summary` returns an extractive document summary.
+- `get_wms_knowledge_catalog` returns document version, scope completeness, index health and
+  freshness without exposing document bodies or absolute host paths.
+
+The catalog supports collection/module filters, scope and freshness status filters, and bounded
+pagination. See [docs/KNOWLEDGE_CATALOG.md](docs/KNOWLEDGE_CATALOG.md) for the response contract
+and Workspace behavior.
 
 Desktop MCP hosts should use absolute paths for the Python executable, script, settings, BM25 index, and processed chunks.
 
@@ -263,34 +269,27 @@ GitHub Actions additionally scans the event, complete Git history, and working t
 
 - Never commit authorized/private PDFs, processed text, indexes, model caches, traces, `.env` files, secrets, or private evaluation reports.
 - Query traces contain the user's query and inferred filters; protect the local `logs/` directory.
-- MCP structured citations remove absolute host paths.
-- Dashboard trace readers remove known credential/body fields and bound the amount of history read.
-- Dashboard PDF uploads enforce a size limit, stage atomically, and require an explicit collection.
-- Deletion requires the exact displayed confirmation phrase and coordinates cleanup across Chroma, BM25, images, history, and allowlisted artifacts.
-- The product is local and single-user. It has no production WMS write path, network auth, or multi-tenant isolation.
+- Agent session databases and exports contain conversation text, confirmed context, decisions,
+  approvals, and configuration drafts. Keep `data/db/agent_checkpoints.db`,
+  `data/db/configuration_sessions.db`, and `data/exports/` local; all remain ignored by Git.
+- MCP structured citations remove absolute host paths. Dashboard trace readers remove known
+  credential/body fields and bound the amount of history read.
+- Dashboard file uploads accept PDFs, enforce a size limit, stage atomically, and require an
+  explicit collection. Deletion requires the exact displayed confirmation phrase and coordinates
+  Chroma, BM25, image, history, and allowlisted artifact cleanup.
+- The product is local and single-user. It has no production WMS write path, network auth, or
+  multi-tenant isolation.
 
 ## Project status
 
-Days 1–10 are implemented on `develop`:
+The V1 RAG workflow and V2 configuration Agent are available in the main branch.
+The Agent adds multi-turn requirements, scoped retrieval, configuration planning,
+evidence review, explicit approval/export, conversation memory and history management.
+It remains a local single-user application; multi-user development is a separate track on `dev`.
 
-- offline ingestion
-- hybrid retrieval
-- cited MCP delivery
-- document enrichment
-- lifecycle hardening
-- six-page operations/trace dashboard
-- deterministic evaluation UI
-- contract coverage
-- sanitized release acceptance
-
-Deferred provider work currently includes:
-
-- Ollama / hosted embeddings
-- cross-encoder or LLM rerankers
-- Azure Vision
-- Ragas
-
-See [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) for the detailed delivery record.
+Deferred provider work includes Ollama/hosted embeddings, cross-encoder rerankers,
+Azure Vision and Ragas. See [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md)
+and [docs/AGENT_DEVELOPMENT_PLAN.md](docs/AGENT_DEVELOPMENT_PLAN.md) for delivery records.
 
 ## Troubleshooting
 
@@ -324,3 +323,114 @@ MIT License. See [LICENSE](LICENSE).
 ---
 
 If this project is useful to you, consider giving it a ⭐ — it helps other developers working on private enterprise RAG, MCP, and WMS tooling discover the project.
+## V2 configuration Agent
+
+### Local Workspace scope
+
+The host selects one workspace with `agent.workspace_id`. Existing sessions migrate to
+`workspace:legacy`, which preserves the earlier local unrestricted scope. Restricted workspaces
+require non-empty collection, module, site and environment allowlists. They are local scope
+boundaries, not authenticated multi-tenant accounts.
+
+Provision a workspace before selecting it:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/create_workspace.py --id workspace:dc01 --name DC01 `
+  --collections wms-dc01 --modules inbound appointment integration --sites DC01 --environments test
+```
+
+Set `agent.workspace_id: workspace:dc01` in the selected settings file and restart the MCP host
+and Dashboard. A missing workspace fails startup. The administrative provisioning command is
+local; chat tools cannot change their host workspace or modify workspace policy.
+
+Session membership and policies are immutable. Create a new workspace/session when scope changes.
+Database schema v2 migrates existing membership without rewriting immutable revision JSON or
+fingerprints. Retain a database backup before migration; older binaries must not open a v2 store.
+Unknown future schema versions are rejected.
+
+All six session tools use the selected repository scope, including historical revisions,
+approval and export. V1 query and catalog tools are also scoped. Retrieval injects singleton
+allowlist values; a multi-valued dimension must be selected explicitly before retrieval. Missing
+scope metadata is excluded. If a legacy V1 tool does not expose a dimension selector, use a
+single-valued workspace for that query workflow. Workspace scope applies even when the Agent
+itself is disabled. Existing V1 behavior remains available through `workspace:legacy`.
+
+Capabilities report the host workspace and whether restricted scope is enforced. The Agent
+Sessions page lists only sessions belonging to the selected workspace.
+
+The opt-in V2 Agent manages a durable configuration workflow on top of the V1 citation-first RAG
+core. Set `agent.enabled: true` only in an authorized local environment with aligned Chroma and
+BM25 indexes and a configured text LLM. The default remains `false` until a real provider and
+customer-authorized corpus complete acceptance.
+
+Six session MCP tools expose the workflow:
+
+- `start_configuration_session` — create a session and collect missing requirements;
+- `continue_configuration_session` — resume an interrupt using `session_id` and
+  `expected_revision`;
+- `get_configuration_session` — inspect the current or an immutable historical revision;
+- `validate_configuration_draft` — rerun deterministic DAG/evidence/conflict gates;
+- `review_configuration_draft` — explicitly revise, reject, or approve a review-ready revision;
+- `export_configuration_solution` — idempotently export an approved JSON or Markdown solution.
+
+When the Agent is enabled, `get_agent_capabilities` provides a strict, read-only discovery
+contract for product/contract versions, stdio authentication semantics, feature flags, provider
+availability, supported ingestion types/modules, budgets, exports, tools and safety guarantees.
+It returns only a credential-availability boolean—never keys, values, private content or internal
+provider URLs.
+
+Every mutation uses optimistic revision protection. Evidence gaps and conflicts pause instead of
+being guessed away; approval is explicit and does not authorize execution in a WMS environment.
+Interrupted sessions resume from the configured SQLite checkpoint after process restart.
+
+Run the deterministic Agent release gate with no private corpus or provider credentials:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_agent_release.py --enforce-thresholds
+```
+
+The optional real-provider intent acceptance remains disabled unless `WMS_AGENT_LIVE=1` and the
+configured provider key is present.
+
+## MVP status
+
+V1 Days 1–10 and V2 Agent Days 1–10 are implemented on `dev`: offline ingestion, hybrid retrieval,
+cited MCP delivery, document enrichment and lifecycle hardening, seven-page Dashboard, deterministic
+evaluation UI, contract coverage, and sanitized release acceptance. Ollama/hosted embeddings,
+cross-encoder or LLM rerankers, Azure Vision, and Ragas remain explicitly deferred provider work.
+
+The detailed delivery record is [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md).
+
+## V2 multi-agent architecture
+
+The read-only [Actions catalog](docs/ACTION_CATALOG.md) exposes registered MCP
+tools and their execution prerequisites without running them.
+
+For evidence-grouped troubleshooting, call `query_wms_knowledge` with
+`response_format: "troubleshooting"`; see the
+[diagnostic response contract](docs/DIAGNOSTIC_RESPONSES.md). Default queries are unchanged.
+
+Agent-enabled hosts also expose [revision-bound feedback](docs/FEEDBACK_EVALUATION.md)
+recording and summaries, without free-text storage or automatic regeneration.
+
+The **Agent Sessions** page now provides a [configuration workbench](docs/AGENT_WORKBENCH.md)
+for conversation, revisioned drafts, task dependencies, evidence, review and feedback.
+
+Run `python scripts/run_product_release.py` for executed offline product gates.
+See the [Day 18 release report](docs/PRODUCT_RELEASE_REPORT.md) for evidence and unrun acceptance.
+
+The citation-first RAG core now includes a stateful configuration assistant. It clarifies a
+business goal over multiple turns, decomposes it into dependent configuration
+tasks, gathers evidence for each task, surfaces version or scope conflicts, validates a versioned
+draft, and require explicit human approval before exporting a configuration solution. V2 remains
+read-only with respect to real WMS environments.
+
+The formal requirements are in [DEV_SPEC.md](DEV_SPEC.md),
+and the design review, technology choices, and ten-day implementation plan are in
+[docs/AGENT_DEVELOPMENT_PLAN.md](docs/AGENT_DEVELOPMENT_PLAN.md).
+
+Day 1 includes a repeatable runtime compatibility probe:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_agent_runtime.py
+```
