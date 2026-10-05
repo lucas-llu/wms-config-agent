@@ -1,0 +1,56 @@
+name: user-workbench
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: wms-p2-${{ github.run_id }}
+      WMS_P2_LIVE: "1"
+      WMS_P2_BROWSER: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.15.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend locked install, type check and interaction tests
+        working-directory: frontend
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          npm run test:coverage
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build pinned identity password-session policy
+        run: mvn -B -ntp -f infra/p2/password-revocation/pom.xml package
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install locked backend and real browser
+        run: |
+          python -m pip install uv==0.11.6
+          uv export --locked --extra dev --extra p0 --no-hashes --no-emit-project -o /tmp/wms-requirements.txt
+          python -m pip install -r /tmp/wms-requirements.txt -e ".[dev,p0]"
+          python -m playwright install --with-deps chromium
+      - name: Generate isolated identity, SMTP and database fixtures
+        run: |
+          python scripts/prepare_p0_fixture.py
+          python scripts/prepare_p2_fixture.py
+          docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml -f infra/p2/compose.yml up -d
+          python scripts/wait_p0_services.py
+          python scripts/prepare_p1_database.py
+      - name: Real registration, verified mail, private chat and password revocation
+        run: python -m pytest tests/e2e/test_multiuser_p2_browser.py -q --junitxml=data/p2-reports/browser.xml
+      - name: Stop only this job's disposable services
+        if: always()
+        run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml -f infra/p2/compose.yml down --volumes

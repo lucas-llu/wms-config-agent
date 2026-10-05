@@ -1,0 +1,10 @@
+services:
+  keycloak:
+    environment:
+      KC_FEATURES: account-api
+    volumes:
+      - ../../infra/p2/password-revocation/target/password-revocation-1.0.0.jar:/opt/keycloak/providers/password-revocation.jar:ro
+      - ../../infra/p2/themes/wms:/opt/keycloak/themes/wms:ro
+  mailpit:
+    image: axllent/mailpit:v1.29.0
+    ports: ["127.0.0.1:28025:8025"]

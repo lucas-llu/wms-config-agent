@@ -1,5 +1,9 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+node_modules/
+frontend/dist/
+frontend/coverage/
+infra/p2/password-revocation/target/
 *.py[cod]
 *$py.class
 

@@ -17,6 +17,8 @@ from agents.replies import workflow_reply
 from agents.repositories import RevisionRecord, SessionRecord
 from agents.runtime import session_checkpoint_config
 from agents.services import SessionService, ValidationService
+from agents.services.answer_pipeline import validate_answer_strategy
+from agents.services.evidence_decision import EvidenceDecisionService
 from agents.tools import KnowledgeAdapter
 from agents.workspace import Workspace
 from core.settings import AgentSettings
@@ -42,6 +44,7 @@ class Supervisor:
         knowledge_adapter: KnowledgeAdapter | None = None,
         workspace: Workspace | None = None,
         clock: Any = time.time,
+        evidence_decision_service: EvidenceDecisionService | None = None,
     ) -> None:
         self.settings = settings
         self.classifier = IntentClassifier(
@@ -79,6 +82,7 @@ class Supervisor:
             validation_service=ValidationService(),
             budget=TurnBudgetPolicy(settings, clock=clock),
             workspace=workspace,
+            evidence_decision_service=evidence_decision_service,
         )
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
@@ -107,7 +111,9 @@ class RequirementSessionRunner:
         *,
         checkpointer: BaseCheckpointSaver[Any],
         session_id: str | None = None,
+        answer_strategy: str = "standard",
     ) -> WorkflowResult:
+        validate_answer_strategy(answer_strategy)
         session = self.sessions.create_session(user_message, session_id=session_id)
         turn = self.sessions.append_turn(
             session.session_id,
@@ -119,6 +125,7 @@ class RequirementSessionRunner:
         config = session_checkpoint_config(session.session_id)
         initial: AgentGraphState = {
             "workspace_id": self.sessions.repository.workspace_id,
+            "answer_strategy": answer_strategy,
             "session_id": session.session_id,
             "revision": session.current_revision,
             "status": session.status.value,
@@ -161,7 +168,9 @@ class RequirementSessionRunner:
         user_message: str,
         *,
         checkpointer: BaseCheckpointSaver[Any],
+        answer_strategy: str = "standard",
     ) -> WorkflowResult:
+        validate_answer_strategy(answer_strategy)
         session = self.sessions.get_session(session_id)
         turn = self.sessions.append_turn(
             session_id,
@@ -185,6 +194,9 @@ class RequirementSessionRunner:
         command = Command(
             resume={"message": user_message, "turn_id": turn.turn_id},
             update={
+                "answer_strategy": answer_strategy,
+                "evidence_decision_report": {},
+                "answer_recovery": "not_needed",
                 "revision": session.current_revision,
                 "response_language": language,
                 "assistant_reply": "",
@@ -313,7 +325,15 @@ class RequirementSessionRunner:
             expected_revision=revision.revision,
             role="assistant",
             message=reply,
-            metadata={"kind": kind, "citations": _turn_citations(values, kind)},
+            metadata={
+                "kind": kind,
+                "citations": _turn_citations(values, kind),
+                "answer_strategy": (
+                    values.get("answer_strategy", "standard")
+                    if values.get("intent") == "atomic_query"
+                    else "standard"
+                ),
+            },
         )
         return WorkflowResult(
             self.sessions.get_session(values["session_id"]),

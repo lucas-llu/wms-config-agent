@@ -1,9 +1,11 @@
 """Compose the authenticated ASGI service without legacy host-process tools."""
 
 import os
+from pathlib import Path
 
 from agents.tools import KnowledgeAdapter
 from api.users import create_app
+from api.web import mount_workbench
 from core.query_engine import (
     DenseRetriever,
     HybridSearch,
@@ -14,16 +16,18 @@ from core.query_engine import (
 )
 from core.response import ResponseBuilder
 from core.settings import load_settings
-from ingestion.storage import BM25Indexer
+from ingestion.storage import BM25Indexer, ImageStorage
 from libs.embedding import EmbeddingFactory
 from libs.llm import LLMFactory
 from libs.reranker import RerankerFactory
 from libs.vector_store import VectorStoreFactory
 from multiuser.access import AccessStore
+from multiuser.account import AccountClient
 from multiuser.agent import UserAgent
 from multiuser.application import OwnedApplication
 from multiuser.identity import OIDCVerifier
 from multiuser.session_auth import TokenIntrospector
+from observability.dashboard.services.evidence_images import EvidenceImages
 
 
 def from_environment():
@@ -52,12 +56,32 @@ def from_environment():
             search, SafeReranker(RerankerFactory.create(settings)), ResponseBuilder()
         )
         agent = UserAgent(store, dsn, LLMFactory.create(settings), settings.agent, knowledge)
+        images = EvidenceImages(
+            ImageStorage(
+                settings.ingestion.image_storage.root_path,
+                settings.ingestion.image_storage.database_path,
+                read_only=True,
+            ),
+            [settings.ingestion.image_storage.root_path],
+        )
         application = OwnedApplication(
-            store, export_root=settings.agent.export_root / "users", agent=agent
+            store, export_root=settings.agent.export_root / "users", agent=agent, images=images
         )
         origins = tuple(o.strip() for o in os.getenv("WMS_WEB_ORIGINS", "").split(",") if o.strip())
-        app = create_app(verifier, introspector, application, allowed_origins=origins)
+        app = create_app(
+            verifier,
+            introspector,
+            application,
+            allowed_origins=origins,
+            account=AccountClient(issuer),
+            web_config={
+                "issuer": issuer,
+                "client_id": os.getenv("WMS_WEB_CLIENT_ID", "wms-workbench"),
+            },
+        )
         app.state.user_store = store
+        if directory := os.getenv("WMS_FRONTEND_DIST"):
+            mount_workbench(app, Path(directory), issuer)
         return app
     except Exception:
         store.close()

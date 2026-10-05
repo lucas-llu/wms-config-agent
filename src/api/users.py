@@ -24,6 +24,7 @@ class Input(BaseModel):
 class Start(Input):
     goal: str = Field(min_length=1, max_length=16000)
     workspace_id: str
+    answer_strategy: Literal["standard", "review"] = "standard"
 
 
 class Rename(Input):
@@ -56,6 +57,7 @@ class RPC(Input):
 class Continue(Input):
     message: str = Field(min_length=1, max_length=16000)
     expected_revision: int = Field(ge=1, strict=True)
+    answer_strategy: Literal["standard", "review"] = "standard"
 
 
 class Review(Input):
@@ -75,12 +77,16 @@ class Tool(Input):
     arguments: dict
 
 
-def create_app(verifier, introspector, application, *, allowed_origins=()):
+def create_app(
+    verifier, introspector, application, *, allowed_origins=(), account=None, web_config=None
+):
     @asynccontextmanager
     async def lifespan(app):
         yield
         verifier.close()
         introspector.close()
+        if account:
+            account.close()
         if getattr(app.state, "user_store", None) is not None:
             app.state.user_store.close()
 
@@ -98,12 +104,16 @@ def create_app(verifier, introspector, application, *, allowed_origins=()):
 
     bearer = HTTPBearer(auto_error=False)
 
-    def identity(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
+    def identity(
+        request: Request,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ):
         if credentials is None:
             raise HTTPException(401, "Authentication required")
         try:
             principal = verifier.verify(credentials.credentials)
             introspector.check(credentials.credentials, principal)
+            request.state.access_token = credentials.credentials
             return application.store.resolve(principal)
         except InvalidIdentity as exc:
             raise HTTPException(401, "Invalid session") from exc
@@ -132,9 +142,46 @@ def create_app(verifier, introspector, application, *, allowed_origins=()):
 
     CurrentUser = Annotated[UserContext, Depends(identity)]
 
+    @app.exception_handler(InvalidIdentity)
+    async def ended_identity(request, exc):
+        return JSONResponse(status_code=401, content={"detail": "Invalid session"})
+
+    @app.exception_handler(IdentityUnavailable)
+    async def unavailable_identity(request, exc):
+        return JSONResponse(status_code=503, content={"detail": "Identity service unavailable"})
+
+    @app.get("/v1/web-config")
+    def public_config():
+        if web_config is None:
+            raise HTTPException(503, "Web identity configuration unavailable")
+        return web_config
+
     @app.get("/v1/me")
-    def me(context: CurrentUser):
-        return application.store.profile(context)
+    def me(request: Request, context: CurrentUser):
+        profile = application.store.profile(context)
+        if account:
+            profile.update(account.profile(context, request.state.access_token))
+        return profile
+
+    @app.get("/v1/me/devices")
+    def devices(request: Request, context: CurrentUser):
+        if account is None:
+            raise HTTPException(503, "Account service unavailable")
+        return account.devices(context, request.state.access_token)
+
+    @app.delete("/v1/me/devices/{device_id}")
+    def revoke_device(device_id: str, request: Request, context: CurrentUser):
+        if account is None:
+            raise HTTPException(503, "Account service unavailable")
+        account.logout_device(context, request.state.access_token, device_id)
+        return {"status": "signed_out"}
+
+    @app.post("/v1/me/logout-others")
+    def logout_others(request: Request, context: CurrentUser):
+        if account is None:
+            raise HTTPException(503, "Account service unavailable")
+        account.logout_others(context, request.state.access_token)
+        return {"status": "others_signed_out"}
 
     @app.patch("/v1/me")
     def profile(body: Profile, context: CurrentUser):
@@ -163,11 +210,22 @@ def create_app(verifier, introspector, application, *, allowed_origins=()):
 
     @app.post("/v1/conversations")
     def start(body: Start, context: CurrentUser):
-        return application.start(context, body.goal, body.workspace_id)
+        return application.start(context, **body.model_dump())
 
     @app.get("/v1/conversations/{session_id}")
     def get(session_id: str, context: CurrentUser):
         return application.get(context, session_id)
+
+    @app.get("/v1/conversations/{session_id}/workbench")
+    def workbench(session_id: str, context: CurrentUser, revision: int | None = None):
+        return application.workbench(context, session_id, revision)
+
+    @app.get("/v1/conversations/{session_id}/turns/{turn_id}/evidence/{index}/images/{ordinal}")
+    def evidence_image(
+        session_id: str, turn_id: str, index: int, ordinal: int, context: CurrentUser
+    ):
+        path, mime = application.evidence_image(context, session_id, turn_id, index, ordinal)
+        return FileResponse(path, media_type=mime, content_disposition_type="inline")
 
     @app.get("/v1/conversations/{session_id}/revisions/{revision}")
     def revision(session_id: str, revision: int, context: CurrentUser):

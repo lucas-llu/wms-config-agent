@@ -89,14 +89,25 @@ class UserAgent:
             "message": result.state.get("assistant_reply", ""),
         }
 
-    def start(self, context, repository, goal):
+    def start(self, context, repository, goal, *, answer_strategy="standard"):
         async def run():
             async with self.saver(context) as saver:
-                return await self.runner(context, repository).start(goal, checkpointer=saver)
+                return await self.runner(context, repository).start(
+                    goal, checkpointer=saver, answer_strategy=answer_strategy
+                )
 
         return self.result(asyncio.run(run()))
 
-    def continue_session(self, context, repository, session_id, message, *, expected_revision):
+    def continue_session(
+        self,
+        context,
+        repository,
+        session_id,
+        message,
+        *,
+        expected_revision,
+        answer_strategy="standard",
+    ):
         # P3 will replace this single-process safety guard with durable run leases.
         # Conversation revisions also use database optimistic protection.
         with self.lock:
@@ -113,7 +124,7 @@ class UserAgent:
             async def run():
                 async with self.saver(context) as saver:
                     return await self.runner(context, repository).continue_session(
-                        session_id, message, checkpointer=saver
+                        session_id, message, checkpointer=saver, answer_strategy=answer_strategy
                     )
 
             return self.result(asyncio.run(run()))
