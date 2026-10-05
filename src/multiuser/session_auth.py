@@ -28,6 +28,8 @@ class TokenIntrospector:
             )
             response.raise_for_status()
             value = response.json()
+            if not isinstance(value, dict):
+                raise ValueError("Invalid identity response")
         except (httpx.HTTPError, ValueError) as exc:
             raise IdentityUnavailable("Identity service unavailable") from exc
         if value.get("active") is not True or value.get("sub") != principal.subject:

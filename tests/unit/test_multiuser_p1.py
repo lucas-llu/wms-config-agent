@@ -66,6 +66,61 @@ def test_introspection_service_failure_is_closed(status):
         TokenIntrospector("https://id.example.invalid", "api", "")
 
 
+@pytest.mark.parametrize("body", [b"null", b"[]", b"not-json"])
+def test_malformed_success_response_is_service_unavailable_not_internal_error(body):
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, content=body))
+    )
+    intro = TokenIntrospector("https://id.example.invalid", "api", "synthetic", client=client)
+    with pytest.raises(IdentityUnavailable):
+        intro.check("synthetic", Principal("https://id.example.invalid", "A"))
+    intro.close()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        AccessDenied("PRIVATE permission"),
+        RuntimeError("PRIVATE details"),
+        ValueError("PRIVATE details"),
+    ],
+)
+def test_mcp_execution_errors_are_opaque_tool_results_and_unknown_tools_protocol_errors(error):
+    verifier, intro, application = Mock(), Mock(), Mock()
+    application.store.resolve.return_value = UserContext("A", "issuer", "sub", "sid", 1, 2)
+    application.tool.side_effect = error
+    headers = {"Authorization": "Bearer synthetic"}
+    with TestClient(create_app(verifier, intro, application)) as client:
+        result = client.post(
+            "/mcp",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_configuration_session",
+                    "arguments": {"session_id": "private"},
+                },
+            },
+        )
+        assert result.status_code == 200
+        assert result.json()["id"] == 1 and result.json()["result"]["isError"] is True
+        assert "PRIVATE" not in result.text
+        result = client.post(
+            "/mcp",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "host_process", "arguments": {}},
+            },
+        )
+        assert result.status_code == 200
+        assert result.json()["error"]["code"] == -32602
+
+
 @pytest.mark.parametrize(
     "name,arguments",
     [

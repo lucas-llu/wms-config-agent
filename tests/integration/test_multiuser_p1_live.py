@@ -188,27 +188,25 @@ def test_every_http_and_tool_parent_is_private_even_for_admin(system, index):
                 f"SELECT * FROM {table} WHERE session_id=%s", (session_id,)
             ).fetchall()
     arguments = {"session_id": session_id}
-    assert (
-        client.post(
-            "/v1/tools/call",
-            headers=other,
-            json={"name": "get_configuration_session", "arguments": arguments},
-        ).status_code
-        == 404
+    rest_denied = client.post(
+        "/v1/tools/call",
+        headers=other,
+        json={"name": "get_configuration_session", "arguments": arguments},
     )
-    assert (
-        client.post(
-            "/mcp",
-            headers=other,
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "get_configuration_session", "arguments": arguments},
-            },
-        ).status_code
-        == 404
+    assert rest_denied.status_code == 404
+    mcp_denied = client.post(
+        "/mcp",
+        headers=other,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "get_configuration_session", "arguments": arguments},
+        },
     )
+    assert mcp_denied.status_code == 200
+    assert mcp_denied.json()["result"]["isError"] is True
+    assert "PRIVATE" not in mcp_denied.text
 
 
 def test_pool_reset_no_context_and_immutable_bindings(system):

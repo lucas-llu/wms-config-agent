@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agents.repositories import SessionNotFoundError, SessionRevisionConflict
 from multiuser.access import AccessDenied, UserContext
@@ -310,8 +310,39 @@ def create_app(verifier, introspector, application, *, allowed_origins=()):
 
             result = {"tools": schemas()}
         elif body.method == "tools/call":
-            arguments = Tool.model_validate(body.params)
-            data = jsonable_encoder(application.tool(context, arguments.name, arguments.arguments))
+            try:
+                arguments = Tool.model_validate(body.params)
+                from multiuser.tools import parse
+
+                parsed = parse(arguments.name, arguments.arguments)
+            except (ValueError, ValidationError):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": body.id,
+                    "error": {"code": -32602, "message": "Invalid tool or parameters"},
+                }
+            try:
+                data = jsonable_encoder(application.tool(context, arguments.name, parsed))
+            except (
+                AccessDenied,
+                SessionNotFoundError,
+                SessionRevisionConflict,
+                ValueError,
+                RuntimeError,
+            ):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": body.id,
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Operation unavailable; refresh or check permissions.",
+                            }
+                        ],
+                        "isError": True,
+                    },
+                }
             result = {
                 "content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False)}],
                 "structuredContent": data if isinstance(data, dict) else {"items": data},
