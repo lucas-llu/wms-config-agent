@@ -206,9 +206,31 @@ def test_two_real_accounts_private_chat_profile_logout_and_reload(browser):
         )
         b.get_by_role("button", name="刷新对话列表").click()
         assert not b.locator(".conversation-title").count()
+        b.get_by_role("textbox", name="输入问题").fill("SYN_MODE 是什么？")
+        b.get_by_role("button", name="发送问题").click()
+        b.get_by_text("SYN_MODE 为可选项。", exact=False).first.wait_for(timeout=15000)
+        own_b = httpx.get(
+            "http://127.0.0.1:8510/v1/conversations?workspace_id=workspace:p2",
+            headers={"Authorization": auth[1]},
+            timeout=5,
+        ).json()[0]["session_id"]
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/conversations/" + own_b + "/workbench",
+                headers={"Authorization": auth[0]},
+                timeout=5,
+            ).status_code
+            == 404
+        )
         navigate(a, WEB)
         a.locator(".conversation-title").first.click()
         a.get_by_text("SYN_MODE is optional.", exact=False).first.wait_for(timeout=15000)
+        b.get_by_role("button", name="我的账号", exact=False).click()
+        b.get_by_role("button", name="退出当前账号").click()
+        b.get_by_role("button", name="登录工作台").wait_for(timeout=15000)
+        signin(b, *registered[1])
+        b.locator(".conversation-title").first.click()
+        b.get_by_text("SYN_MODE 为可选项。", exact=False).first.wait_for(timeout=15000)
         a.get_by_role("button", name="工作区", exact=True).click()
         a.get_by_text("第 1 次回答", exact=False).wait_for()
         a.get_by_role("button", name="回到当前回答").click()
@@ -235,6 +257,13 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
     context = browser.new_context()
     page = context.new_page()
     changed = uuid.uuid4().hex + "Bb9!"
+    refresh = [""]
+
+    def capture_tokens(response):
+        if response.url.endswith("/protocol/openid-connect/token") and response.status == 200:
+            refresh[0] = response.json().get("refresh_token", "")
+
+    page.on("response", capture_tokens)
     try:
         name, email, password = register_verified(page)
         page.get_by_text("账号已就绪", exact=False).wait_for(timeout=15000)
@@ -255,6 +284,8 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
         ):
             page.evaluate('window.dispatchEvent(new Event("focus"))')
         old = token[0]
+        old_refresh = refresh[0]
+        assert old_refresh
         reset_context = browser.new_context()
         reset_page = reset_context.new_page()
         navigate(reset_page, WEB)
@@ -272,6 +303,18 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
                 "http://127.0.0.1:8510/v1/me", headers={"Authorization": old}, timeout=5
             ).status_code
             == 401
+        )
+        assert (
+            httpx.post(
+                os.environ["P0_OIDC_ISSUER"] + "/protocol/openid-connect/token",
+                data={
+                    "client_id": "wms-workbench",
+                    "grant_type": "refresh_token",
+                    "refresh_token": old_refresh,
+                },
+                timeout=5,
+            ).status_code
+            == 400
         )
         navigate(reset_page, reset_link)
         assert not reset_page.locator('input[name="password-new"]').count()
