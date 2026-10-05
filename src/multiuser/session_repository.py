@@ -4,6 +4,7 @@ The SQL bridge is internal only: SQL comes from the existing fixed repository
 statements, never an HTTP request. Database RLS independently guards every row.
 """
 
+import hashlib
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -191,6 +192,28 @@ class PostgresSessionRepository(SessionRepository):
                 "VALUES(%s,%s,%s,%s,%s)",
                 (resource_id, session_id, kind, canonical_json(payload), storage_key),
             )
+
+    def trash_snapshot(self):
+        with self._read_connection() as connection:
+            rows = connection.execute(
+                "SELECT s.session_id,s.current_revision FROM sessions s "
+                "JOIN deleted_sessions d ON s.session_id=d.session_id "
+                "WHERE s.workspace_id=%s ORDER BY s.session_id",
+                (self.workspace_id,),
+            ).fetchall()
+        revisions = {row["session_id"]: row["current_revision"] for row in rows}
+        digest = hashlib.sha256(json.dumps(revisions, sort_keys=True).encode()).hexdigest()
+        return {"count": len(rows), "fingerprint": digest}, revisions
+
+    def empty_trash(self, fingerprint):
+        snapshot, revisions = self.trash_snapshot()
+        if snapshot["fingerprint"] != fingerprint:
+            from agents.repositories import SessionRevisionConflict
+
+            raise SessionRevisionConflict("trash", 0, snapshot["count"])
+        # The existing atomic purge rechecks every owned revision/tombstone.
+        # Newly deleted conversations after this snapshot are never included.
+        return self.purge_deleted_sessions(revisions) if revisions else 0
 
     def get_resource(self, session_id, resource_id, kind):
         with self._read_connection() as connection:

@@ -21,8 +21,10 @@ from agents.nodes import (
     PlanningAgent,
     RequirementAgent,
 )
-from agents.nodes.grounded_answer import answer_question
 from agents.services import ValidationService
+from agents.services.answer_pipeline import AnswerBudgetExceeded, AnswerPipeline
+from agents.services.evidence_decision import EvidenceDecisionService
+from agents.tools.knowledge_adapter import build_scope_filters
 from agents.workspace import Workspace, WorkspaceScopeError
 from core.settings import AgentSettings
 
@@ -94,6 +96,9 @@ class AgentGraphState(TypedDict, total=False):
     answer_evidence: list[dict[str, Any]]
     answer_status: str
     response_language: str
+    evidence_decision_report: dict[str, Any]
+    answer_strategy: str
+    answer_recovery: str
 
 
 ALLOWED_TRANSITIONS = MappingProxyType(
@@ -169,6 +174,7 @@ class SupervisorGraph:
         validation_service: ValidationService,
         budget: TurnBudgetPolicy,
         workspace: Workspace | None = None,
+        evidence_decision_service: EvidenceDecisionService | None = None,
     ) -> None:
         self.settings = settings
         self.classifier = classifier
@@ -178,6 +184,7 @@ class SupervisorGraph:
         self.validation_service = validation_service
         self.budget = budget
         self.workspace = workspace
+        self.evidence_decision_service = evidence_decision_service
 
     def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> Any:
         builder = StateGraph(AgentGraphState)
@@ -448,6 +455,8 @@ class SupervisorGraph:
 
     def _answer_question(self, state: AgentGraphState) -> dict[str, Any]:
         entered = self.budget.enter_node(state, "knowledge")
+        if self.evidence_decision_service is not None:
+            entered.update["evidence_decision_report"] = {}
         if not entered.allowed:
             return entered.update
         language = _language(state)
@@ -460,6 +469,8 @@ class SupervisorGraph:
         calls = 0
         answer_evidence = []
         answer_status = "no_evidence"
+        decision_report = {}
+        pipeline = None
         if state.get("intent") == IntentType.INSPECT_DRAFT.value:
             tasks = state.get("configuration_tasks", [])
             reply = (
@@ -488,54 +499,63 @@ class SupervisorGraph:
             )
             if self.knowledge_agent is not None:
                 try:
-                    filters = self.workspace.filters({}) if self.workspace else {}
-                    calls = 1
-                    result = self.knowledge_agent.adapter.search(
-                        state.get("resolved_user_message") or state["latest_user_message"],
-                        filters=filters,
-                        top_k=5,
+                    confirmed = state.get("confirmed_context", {})
+                    modules = confirmed.get("modules", [])
+                    module = modules[0] if len(modules) == 1 else ""
+                    filters = build_scope_filters(confirmed, module=module)
+                    if self.workspace:
+                        filters = self.workspace.filters(filters)
+                    pipeline = AnswerPipeline(
+                        self.classifier.llm,
+                        self.knowledge_agent.adapter,
+                        check_budget=lambda tokens, retries: (
+                            self.budget.account_llm(
+                                state, retries=retries, tokens_used=tokens, node_name="knowledge"
+                            ).allowed
+                        ),
                     )
-                    if result.evidence_sufficient and result.evidence:
-                        answer = answer_question(
-                            self.classifier.llm,
+                    try:
+                        answer = pipeline.run(
                             state.get("resolved_user_message") or state["latest_user_message"],
-                            result.evidence,
+                            filters=filters,
                             language=language,
-                            conversation_context=state.get("conversation_context", ""),
+                            conversation=state.get("conversation_context", ""),
+                            shadow_service=self.evidence_decision_service,
+                            context=state.get("confirmed_context", {}),
+                            strategy=state.get("answer_strategy", "standard"),
                         )
+                    finally:
+                        calls = pipeline.searches
+                        decision_report = pipeline.report
                         accounted = self.budget.account_llm(
                             state,
-                            retries=answer.retries,
-                            tokens_used=answer.tokens_used,
+                            retries=pipeline.retries,
+                            tokens_used=pipeline.tokens,
                             node_name="knowledge",
                         )
-                        if not accounted.allowed:
-                            return {
-                                **entered.update,
-                                **accounted.update,
-                                "assistant_reply": localized(
-                                    language,
-                                    "本次回答达到回合预算限制，请稍后重试。",
-                                    "The answer reached this turn's budget limit. "
-                                    "Please retry later.",
-                                ),
-                            }
                         entered.update.update(accounted.update)
-                        reply = answer.text
-                        answer_status = answer.status
-                        answer_evidence = [
-                            {
-                                **item.to_dict(),
-                                "citation_index": index,
-                                "supporting_quotes": [
-                                    quote
-                                    for source_id, quote in answer.supporting_quotes
-                                    if source_id == index
-                                ],
-                            }
-                            for index, item in enumerate(result.evidence[:5], 1)
-                            if index in answer.cited_source_ids
-                        ]
+                    reply = answer.text
+                    answer_status = answer.status
+                    answer_evidence = [
+                        {
+                            **item.to_dict(),
+                            "citation_index": index,
+                            "supporting_quotes": [
+                                quote
+                                for source_id, quote in answer.supporting_quotes
+                                if source_id == index
+                            ],
+                        }
+                        for index, item in enumerate(pipeline.evidence, 1)
+                        if index in answer.cited_source_ids
+                    ]
+                except AnswerBudgetExceeded:
+                    answer_status = "budget_exceeded"
+                    reply = localized(
+                        language,
+                        "本次回答达到回合预算限制，请稍后重试。",
+                        "The answer reached this turn's budget limit. Retry later.",
+                    )
                 except WorkspaceScopeError:
                     reply = localized(
                         language,
@@ -547,8 +567,8 @@ class SupervisorGraph:
                     answer_status = "generation_failed"
                     accounted = self.budget.account_llm(
                         state,
-                        retries=exc.retries,
-                        tokens_used=exc.tokens_used,
+                        retries=pipeline.retries if pipeline else exc.retries,
+                        tokens_used=pipeline.tokens if pipeline else exc.tokens_used,
                         node_name="knowledge",
                     )
                     if not accounted.allowed:
@@ -581,12 +601,14 @@ class SupervisorGraph:
         return {
             **entered.update,
             "status": transition_status(state, SessionStatus.PAUSED),
-            "pause_reason": "question_answered",
+            "pause_reason": entered.update.get("pause_reason", "question_answered"),
             "assistant_reply": reply,
             "answer_evidence": answer_evidence,
             "answer_status": answer_status,
             "open_questions": [],
             "tool_calls_made": int(state.get("tool_calls_made", 0)) + calls,
+            "evidence_decision_report": decision_report,
+            "answer_recovery": pipeline.recovery if pipeline else "not_needed",
         }
 
     def _await_question(self, state: AgentGraphState) -> dict[str, Any]:

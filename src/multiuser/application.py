@@ -11,17 +11,24 @@ from multiuser.session_repository import PostgresSessionRepository
 
 
 class OwnedApplication:
-    def __init__(self, store, *, export_root, agent=None):
+    def __init__(self, store, *, export_root, agent=None, images=None):
         self.store, self.export_root, self.agent = store, Path(export_root).resolve(), agent
+        self.images = images
 
     def repository(self, context, session_id):
         workspace = self.store.workspace_for(context, session_id)
         return PostgresSessionRepository(self.store, context, workspace)
 
-    def start(self, context, goal, workspace_id):
+    def start(self, context, goal, workspace_id, answer_strategy="standard", identity_check=None):
         repository = PostgresSessionRepository(self.store, context, workspace_id)
         if self.agent:
-            return self.agent.start(context, repository, goal)
+            return self.agent.start(
+                context,
+                repository,
+                goal,
+                answer_strategy=answer_strategy,
+                identity_check=identity_check,
+            )
         from agents.services import SessionService
 
         session = SessionService(repository).create_session(goal)
@@ -34,7 +41,15 @@ class OwnedApplication:
             "turns": [asdict(t) for t in repository.list_turns(session_id)],
         }
 
-    def continue_session(self, context, session_id, message, expected_revision):
+    def continue_session(
+        self,
+        context,
+        session_id,
+        message,
+        expected_revision,
+        answer_strategy="standard",
+        identity_check=None,
+    ):
         repository = self.repository(context, session_id)
         if not self.agent:
             raise RuntimeError("Agent execution is not configured")
@@ -45,8 +60,67 @@ class OwnedApplication:
                 session_id, expected_revision, repository.get_session(session_id).current_revision
             )
         return self.agent.continue_session(
-            context, repository, session_id, message, expected_revision=expected_revision
+            context,
+            repository,
+            session_id,
+            message,
+            expected_revision=expected_revision,
+            answer_strategy=answer_strategy,
+            identity_check=identity_check,
         )
+
+    def workbench(self, context, session_id, revision=None):
+        from core.evidence_text import clean_evidence_text
+        from observability.dashboard.services.answer_evidence import split_answer_evidence
+
+        repository = self.repository(context, session_id)
+        current = repository.get_session(session_id)
+        snapshot = repository.get_revision(session_id, revision)
+        turns = []
+        for turn in repository.list_turns(session_id):
+            if turn.revision > snapshot.revision:
+                continue
+            view = asdict(turn)
+            if turn.role == "assistant":
+                view["message"], view["legacy_evidence"] = split_answer_evidence(turn.message)
+                view["citations"] = [
+                    {
+                        **c,
+                        "excerpt": clean_evidence_text(
+                            c.get("full_excerpt") or c.get("excerpt", "")
+                        ),
+                    }
+                    for c in turn.metadata.get("citations", [])
+                ]
+                for index, c in enumerate(view["citations"]):
+                    from urllib.parse import quote
+
+                    assets, _ = (
+                        self.images.resolve(c, repository.workspace) if self.images else ([], False)
+                    )
+                    prefix = (
+                        "/v1/conversations/"
+                        + quote(session_id, safe="")
+                        + "/turns/"
+                        + quote(turn.turn_id, safe="")
+                    )
+                    c["images"] = [
+                        prefix + f"/evidence/{index}/images/{ordinal}"
+                        for ordinal in range(len(assets))
+                    ]
+                    c.pop("full_excerpt", None)
+            turns.append(view)
+        return {
+            "session": asdict(current),
+            "revision": snapshot.revision,
+            "state": snapshot.state,
+            "turns": turns,
+            "approvals": [
+                asdict(a)
+                for a in repository.list_approvals(session_id)
+                if a.revision <= snapshot.revision
+            ],
+        }
 
     def validate(self, context, session_id, expected_revision):
         repository = self.repository(context, session_id)
@@ -71,6 +145,34 @@ class OwnedApplication:
             actor="validation",
             reason="explicit_validation",
         )
+
+    def evidence_image(self, context, session_id, turn_id, index, ordinal):
+        from PIL import Image, UnidentifiedImageError
+
+        from agents.repositories import SessionNotFoundError
+
+        repository = self.repository(context, session_id)
+        turn = next((t for t in repository.list_turns(session_id) if t.turn_id == turn_id), None)
+        citations = turn.metadata.get("citations", []) if turn else []
+        if self.images is None or not 0 <= index < len(citations):
+            raise SessionNotFoundError("Image not found")
+        assets, _ = self.images.resolve(citations[index], repository.workspace)
+        if not 0 <= ordinal < len(assets):
+            raise SessionNotFoundError("Image not found")
+        path = assets[ordinal]["path"]
+        try:
+            with Image.open(path) as image:
+                mime = {
+                    "PNG": "image/png",
+                    "JPEG": "image/jpeg",
+                    "WEBP": "image/webp",
+                    "GIF": "image/gif",
+                }.get(image.format)
+            if mime is None:
+                raise AccessDenied("Unsupported inline image")
+        except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
+            raise AccessDenied("Invalid inline image") from exc
+        return path, mime
 
     def review(self, context, session_id, expected_revision, decision, comment):
         repository = self.repository(context, session_id)
@@ -127,7 +229,7 @@ class OwnedApplication:
             raise AccessDenied("File unavailable")
         return path
 
-    def tool(self, context, name, arguments):
+    def tool(self, context, name, arguments, *, identity_check=None):
         # No host_process identity and no generic registry fallback.
         from multiuser.tools import parse
 
@@ -138,7 +240,9 @@ class OwnedApplication:
         if name == "start_configuration_session":
             if set(arguments) != {"goal", "workspace_id"}:
                 raise ValueError("Invalid start fields")
-            return self.start(context, arguments["goal"], arguments["workspace_id"])
+            return self.start(
+                context, arguments["goal"], arguments["workspace_id"], identity_check=identity_check
+            )
         session_id = arguments.pop("session_id", None)
         repository = self.repository(context, session_id)
         if name == "get_configuration_session" and not arguments:
@@ -147,7 +251,9 @@ class OwnedApplication:
             "message",
             "expected_revision",
         }:
-            return self.continue_session(context, session_id, **arguments)
+            return self.continue_session(
+                context, session_id, **arguments, identity_check=identity_check
+            )
         if name == "validate_configuration_draft" and set(arguments) == {"expected_revision"}:
             return self.validate(context, session_id, **arguments)
         if name == "review_configuration_draft" and set(arguments) == {

@@ -505,6 +505,9 @@ class ConfigurationSessionState(TypedDict, total=False):
     assistant_reply: str
     answer_evidence: list[dict[str, Any]]
     answer_status: str
+    evidence_decision_report: dict[str, Any]
+    answer_strategy: str
+    answer_recovery: str
     response_language: str
     confirmed_context: dict[str, Any]
     assumptions: list[dict[str, Any]]
@@ -586,6 +589,9 @@ STATE_FIELD_OWNERS = MappingProxyType(
                 "retry_count",
                 "targeted_retrieval_rounds",
                 "tokens_used",
+                "evidence_decision_report",
+                "answer_strategy",
+                "answer_recovery",
                 "turn_deadline_epoch",
             }
         ),

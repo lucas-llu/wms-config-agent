@@ -16,6 +16,7 @@ jobs:
       COMPOSE_PROJECT_NAME: wms-quality-${{ github.run_id }}
       WMS_P0_LIVE: "1"
       WMS_P1_LIVE: "1"
+      WMS_P2_LIVE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

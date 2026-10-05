@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -107,3 +108,57 @@ def test_english_answer_and_explicit_language_override_use_matching_labels():
     assert "Supporting evidence" not in result.text and "Quote:" not in result.text
     assert result.supporting_quotes
     assert "结论" not in result.text and "需要确认" not in result.text
+
+
+@pytest.mark.parametrize("field", ["product_version", "module", "site", "environment"])
+def test_explicit_scope_mismatch_blocks_before_generation(field):
+    class NoCall:
+        def chat(self, messages):
+            pytest.fail("Mismatched evidence must not be sent to a model")
+
+    result = answer_question(
+        NoCall(),
+        "What is the setting?",
+        (replace(evidence()[0], **{field: "actual"}),),
+        confirmed_context={field: "requested"},
+    )
+    assert result.status == "insufficient_evidence"
+    assert result.tokens_used == 0 and result.cited_source_ids == ()
+
+
+def test_filtering_mismatched_sources_preserves_original_citation_numbers():
+    first = replace(evidence()[0], product_version="v2")
+    second = replace(evidence()[0], evidence_id="e:2", chunk_id="c:2", product_version="v1")
+    value = payload()
+    value["claims"][0]["source_id"] = "2"
+
+    class InspectLLM(FakeLLM):
+        def chat(self, messages):
+            prompt = messages[0]["content"]
+            assert '"id": "2"' in prompt and '"id": "1"' not in prompt
+            assert '"product_version": "v1"' in prompt and '"product_version": "v2"' not in prompt
+            return super().chat(messages)
+
+    result = answer_question(
+        InspectLLM(value),
+        "如何设置 slot？",
+        (first, second),
+        confirmed_context={"product_version": "v1"},
+    )
+    assert result.cited_source_ids == (2,)
+
+
+def test_unknown_source_scope_is_exposed_as_unknown_instead_of_fabricated():
+    class InspectLLM(FakeLLM):
+        def chat(self, messages):
+            assert '"product_version": null' in messages[0]["content"]
+            assert '"confirmed_scope": {"product_version": "v1"}' in messages[0]["content"]
+            return super().chat(messages)
+
+    result = answer_question(
+        InspectLLM(payload()),
+        "如何设置 slot？",
+        evidence(),
+        confirmed_context={"product_version": "v1"},
+    )
+    assert result.cited_source_ids == (1,)
