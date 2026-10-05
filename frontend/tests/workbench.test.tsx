@@ -215,6 +215,8 @@ function fixture(
         if (custom !== undefined) return custom;
       }
       if (path === "/v1/me") return options.profile || profile;
+      if (path.startsWith("/v1/trash/snapshot?"))
+        return { count: 1, fingerprint: "a".repeat(64) };
       if (path.includes("/workbench")) return options.data || workbench;
       if (
         path.startsWith("/v1/conversations?") ||
@@ -404,9 +406,9 @@ it("supports trash multiselect and explicit empty-bin confirmation", async () =>
   await user.click(within(screen.getByRole("dialog")).getByText("确认"));
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
-      "/v1/trash/purge?workspace_id=workspace%3Atest",
+      "/v1/trash/empty?workspace_id=workspace%3Atest",
       "POST",
-      { expected_revisions: { "session:a": 2 } },
+      { fingerprint: "a".repeat(64) },
     ),
   );
 });

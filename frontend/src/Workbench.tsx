@@ -176,11 +176,16 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
   const [error, setError] = useState("");
   const [locked, setLocked] = useState(false);
   const [action, setAction] = useState<{
-    type: "rename" | "delete" | "purge" | "devices";
+    type: "rename" | "delete" | "purge" | "empty" | "devices";
     session?: Session;
+    snapshot?: { count: number; fingerprint: string };
   }>();
   const [title, setTitle] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [trashSnapshot, setTrashSnapshot] = useState<{
+    count: number;
+    fingerprint: string;
+  }>();
   const [decision, setDecision] = useState("approve");
   const [comment, setComment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -212,7 +217,16 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       archived: String(listMode === "archived"),
     });
     const rows = await api.request<Session[]>(`${path}?${parameters}`);
-    if (epoch === listEpoch.current) setSessions(rows);
+    const snapshot =
+      listMode === "trash"
+        ? await api.request<{ count: number; fingerprint: string }>(
+            `/v1/trash/snapshot?${new URLSearchParams({ workspace_id: workspace })}`,
+          )
+        : undefined;
+    if (epoch === listEpoch.current) {
+      setSessions(rows);
+      setTrashSnapshot(snapshot);
+    }
   };
   useEffect(() => {
     let active = true;
@@ -394,6 +408,15 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       if (action.type === "devices") {
         await api.request("/v1/me/logout-others", "POST");
         setDevices(await api.request("/v1/me/devices"));
+      }
+      if (action.type === "empty" && action.snapshot) {
+        await api.request(
+          `/v1/trash/empty?${new URLSearchParams({ workspace_id: workspace })}`,
+          "POST",
+          { fingerprint: action.snapshot.fingerprint },
+        );
+        setSelected([]);
+        await list();
       }
       setAction(undefined);
     } catch (e) {
@@ -580,10 +603,10 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
               </button>
               <button
                 className="danger"
-                onClick={() => {
-                  setSelected(sessions.map((s) => s.session_id));
-                  setAction({ type: "purge" });
-                }}
+                disabled={!trashSnapshot?.count}
+                onClick={() =>
+                  setAction({ type: "empty", snapshot: trashSnapshot })
+                }
               >
                 清空回收站
               </button>
@@ -1293,7 +1316,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                 ? "之后可以在回收站恢复。"
                 : action.type === "devices"
                   ? "其他设备需重新登录，当前设备会保留。"
-                  : `将永久删除 ${selected.length} 条对话及关联记录，无法恢复。`}
+                  : `将永久删除 ${action.type === "empty" ? action.snapshot?.count : selected.length} 条对话及关联记录，无法恢复。`}
             </p>
           )}
           <div className="modal-actions">

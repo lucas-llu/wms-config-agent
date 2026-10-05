@@ -47,6 +47,10 @@ class Purge(Input):
     expected_revisions: dict[str, int] = Field(min_length=1, max_length=100)
 
 
+class EmptyTrash(Input):
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class RPC(Input):
     jsonrpc: Literal["2.0"]
     id: int | str | None = None
@@ -210,6 +214,16 @@ def create_app(
     def purge(workspace_id: str, body: Purge, context: CurrentUser):
         repo = PostgresSessionRepository(application.store, context, workspace_id)
         return {"purged": repo.purge_deleted_sessions(body.expected_revisions)}
+
+    @app.get("/v1/trash/snapshot")
+    def trash_snapshot(workspace_id: str, context: CurrentUser):
+        repo = PostgresSessionRepository(application.store, context, workspace_id)
+        return repo.trash_snapshot()[0]
+
+    @app.post("/v1/trash/empty")
+    def empty_trash(workspace_id: str, body: EmptyTrash, context: CurrentUser):
+        repo = PostgresSessionRepository(application.store, context, workspace_id)
+        return {"purged": repo.empty_trash(body.fingerprint)}
 
     @app.post("/v1/conversations")
     def start(body: Start, request: Request, context: CurrentUser):

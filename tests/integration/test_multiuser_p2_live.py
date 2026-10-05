@@ -75,3 +75,42 @@ def test_invalid_review_strategy_does_not_start_owned_execution(system):
         },
     )
     assert result.status_code == 422
+
+
+def test_empty_trash_handles_more_than_one_page_and_preserves_other_owner(system):
+    from agents.services import SessionService
+
+    client, headers, contexts, workspace, store, application, admin = system
+    from multiuser.session_repository import PostgresSessionRepository
+
+    repos = [PostgresSessionRepository(store, c, workspace.workspace_id) for c in contexts]
+    for index in range(101):
+        row = SessionService(repos[0]).create_session("Synthetic trash")
+        repos[0].delete_session(row.session_id)
+    other = SessionService(repos[1]).create_session("Other owner")
+    repos[1].delete_session(other.session_id)
+    params = {"workspace_id": workspace.workspace_id}
+    snapshot = client.get("/v1/trash/snapshot", headers=headers[0], params=params).json()
+    assert snapshot["count"] == 101
+    assert (
+        client.post(
+            "/v1/trash/empty",
+            headers=headers[1],
+            params=params,
+            json={"fingerprint": snapshot["fingerprint"]},
+        ).status_code
+        == 409
+    )
+    stale = client.post(
+        "/v1/trash/empty", headers=headers[0], params=params, json={"fingerprint": "0" * 64}
+    )
+    assert stale.status_code == 409
+    result = client.post(
+        "/v1/trash/empty",
+        headers=headers[0],
+        params=params,
+        json={"fingerprint": snapshot["fingerprint"]},
+    )
+    assert result.json() == {"purged": 101}
+    assert client.get("/v1/trash/snapshot", headers=headers[0], params=params).json()["count"] == 0
+    assert client.get("/v1/trash/snapshot", headers=headers[1], params=params).json()["count"] == 1
