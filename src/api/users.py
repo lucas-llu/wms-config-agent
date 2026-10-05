@@ -93,6 +93,7 @@ def create_app(verifier, introspector, application, *, allowed_origins=()):
             return JSONResponse(status_code=403, content={"detail": "Origin not permitted"})
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
     bearer = HTTPBearer(auto_error=False)
@@ -228,7 +229,8 @@ def create_app(verifier, introspector, application, *, allowed_origins=()):
 
     @app.get("/v1/conversations/{session_id}/exports/{export_id}/download")
     def export_download(session_id: str, export_id: str, context: CurrentUser):
-        return FileResponse(application.export_file(context, session_id, export_id))
+        path = application.export_file(context, session_id, export_id)
+        return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
     @app.post("/v1/conversations/{session_id}/feedback")
     def feedback(session_id: str, body: Feedback, context: CurrentUser):
@@ -275,7 +277,8 @@ def create_app(verifier, introspector, application, *, allowed_origins=()):
     def file(session_id: str, kind: str, resource_id: str, context: CurrentUser):
         if kind not in {"attachment", "image"}:
             raise HTTPException(404, "Resource not found")
-        return FileResponse(application.file(context, session_id, resource_id, kind))
+        path = application.file(context, session_id, resource_id, kind)
+        return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
     @app.post("/v1/tools/call")
     def tool(body: Tool, context: CurrentUser):

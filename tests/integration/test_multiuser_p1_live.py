@@ -377,6 +377,8 @@ def test_owned_files_events_and_cache_headers(system):
     result = client.get(root + "/files/attachment/fixture:" + session_id, headers=headers[0])
     assert result.status_code == 200
     assert result.headers["cache-control"] == "no-store"
+    assert result.headers["content-disposition"].startswith("attachment;")
+    assert result.headers["x-content-type-options"] == "nosniff"
     repository.put_resource(session_id, "escape:" + session_id, "image", {}, "../fixture.txt")
     assert (
         client.get(root + "/files/image/escape:" + session_id, headers=headers[0]).status_code

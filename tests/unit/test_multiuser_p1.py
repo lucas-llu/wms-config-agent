@@ -308,3 +308,22 @@ def test_continue_rechecks_expected_revision_after_acquiring_conversation_lock(t
         application.continue_session(
             UserContext("A", "issuer", "sub", "sid", 1, 2), "session:a", "new question", 1
         )
+
+
+def test_active_attachment_is_download_not_inline_same_origin_page(tmp_path):
+    verifier, intro, application = Mock(), Mock(), Mock()
+    application.store.resolve.return_value = UserContext("A", "issuer", "sub", "sid", 1, 2)
+    path = tmp_path / "synthetic.html"
+    path.write_text("<script>/* synthetic only */</script>", encoding="utf-8")
+    application.file.return_value = application.export_file.return_value = path
+    headers = {"Authorization": "Bearer synthetic"}
+    with TestClient(create_app(verifier, intro, application)) as client:
+        for url in (
+            "/v1/conversations/s/files/attachment/f",
+            "/v1/conversations/s/exports/e/download",
+        ):
+            result = client.get(url, headers=headers)
+            assert result.status_code == 200
+            assert result.headers["content-disposition"].startswith("attachment;")
+            assert result.headers["content-type"] == "application/octet-stream"
+            assert result.headers["x-content-type-options"] == "nosniff"
