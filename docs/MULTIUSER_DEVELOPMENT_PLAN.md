@@ -2,6 +2,7 @@
 
 日期：2026-10-05。状态：总体开发计划；P0 原型和设计确认见 [MULTIUSER_P0_DESIGN.md](MULTIUSER_P0_DESIGN.md)。
 P1 身份与归属隔离的增量实现及实测结果见 [MULTIUSER_P1_ISOLATION.md](MULTIUSER_P1_ISOLATION.md)。
+P2 用户中心与 React 工作台及退出门禁见 [MULTIUSER_P2_WORKBENCH.md](MULTIUSER_P2_WORKBENCH.md)。
 历史用户数据迁移、公开注册和生产并发尚未实施；工期为工作量估计，不是上线承诺。
 
 ## 1. 目标与首版边界
