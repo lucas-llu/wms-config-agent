@@ -46,7 +46,11 @@ jobs:
         run: |
           python scripts/prepare_p0_fixture.py
           python scripts/prepare_p2_fixture.py
+      - name: Start this job's disposable services
+        run: |
           docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml -f infra/p2/compose.yml up -d
+      - name: Wait for identity and prepare the non-owner database
+        run: |
           python scripts/wait_p0_services.py
           python scripts/prepare_p1_database.py
       - name: Real registration, verified mail, private chat and password revocation
