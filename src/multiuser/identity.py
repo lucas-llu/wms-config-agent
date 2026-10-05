@@ -24,6 +24,9 @@ class IdentityUnavailable(RuntimeError):
 class Principal:
     issuer: str
     subject: str
+    sid: str = ""
+    issued_at: int = 0
+    expires_at: int = 0
 
     @property
     def identity_key(self) -> str:
@@ -118,6 +121,12 @@ class OIDCVerifier:
                 or not claims["sub"]
             ):
                 raise InvalidIdentity("Expected a user access token")
-            return Principal(self.issuer, claims["sub"])
+            return Principal(
+                self.issuer,
+                claims["sub"],
+                str(claims.get("sid", "")),
+                int(claims["iat"]),
+                int(claims["exp"]),
+            )
         except jwt.PyJWTError as exc:
             raise InvalidIdentity("Invalid access token") from exc

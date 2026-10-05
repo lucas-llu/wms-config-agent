@@ -60,7 +60,7 @@ def callback_listener(state):
         thread.join(timeout=2)
 
 
-def login(username, password):
+def login(username, password, *, include_tokens=False):
     issuer = os.environ["P0_OIDC_ISSUER"]
     state, verifier = uuid.uuid4().hex, uuid.uuid4().hex + uuid.uuid4().hex
     challenge = (
@@ -134,7 +134,7 @@ def login(username, password):
             },
         )
         assert response.status_code == 200
-        return response.json()["access_token"]
+        return response.json() if include_tokens else response.json()["access_token"]
 
 
 def test_real_keycloak_pkce_login_to_api_identity():
