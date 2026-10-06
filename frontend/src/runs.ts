@@ -35,7 +35,7 @@ export const runLabel = (run: Run) =>
     uncertain: "模型结果未知，已停止自动重试",
     failed: "处理未完成，请检查已保存的对话",
     timed_out: "排队等待超时",
-    authorization_required: "执行授权已失效，请重新登录",
+    authorization_required: "执行授权或对话状态已失效，请检查权限与对话",
   })[run.stage] || "正在处理";
 
 type Pending = {

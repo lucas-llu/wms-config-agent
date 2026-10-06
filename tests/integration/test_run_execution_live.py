@@ -168,6 +168,26 @@ def test_fair_owner_dispatch_and_ack_only_contains_opaque_ids(system):
         )  # owner's next conversation, not same queued head.
 
 
+def test_review_reservations_leave_standard_dispatch_capacity(system):
+    repo, first, _ = accepted(system, strategy="review")
+    other = RunRepository(system[4], system[2][1], system[3].workspace_id)
+    second = other.submit(new(system, 1), RunRequest("review", uuid.uuid4().hex, 1, "review"))
+    standard = repo.submit(new(system), RunRequest("SYN_MODE?", uuid.uuid4().hex, 1))
+    with executor(system) as service:
+        offers = service.control.offers()
+        next_offers = service.control.offers()
+        combined = [*offers, *next_offers]
+        reviews = [o for o in combined if o["run_id"] in {first["run_id"], second["run_id"]}]
+        assert len(reviews) == 1
+        assert standard["run_id"] in {o["run_id"] for o in combined}
+        service.review_capacity.acquire()
+        try:
+            assert service.execute(second["run_id"])["reason"] == "review_execution_busy"
+            assert service.execute(standard["run_id"])["committed"]
+        finally:
+            service.review_capacity.release()
+
+
 def test_global_permits_review_subcap_rpm_tpm_and_restart_do_not_reset(system):
     with executor(system) as service:
         gov = service.governor

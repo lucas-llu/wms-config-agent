@@ -12,7 +12,7 @@ from multiuser.runs import RunLimits
 
 _COLUMNS = (
     "run_id,owner_user_id,conversation_id,status,epoch,identity_issuer,identity_subject,"
-    "identity_sid,identity_iat,source_thread,resume_ready,open_model_calls,model_attempts"
+    "identity_sid,identity_iat,source_thread,resume_ready,open_model_calls,model_attempts,answer_strategy"
 )
 
 
@@ -78,7 +78,8 @@ class RunControl:
             connection.execute("SELECT pg_advisory_xact_lock(9134201)")
             rows = connection.execute(
                 "WITH candidates AS (SELECT run_id,owner_user_id,created_at,"
-                "row_number() OVER(PARTITION BY owner_user_id ORDER BY created_at,run_id) AS n "
+                "row_number() OVER(PARTITION BY owner_user_id,answer_strategy "
+                "ORDER BY created_at,run_id) AS n "
                 "FROM runs r WHERE status='queued' AND queue_deadline>clock_timestamp() "
                 "AND dispatch_after<=clock_timestamp() AND (SELECT count(*) FROM runs a "
                 "WHERE a.owner_user_id=r.owner_user_id "
@@ -89,7 +90,25 @@ class RunControl:
                 (self.limits.running_per_user, limit),
             ).fetchall()
             offers = []
+            offered_owners = set()
+            review_busy = bool(
+                connection.execute(
+                    "SELECT 1 FROM runs WHERE answer_strategy='review' AND "
+                    "(status IN ('running','cancelling') OR "
+                    "(status='queued' AND dispatch_after>clock_timestamp())) LIMIT 1"
+                ).fetchone()
+            )
             for row in rows:
+                if row["owner_user_id"] in offered_owners:
+                    continue
+                strategy = connection.execute(
+                    "SELECT answer_strategy FROM runs WHERE run_id=%s", (row["run_id"],)
+                ).fetchone()["answer_strategy"]
+                if strategy == "review":
+                    if review_busy:
+                        continue
+                    review_busy = True
+                offered_owners.add(row["owner_user_id"])
                 existing = connection.execute(
                     "SELECT * FROM run_outbox WHERE run_id=%s FOR UPDATE", (row["run_id"],)
                 ).fetchone()

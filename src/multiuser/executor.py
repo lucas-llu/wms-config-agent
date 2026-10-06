@@ -50,12 +50,16 @@ class RunExecutor:
         self.capacity = threading.BoundedSemaphore(capacity)
         self.retrieval = threading.BoundedSemaphore(capacity)
         self.retrieval_governor = retrieval_governor
+        self.review_capacity = threading.BoundedSemaphore(1)
 
     def repository(self, row):
         context = self.control.context(row)
         self.authority.check(context)
         workspace = self.store.workspace_for(context, row["conversation_id"])
-        return RunRepository(self.store, context, workspace, limits=self.control.limits)
+        repository = RunRepository(self.store, context, workspace, limits=self.control.limits)
+        # workspace_for also serves recycle-bin operations; execution must require a LIVE parent.
+        repository.sessions.get_session(row["conversation_id"])
+        return repository
 
     @contextmanager
     def heartbeat(self, repository, lease):
@@ -89,10 +93,15 @@ class RunExecutor:
         if not self.capacity.acquire(blocking=False):
             return {"accepted": False, "reason": "execution_busy"}
         row, repository, lease = None, None, None
+        reviewing = False
         try:
             row = self.control.load(run_id)
             if row is None or row["status"] in TERMINAL:
                 return {"accepted": False}
+            if row["answer_strategy"] == "review":
+                if not self.review_capacity.acquire(blocking=False):
+                    return {"accepted": False, "reason": "review_execution_busy"}
+                reviewing = True
             repository = self.repository(row)
             lease = repository.claim(run_id)
             if lease is None:
@@ -216,6 +225,8 @@ class RunExecutor:
                 "error_type": type(exc).__name__,
             }
         finally:
+            if reviewing:
+                self.review_capacity.release()
             self.capacity.release()
 
     def reconcile(self):

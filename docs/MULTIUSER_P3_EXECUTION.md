@@ -47,7 +47,9 @@ UTF-8 输入字节加 framing/最大输出作为保守预算，已知实际 toke
 检索另有全局许可及本地上限，限制“用户数 × hybrid 线程”的放大；dense/sparse 仍可并行。
 只读索引进程不做 ingestion；原生嵌入/数值计算线程还需配置 OMP/MKL 上限。
 
-默认执行并发 4、模型在途 4、review 1、RPM 60、TPM 200000；排队/执行 600 秒、租约 45 秒。
+默认执行并发 4、模型在途 4、review 模型 1、review 运行/派发最多 1，避免旁路占满执行槽；
+同用户 standard/review 分开取队首后每批只派一个，review 队首等待不阻塞其标准问答。
+RPM 60、TPM 200000；排队/执行 600 秒、租约 45 秒。
 未知许可保持时间必须超过供应商 timeout 加保护窗口。1M context 不等于 1M 输出/TPM，限额需供应商确认。
 
 单进程最大池：公开 API PG 8；执行 PG 8、控制 PG 4；每并行图 loop-scoped checkpoint 4；
@@ -72,7 +74,7 @@ sessionStorage 仅存当前用户/Workspace 的 opaque key/run/conversation，�
 生产基础设施/凭据由管理员配置，不能使用 CI 合成账号或 Keycloak start-dev。
 
 1. 分离迁移账号、p1_runtime/p3_control：非 owner/superuser/BYPASSRLS，不能继承 owner。
-   按 001/官方 checkpoint setup/002/003 顺序迁移；已执行迁移校验和不可变。
+   按 001/官方 checkpoint setup/002/003/004 顺序迁移；已执行迁移校验和不可变。
    `prepare_p3_database.py` 只用于 `WMS_P3_LIVE=1` 隔离测试，不是公开启动迁移器。
 2. Keycloak 专用 confidential client + client_credentials，会话只读角色首版使用
    realm-management/view-users，禁止 manage-users，不给浏览器；正式账号域需细化可查询范围。

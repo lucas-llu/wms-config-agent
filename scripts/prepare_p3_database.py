@@ -28,7 +28,11 @@ def prepare():
             "(version integer PRIMARY KEY,checksum text NOT NULL)"
         )
         connection.execute("LOCK TABLE agent_business.schema_migrations IN EXCLUSIVE MODE")
-        for version, name in ((2, "002_durable_runs.sql"), (3, "003_run_execution.sql")):
+        for version, name in (
+            (2, "002_durable_runs.sql"),
+            (3, "003_run_execution.sql"),
+            (4, "004_review_dispatch.sql"),
+        ):
             source = Path("migrations", name).read_text(encoding="utf-8")
             digest = hashlib.sha256(source.encode()).hexdigest()
             previous = connection.execute(
