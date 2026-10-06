@@ -20,7 +20,12 @@ class RunControl:
     def __init__(self, dsn, *, limits=None):
         self.limits = limits or RunLimits()
         self.pool = ConnectionPool(
-            dsn, min_size=1, max_size=4, timeout=3, kwargs={"row_factory": dict_row}
+            dsn,
+            min_size=1,
+            max_size=4,
+            timeout=3,
+            kwargs={"row_factory": dict_row},
+            check=ConnectionPool.check_connection,
         )
         with self.pool.connection() as connection:
             role = connection.execute(

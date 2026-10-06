@@ -59,6 +59,7 @@ class UserAgent:
             min_size=0,
             max_size=4,
             open=False,
+            check=AsyncConnectionPool.check_connection,
             kwargs={"autocommit": True, "row_factory": dict_row, "prepare_threshold": 0},
         ) as pool:
             yield UserPostgresSaver(pool, context, lease=lease)

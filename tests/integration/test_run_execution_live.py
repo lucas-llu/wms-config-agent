@@ -9,6 +9,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from test_multiuser_p3_live import (
+    expire,
     new,
 )
 from test_multiuser_p3_live import (
@@ -226,6 +227,27 @@ def test_other_owned_conversation_checkpoint_source_is_rejected(system):
         assert result["reason"] == "execution_failed"
         assert repo.get(run["run_id"])["status"] == "failed"
         assert repo.sessions.list_turns(run["conversation_id"]) == ()
+
+
+@pytest.mark.parametrize("change", ["membership", "deletion"])
+def test_revoked_or_deleted_parent_cannot_poison_other_users_dispatch(system, change):
+    repo, run, _ = accepted(system)
+    lease = repo.claim(run["run_id"])
+    expire(system, lease.run_id)
+    if change == "membership":
+        system[-1].execute(
+            "UPDATE identity_business.memberships SET active=false "
+            "WHERE user_id=%s AND workspace_id=%s",
+            (system[2][0].user_id, system[3].workspace_id),
+        )
+    else:
+        repo.sessions.delete_session(run["conversation_id"])
+    with executor(system) as service:
+        service.reconcile()  # Must not raise and stop the global dispatcher tick.
+        assert service.control.load(run["run_id"])["status"] == "authorization_required"
+        other = RunRepository(system[4], system[2][1], system[3].workspace_id)
+        following = other.submit(new(system, 1), RunRequest("SYN_MODE?", uuid.uuid4().hex, 1))
+        assert service.execute(following["run_id"])["committed"]
 
 
 def test_real_authority_device_revocation_blocks_execution(system):

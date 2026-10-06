@@ -3,8 +3,9 @@
 import asyncio
 import copy
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
+from agents.repositories import SessionNotFoundError
 from agents.services import SessionService
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from multiuser.access import AccessDenied
@@ -186,12 +187,13 @@ class RunExecutor:
                 return {"accepted": True, "committed": True}
         except LostLease:
             if repository and lease:
-                repository.acknowledge_cancel(lease)
+                with suppress(AccessDenied, SessionNotFoundError):
+                    repository.acknowledge_cancel(lease)
             return {"accepted": False, "reason": "lost_lease"}
         except IdentityUnavailable:
             # Do not discard a valid checkpoint during an IdP outage. Lease expiry drives retry.
             return {"accepted": False, "reason": "identity_unavailable"}
-        except AccessDenied:
+        except (AccessDenied, SessionNotFoundError):
             if row:
                 self.control.stop(
                     run_id, lease.epoch if lease else row["epoch"], "authorization_required"
@@ -206,7 +208,7 @@ class RunExecutor:
                         lease.epoch,
                         "uncertain" if current["open_model_calls"] else "failed",
                     )
-                except (LostLease, AccessDenied):
+                except (LostLease, AccessDenied, SessionNotFoundError):
                     pass
             return {
                 "accepted": False,
@@ -226,7 +228,7 @@ class RunExecutor:
                     row["run_id"]
                 ):
                     self.control.stop(row["run_id"], current["epoch"], "failed")
-            except AccessDenied:
+            except (AccessDenied, SessionNotFoundError):
                 self.control.stop(row["run_id"], row["epoch"], "authorization_required")
             except IdentityUnavailable:
                 continue
