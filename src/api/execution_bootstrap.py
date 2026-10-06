@@ -18,7 +18,6 @@ from core.response import ResponseBuilder
 from core.settings import load_settings
 from ingestion.storage import BM25Indexer
 from libs.embedding import EmbeddingFactory
-from multiuser.pooled_llm import PooledLLM
 from libs.reranker import RerankerFactory
 from libs.vector_store import VectorStoreFactory
 from multiuser.access import AccessStore
@@ -26,6 +25,7 @@ from multiuser.agent import UserAgent
 from multiuser.control import RunControl
 from multiuser.executor import RunExecutor
 from multiuser.governor import ModelGovernor, ModelLimits
+from multiuser.pooled_llm import PooledLLM
 from multiuser.runs import RunLimits
 from multiuser.session_authority import SessionAuthority
 from workers.runs import redis_client
@@ -91,6 +91,18 @@ def from_environment():
         f"{settings.llm.base_url}\0{settings.llm.model}".encode()
     ).hexdigest()
     governor = ModelGovernor(control, provider_key, limits=models)
+    retrieval = ModelGovernor(
+        control,
+        "wms-retrieval",
+        limits=ModelLimits(
+            inflight=capacity,
+            review_inflight=0,
+            rpm=100000,
+            tpm=1000000,
+            hold_seconds=models.hold_seconds,
+            retries=0,
+        ),
+    )
     executor = RunExecutor(
         store,
         control,
@@ -98,5 +110,6 @@ def from_environment():
         governor,
         UserAgent(store, os.environ["WMS_USER_DB_DSN"], llm, settings.agent, knowledge),
         capacity=capacity,
+        retrieval_governor=retrieval,
     )
     return create_execution_app(executor, redis_client(), os.environ["WMS_EXECUTION_TOKEN"])

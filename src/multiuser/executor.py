@@ -3,8 +3,9 @@
 import asyncio
 import copy
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
+from agents.repositories import SessionNotFoundError
 from agents.services import SessionService
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from multiuser.access import AccessDenied
@@ -34,7 +35,9 @@ async def copy_checkpoint(saver, source, target):
 
 
 class RunExecutor:
-    def __init__(self, store, control, authority, governor, agent, *, capacity=4):
+    def __init__(
+        self, store, control, authority, governor, agent, *, capacity=4, retrieval_governor=None
+    ):
         self.store, self.control, self.authority, self.governor, self.agent = (
             store,
             control,
@@ -46,12 +49,17 @@ class RunExecutor:
             raise ValueError("Bounded execution capacity required")
         self.capacity = threading.BoundedSemaphore(capacity)
         self.retrieval = threading.BoundedSemaphore(capacity)
+        self.retrieval_governor = retrieval_governor
+        self.review_capacity = threading.BoundedSemaphore(1)
 
     def repository(self, row):
         context = self.control.context(row)
         self.authority.check(context)
         workspace = self.store.workspace_for(context, row["conversation_id"])
-        return RunRepository(self.store, context, workspace, limits=self.control.limits)
+        repository = RunRepository(self.store, context, workspace, limits=self.control.limits)
+        # workspace_for also serves recycle-bin operations; execution must require a LIVE parent.
+        repository.sessions.get_session(row["conversation_id"])
+        return repository
 
     @contextmanager
     def heartbeat(self, repository, lease):
@@ -85,10 +93,15 @@ class RunExecutor:
         if not self.capacity.acquire(blocking=False):
             return {"accepted": False, "reason": "execution_busy"}
         row, repository, lease = None, None, None
+        reviewing = False
         try:
             row = self.control.load(run_id)
             if row is None or row["status"] in TERMINAL:
                 return {"accepted": False}
+            if row["answer_strategy"] == "review":
+                if not self.review_capacity.acquire(blocking=False):
+                    return {"accepted": False, "reason": "review_execution_busy"}
+                reviewing = True
             repository = self.repository(row)
             lease = repository.claim(run_id)
             if lease is None:
@@ -104,7 +117,13 @@ class RunExecutor:
                     review=repository.execution(lease)["answer_strategy"] == "review",
                 )
                 knowledge = SharedKnowledge(
-                    self.agent.knowledge, guard, staged.workspace, self.retrieval, repository, lease
+                    self.agent.knowledge,
+                    guard,
+                    staged.workspace,
+                    self.retrieval,
+                    repository,
+                    lease,
+                    self.retrieval_governor,
                 )
                 runner = RequirementSessionRunner(
                     supervisor=Supervisor(
@@ -120,6 +139,13 @@ class RunExecutor:
                     # Pool is loop-scoped and bounded; model/index objects remain shared.
                     async with self.agent.saver(repository.context, lease=lease) as saver:
                         current = repository.execution(lease)
+                        with repository.store.transaction(repository.context) as connection:
+                            if not connection.execute(
+                                "SELECT 1 FROM agent_business.checkpoint_threads "
+                                "WHERE thread_id=%s AND session_id=%s",
+                                (current["source_thread"], lease.conversation_id),
+                            ).fetchone():
+                                raise RuntimeError("Checkpoint source conversation mismatch")
                         copied = await copy_checkpoint(
                             saver, current["source_thread"], lease.checkpoint_thread
                         )
@@ -170,18 +196,19 @@ class RunExecutor:
                 return {"accepted": True, "committed": True}
         except LostLease:
             if repository and lease:
-                repository.acknowledge_cancel(lease)
+                with suppress(AccessDenied, SessionNotFoundError):
+                    repository.acknowledge_cancel(lease)
             return {"accepted": False, "reason": "lost_lease"}
         except IdentityUnavailable:
             # Do not discard a valid checkpoint during an IdP outage. Lease expiry drives retry.
             return {"accepted": False, "reason": "identity_unavailable"}
-        except AccessDenied:
+        except (AccessDenied, SessionNotFoundError):
             if row:
                 self.control.stop(
                     run_id, lease.epoch if lease else row["epoch"], "authorization_required"
                 )
             return {"accepted": False, "reason": "authorization_required"}
-        except Exception:
+        except Exception as exc:
             if lease:
                 try:
                     current = repository.execution(lease)
@@ -190,10 +217,16 @@ class RunExecutor:
                         lease.epoch,
                         "uncertain" if current["open_model_calls"] else "failed",
                     )
-                except (LostLease, AccessDenied):
+                except (LostLease, AccessDenied, SessionNotFoundError):
                     pass
-            return {"accepted": False, "reason": "execution_failed"}
+            return {
+                "accepted": False,
+                "reason": "execution_failed",
+                "error_type": type(exc).__name__,
+            }
         finally:
+            if reviewing:
+                self.review_capacity.release()
             self.capacity.release()
 
     def reconcile(self):
@@ -206,22 +239,29 @@ class RunExecutor:
                     row["run_id"]
                 ):
                     self.control.stop(row["run_id"], current["epoch"], "failed")
-            except AccessDenied:
+            except (AccessDenied, SessionNotFoundError):
                 self.control.stop(row["run_id"], row["epoch"], "authorization_required")
             except IdentityUnavailable:
                 continue
 
 
 class SharedKnowledge(GuardedKnowledge):
-    def __init__(self, delegate, guard, workspace, semaphore, repository, lease):
+    def __init__(self, delegate, guard, workspace, semaphore, repository, lease, governor=None):
         super().__init__(delegate, guard, workspace)
         self.semaphore, self.repository, self.lease = semaphore, repository, lease
+        self.governor = governor
 
     def search(self, *args, **kwargs):
-        while not self.semaphore.acquire(timeout=0.2):
-            self.guard()
+        permit = self.governor.acquire(1, self.guard) if self.governor else None
+        acquired = False
         try:
+            while not self.semaphore.acquire(timeout=0.2):
+                self.guard()
+            acquired = True
             self.repository.progress(self.lease, "retrieving")
             return super().search(*args, **kwargs)
         finally:
-            self.semaphore.release()
+            if acquired:
+                self.semaphore.release()
+            if permit:
+                self.governor.release(permit)

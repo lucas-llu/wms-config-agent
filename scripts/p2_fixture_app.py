@@ -79,6 +79,16 @@ def create_fixture_app():
         account=AccountClient(issuer),
         allowed_origins=("http://127.0.0.1:5173",),
         web_config={"issuer": issuer, "client_id": "wms-workbench"},
+        run_limits=fixture_run_limits(),
+        durable_execution=os.getenv("WMS_P3_LIVE") == "1",
     )
     app.state.user_store = store
     return app
+
+
+def fixture_run_limits():
+    if os.getenv("WMS_P3_LIVE") == "1":
+        from multiuser.runs import RunLimits
+
+        return RunLimits()
+    return None

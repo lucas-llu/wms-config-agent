@@ -7,7 +7,15 @@ import {
 } from "react";
 import Markdown from "react-markdown";
 import { Api, ApiError, resource } from "./api";
-import { clearPending, pendingRun, runLabel, savePending, terminal, watchRun, type Run } from "./runs";
+import {
+  clearPending,
+  pendingRun,
+  runLabel,
+  savePending,
+  terminal,
+  watchRun,
+  type Run,
+} from "./runs";
 import { canReview, canSend, cleanEvidence, sidebarWidth } from "./view";
 import type {
   Auth,
@@ -209,7 +217,9 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     if (e instanceof ApiError && [401, 403].includes(e.status)) {
       runStream.current?.abort();
       if (profile) clearPending(profile.user_id, workspace);
-      setPending(""); setActiveRun(undefined); setBusy(false);
+      setPending("");
+      setActiveRun(undefined);
+      setBusy(false);
       setLocked(true);
       setData(undefined);
       setSessions([]);
@@ -218,39 +228,67 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
   useEffect(() => () => runStream.current?.abort(), []);
   const follow = (run: Run, epoch: number) => {
     runStream.current?.abort();
-    const controller = new AbortController(); runStream.current = controller;
-    setActiveRun(run); setDisconnected(false); setBusy(!terminal(run.status));
+    const controller = new AbortController();
+    runStream.current = controller;
+    setActiveRun(run);
+    setDisconnected(false);
+    setBusy(!terminal(run.status));
     requestLock.current = !terminal(run.status);
-    void watchRun(api, run, value => { if (epoch === viewEpoch.current && !controller.signal.aborted) setActiveRun(value); }, controller.signal)
-      .then(async result => {
+    void watchRun(
+      api,
+      run,
+      (value) => {
+        if (epoch === viewEpoch.current && !controller.signal.aborted)
+          setActiveRun(value);
+      },
+      controller.signal,
+    )
+      .then(async (result) => {
         if (controller.signal.aborted || epoch !== viewEpoch.current) return;
         if (terminal(result.status)) {
-          setBusy(false); requestLock.current = false; setPending(""); setActiveRun(undefined);
+          setBusy(false);
+          requestLock.current = false;
+          setPending("");
+          setActiveRun(undefined);
           if (profile) clearPending(profile.user_id, workspace);
           if (result.status !== "succeeded") setError(runLabel(result));
           await open(result.conversation_id);
           if (result.status !== "succeeded") setError(runLabel(result));
           await list();
         }
-      }).catch(error => {
+      })
+      .catch((error) => {
         if (controller.signal.aborted || epoch !== viewEpoch.current) return;
-        handleError(error); setDisconnected(true);
+        handleError(error);
+        setDisconnected(true);
       });
   };
   const reconnect = async () => {
     if (!profile) return;
     try {
       const saved = pendingRun(profile.user_id, workspace);
-      const params = new URLSearchParams({ workspace_id: workspace, idempotency_key: saved?.key || "" });
-      if (saved?.conversation) params.set("conversation_id", saved.conversation);
-      const run = activeRun || await api.request<Run>(`/v1/runs/lookup?${params}`);
-      setError(""); setDisconnected(false);
+      const params = new URLSearchParams({
+        workspace_id: workspace,
+        idempotency_key: saved?.key || "",
+      });
+      if (saved?.conversation)
+        params.set("conversation_id", saved.conversation);
+      const run =
+        activeRun || (await api.request<Run>(`/v1/runs/lookup?${params}`));
+      setError("");
+      setDisconnected(false);
       await open(run.conversation_id, undefined, run);
-    } catch (error) { handleError(error); }
+    } catch (error) {
+      handleError(error);
+    }
   };
   useEffect(() => {
-    runStream.current?.abort(); viewEpoch.current++;
-    setData(undefined); setPending(""); setActiveRun(undefined); setBusy(false);
+    runStream.current?.abort();
+    viewEpoch.current++;
+    setData(undefined);
+    setPending("");
+    setActiveRun(undefined);
+    setBusy(false);
     requestLock.current = false;
   }, [workspace]);
   const list = async () => {
@@ -338,12 +376,28 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     const saved = pendingRun(profile.user_id, workspace);
     if (!saved) return;
     let alive = true;
-    const parameters = new URLSearchParams({ workspace_id: workspace, idempotency_key: saved.key });
-    if (saved.conversation) parameters.set("conversation_id", saved.conversation);
-    void api.request<Run>(saved.run ? `/v1/runs/${encodeURIComponent(saved.run)}` : `/v1/runs/lookup?${parameters}`)
-      .then(run => { if (alive) return open(run.conversation_id, undefined, run); })
-      .catch(error => { if (alive) handleError(error); });
-    return () => { alive = false; runStream.current?.abort(); };
+    const parameters = new URLSearchParams({
+      workspace_id: workspace,
+      idempotency_key: saved.key,
+    });
+    if (saved.conversation)
+      parameters.set("conversation_id", saved.conversation);
+    void api
+      .request<Run>(
+        saved.run
+          ? `/v1/runs/${encodeURIComponent(saved.run)}`
+          : `/v1/runs/lookup?${parameters}`,
+      )
+      .then((run) => {
+        if (alive) return open(run.conversation_id, undefined, run);
+      })
+      .catch((error) => {
+        if (alive) handleError(error);
+      });
+    return () => {
+      alive = false;
+      runStream.current?.abort();
+    };
   }, [profile?.user_id, profile?.durable_runs, workspace]);
   useEffect(() => {
     if (data?.turns.length || pending)
@@ -364,14 +418,21 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       setTab("chat");
       setPanel(undefined);
       if (profile?.durable_runs && !revision) {
-        const run = accepted || await api.request<Run | null>(`${resource(id)}/runs/active`);
+        const run =
+          accepted ||
+          (await api.request<Run | null>(`${resource(id)}/runs/active`));
         if (epoch !== viewEpoch.current) return;
         if (run && !terminal(run.status)) {
-          const question = await api.request<{ message: string }>(`/v1/runs/${encodeURIComponent(run.run_id)}/request`);
+          const question = await api.request<{ message: string }>(
+            `/v1/runs/${encodeURIComponent(run.run_id)}/request`,
+          );
           if (epoch !== viewEpoch.current) return;
-          setPending(question.message); follow(run, epoch);
+          setPending(question.message);
+          follow(run, epoch);
         } else {
-          setBusy(false); requestLock.current = false; setActiveRun(undefined);
+          setBusy(false);
+          requestLock.current = false;
+          setActiveRun(undefined);
           if (accepted && terminal(accepted.status)) {
             clearPending(profile.user_id, workspace);
             if (accepted.status !== "succeeded") setError(runLabel(accepted));
@@ -382,7 +443,11 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
   };
   const newChat = () => {
     runStream.current?.abort();
-    if (profile?.durable_runs) { setBusy(false); requestLock.current = false; setActiveRun(undefined); }
+    if (profile?.durable_runs) {
+      setBusy(false);
+      requestLock.current = false;
+      setActiveRun(undefined);
+    }
     setSidebarOpen(false);
     viewEpoch.current++;
     setData(undefined);
@@ -408,12 +473,36 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       if (profile?.durable_runs) {
         const key = crypto.randomUUID();
         const id = data?.session.session_id;
-        savePending(profile.user_id, workspace, { key, workspace, conversation: id });
-        const run = await api.request<Run>(id ? `${resource(id)}/runs` : "/v1/conversations", "POST",
-          id ? { message: message.trim(), expected_revision: data!.session.current_revision, answer_strategy: strategy, idempotency_key: key }
-             : { goal: message.trim(), workspace_id: workspace, answer_strategy: strategy, idempotency_key: key });
-        savePending(profile.user_id, workspace, { key, workspace, conversation: run.conversation_id, run: run.run_id });
-        await open(run.conversation_id, undefined, run); await list();
+        savePending(profile.user_id, workspace, {
+          key,
+          workspace,
+          conversation: id,
+        });
+        const run = await api.request<Run>(
+          id ? `${resource(id)}/runs` : "/v1/conversations",
+          "POST",
+          id
+            ? {
+                message: message.trim(),
+                expected_revision: data!.session.current_revision,
+                answer_strategy: strategy,
+                idempotency_key: key,
+              }
+            : {
+                goal: message.trim(),
+                workspace_id: workspace,
+                answer_strategy: strategy,
+                idempotency_key: key,
+              },
+        );
+        savePending(profile.user_id, workspace, {
+          key,
+          workspace,
+          conversation: run.conversation_id,
+          run: run.run_id,
+        });
+        await open(run.conversation_id, undefined, run);
+        await list();
         return;
       }
       const result = await api.request<{
@@ -448,7 +537,12 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
           " 不会自动重复发送，请刷新列表查看已保存的结果。",
       );
     } finally {
-      if (profile?.durable_runs && runStream.current && !runStream.current.signal.aborted) return;
+      if (
+        profile?.durable_runs &&
+        runStream.current &&
+        !runStream.current.signal.aborted
+      )
+        return;
       requestLock.current = false;
       setBusy(false);
     }
@@ -561,7 +655,11 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
             WMS Assistant<small>你的配置工作台</small>
           </span>
         </div>
-        <button className="new-chat" disabled={busy && !activeRun} onClick={newChat}>
+        <button
+          className="new-chat"
+          disabled={busy && !activeRun}
+          onClick={newChat}
+        >
           <Icon name="plus" />
           新对话<span aria-hidden="true">↵</span>
         </button>
@@ -1323,13 +1421,36 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                           <span />
                           <span />
                           <span />
-                          <p>{activeRun ? runLabel(activeRun) : "正在处理你的问题…"}</p>
-                          {activeRun && <button type="button" disabled={activeRun.status === "cancelling"}
-                            onClick={() => void api.request<Run>(`/v1/runs/${encodeURIComponent(activeRun.run_id)}/cancel`, "POST").then(setActiveRun).catch(handleError)}>取消处理</button>}
+                          <p>
+                            {activeRun
+                              ? runLabel(activeRun)
+                              : "正在处理你的问题…"}
+                          </p>
+                          {activeRun && (
+                            <button
+                              type="button"
+                              disabled={activeRun.status === "cancelling"}
+                              onClick={() =>
+                                void api
+                                  .request<Run>(
+                                    `/v1/runs/${encodeURIComponent(activeRun.run_id)}/cancel`,
+                                    "POST",
+                                  )
+                                  .then(setActiveRun)
+                                  .catch(handleError)
+                              }
+                            >
+                              取消处理
+                            </button>
+                          )}
                         </div>
                       </article>
                     )}
-                    {disconnected && profile?.durable_runs && <button type="button" onClick={() => void reconnect()}>重新连接进度</button>}
+                    {disconnected && profile?.durable_runs && (
+                      <button type="button" onClick={() => void reconnect()}>
+                        重新连接进度
+                      </button>
+                    )}
                     {!busy && data?.state.open_questions?.length ? (
                       <section className="questions">
                         <h3>还需要补充的信息</h3>

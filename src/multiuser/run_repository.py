@@ -476,6 +476,11 @@ class RunRepository:
                 if row["status"] == "cancelling":
                     self._end(connection, row["run_id"], "cancelled")
                 elif row["open_model_calls"]:
+                    connection.execute(
+                        "UPDATE agent_business.run_model_calls SET status='unknown' "
+                        "WHERE run_id=%s AND status='inflight'",
+                        (row["run_id"],),
+                    )
                     self._end(connection, row["run_id"], "uncertain")
                 elif row["model_attempts"]:
                     self._end(connection, row["run_id"], "recovery_required")

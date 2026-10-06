@@ -40,7 +40,12 @@ class AccessStore:
     def __init__(self, dsn, *, max_connections=8):
         self._binding = ContextVar("owned_short_transaction", default=None)
         self.pool = ConnectionPool(
-            dsn, min_size=1, max_size=max_connections, kwargs={"row_factory": dict_row}, timeout=3
+            dsn,
+            min_size=1,
+            max_size=max_connections,
+            kwargs={"row_factory": dict_row},
+            timeout=3,
+            check=ConnectionPool.check_connection,
         )
         with self.pool.connection() as connection:
             role = connection.execute(

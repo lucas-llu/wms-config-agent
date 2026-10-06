@@ -56,7 +56,7 @@ def create_execution_app(executor, redis, token, *, period=1):
         from fastapi.responses import JSONResponse
 
         provided = request.headers.get("authorization", "")
-        if not hmac.compare_digest(provided, "Bearer " + token):
+        if not hmac.compare_digest(provided.encode(), ("Bearer " + token).encode()):
             return JSONResponse(
                 status_code=401, content={"detail": "Internal authorization required"}
             )

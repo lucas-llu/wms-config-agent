@@ -144,9 +144,13 @@ class GovernedLLM:
         )
         for retry in range(self.governor.limits.retries + 1):
             permit = self.governor.acquire(tokens, self.guard, review=self.review)
-            self.guard()
-            attempt = self.repository.begin_call(self.lease, key)
-            self.repository.progress(self.lease, "generating")
+            try:
+                self.guard()
+                attempt = self.repository.begin_call(self.lease, key)
+                self.repository.progress(self.lease, "generating")
+            except Exception:
+                self.governor.release(permit, actual=0)
+                raise
             try:
                 response = self.delegate.chat(messages, trace=trace)
             except LLMProviderError as exc:
@@ -161,6 +165,7 @@ class GovernedLLM:
                 raise
             self.guard()
             self.repository.finish_call(self.lease, key, attempt, response)
+            self.repository.progress(self.lease, "validating")
             usage = response.metadata.get("usage", {})
             actual = usage.get("total_tokens") if isinstance(usage, dict) else None
             self.governor.release(permit, actual=actual)
