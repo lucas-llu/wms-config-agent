@@ -5,7 +5,15 @@ import json
 from dataclasses import dataclass
 
 TERMINAL = frozenset(
-    {"succeeded", "cancelled", "failed", "uncertain", "timed_out", "authorization_required"}
+    {
+        "succeeded",
+        "cancelled",
+        "failed",
+        "uncertain",
+        "timed_out",
+        "authorization_required",
+        "recovery_required",
+    }
 )
 STAGES = frozenset({"queued", "retrieving", "generating", "validating", "persisting"})
 

@@ -1,5 +1,6 @@
 """P3 storage invariants on real PG RLS roles; never call a paid provider."""
 
+import asyncio
 import os
 import time
 import uuid
@@ -14,8 +15,11 @@ from test_multiuser_p1_live import system as system_fixture
 from test_multiuser_p1_live import tokens as tokens_fixture
 
 from agents.repositories import SessionNotFoundError, SessionRevisionConflict
+from agents.runtime import build_runtime_probe_graph
 from api.users import create_app
+from core.settings import load_settings
 from multiuser.access import AccessDenied
+from multiuser.agent import UserAgent
 from multiuser.identity import OIDCVerifier
 from multiuser.run_repository import RunRepository
 from multiuser.runs import LostLease, RunBusy, RunConflict, RunLimits, RunRequest
@@ -238,6 +242,130 @@ def test_ambiguous_provider_attempt_never_auto_replays(system):
     assert repo.get(lease.run_id)["status"] == "uncertain"
     assert repo.pending() == []
     assert repo.claim(lease.run_id) is None
+
+
+def test_known_model_result_needs_checkpoint_takeover_not_restart(system):
+    repo, _, _, accepted = submit(system)
+    lease = repo.claim(accepted["run_id"])
+    repo.model_started(lease)
+    repo.model_finished(lease)
+    expire(system, lease.run_id)
+    assert repo.recover() == 1
+    assert repo.get(lease.run_id)["status"] == "recovery_required"
+    assert repo.pending() == []
+    assert repo.claim(lease.run_id) is None
+    with pytest.raises(LostLease):
+        repo.heartbeat(lease)
+
+
+def test_execution_deadline_independently_fences_and_recovers(system):
+    repo = repository(system, limits=RunLimits(lease_seconds=120, execution_seconds=5))
+    _, _, _, accepted = submit(system, repo)
+    lease = repo.claim(accepted["run_id"])
+    bounds = (
+        system[-1]
+        .execute(
+            "SELECT lease_until<=execution_deadline FROM agent_business.runs WHERE run_id=%s",
+            (lease.run_id,),
+        )
+        .fetchone()
+    )
+    assert bounds[0]
+    system[-1].execute(
+        "UPDATE agent_business.runs SET execution_deadline=clock_timestamp()-interval '1 second' "
+        "WHERE run_id=%s",
+        (lease.run_id,),
+    )
+    with pytest.raises(LostLease):
+        repo.heartbeat(lease)
+    assert repo.recover() == 1
+    assert repo.get(lease.run_id)["status"] == "queued"
+
+
+def test_forged_lease_and_changed_revision_cannot_commit(system):
+    repo, conversation, _, accepted = submit(system)
+    lease = repo.claim(accepted["run_id"])
+    for changed in (
+        {"epoch": lease.epoch + 1},
+        {"conversation_id": "other"},
+        {"checkpoint_thread": "caller-owned-thread"},
+    ):
+        with pytest.raises(LostLease):
+            repo.heartbeat(replace(lease, **changed))
+    system[-1].execute(
+        "UPDATE agent_business.sessions SET current_revision=2 WHERE session_id=%s", (conversation,)
+    )
+    with pytest.raises(RunConflict, match="conversation_changed"):
+        repo.complete(lease, lambda conn: pytest.fail("Changed baseline"))
+
+
+def test_account_and_request_context_revocation_fail_closed(system):
+    repo, _, _, accepted = submit(system)
+    lease = repo.claim(accepted["run_id"])
+    context = system[2][0]
+    admin = system[-1]
+    admin.execute(
+        "UPDATE identity_business.users SET status='disabled' WHERE user_id=%s", (context.user_id,)
+    )
+    try:
+        with pytest.raises(AccessDenied):
+            repo.heartbeat(lease)
+    finally:
+        admin.execute(
+            "UPDATE identity_business.users SET status='active' WHERE user_id=%s",
+            (context.user_id,),
+        )
+    with pytest.raises(AccessDenied):
+        RunRepository(system[4], replace(context, expires_at=1), system[3].workspace_id)
+    system[4].revoke(context)
+    try:
+        with pytest.raises(AccessDenied):
+            repo.get(accepted["run_id"])
+    finally:
+        admin.execute(
+            "DELETE FROM identity_business.revoked_sessions WHERE user_id=%s AND sid=%s",
+            (context.user_id, context.sid),
+        )
+
+
+def test_purge_removes_real_checkpoint_generations_not_other_conversations(system):
+    repo, conversation, _, accepted = submit(system)
+    lease = repo.claim(accepted["run_id"])
+    other_conversation = new(system)
+    context = system[2][0]
+    agent = UserAgent(system[4], os.environ["P1_POSTGRES_DSN"], None, load_settings().agent)
+
+    async def save():
+        async with agent.saver(context) as saver:
+            graph = build_runtime_probe_graph(saver)
+            for thread in (lease.checkpoint_thread, other_conversation):
+                await graph.ainvoke(
+                    {"subject": "synthetic-private"}, {"configurable": {"thread_id": thread}}
+                )
+
+    asyncio.run(save())
+    session_repo = system[5].repository(context, conversation)
+    session_repo.delete_session(conversation)
+    assert session_repo.purge_deleted_sessions({conversation: 1}) == 1
+    for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
+        assert (
+            system[-1]
+            .execute(
+                f"SELECT count(*) FROM agent_checkpoints.{table} WHERE thread_id=%s",
+                (lease.checkpoint_thread,),
+            )
+            .fetchone()[0]
+            == 0
+        )
+    assert (
+        system[-1]
+        .execute(
+            "SELECT count(*) FROM agent_checkpoints.checkpoints WHERE thread_id=%s",
+            (other_conversation,),
+        )
+        .fetchone()[0]
+        > 0
+    )
 
 
 def test_recovery_bounded_cancel_timeout_and_delivery_ceiling(system):

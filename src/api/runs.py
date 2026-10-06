@@ -97,8 +97,11 @@ def install_run_routes(app, identity, application, limits):
                         )
                         if record["status"] in TERMINAL:
                             return
-                    if repo.get(run_id)["status"] in TERMINAL:
-                        return
+                    current = repo.get(run_id)
+                    if current["status"] in TERMINAL:
+                        if cursor >= current["sequence"]:
+                            return
+                        continue  # Drain the next page or the terminal event committed meanwhile.
                 except (
                     PermissionError,
                     SessionNotFoundError,

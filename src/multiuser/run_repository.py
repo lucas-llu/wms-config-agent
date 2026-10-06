@@ -204,7 +204,11 @@ class RunRepository:
                 "lease_until=clock_timestamp()+(%s*interval '1 second'),"
                 "execution_deadline=clock_timestamp()+(%s*interval '1 second') "
                 "WHERE run_id=%s RETURNING epoch,conversation_id",
-                (self.limits.lease_seconds, self.limits.execution_seconds, run_id),
+                (
+                    min(self.limits.lease_seconds, self.limits.execution_seconds),
+                    self.limits.execution_seconds,
+                    run_id,
+                ),
             ).fetchone()
             thread = f"{run_id}:epoch:{row['epoch']}"
             connection.execute(
@@ -254,7 +258,8 @@ class RunRepository:
         with self.store.transaction(self.context) as connection:
             self._fence(connection, lease)
             connection.execute(
-                "UPDATE agent_business.runs SET open_model_calls=open_model_calls+1 "
+                "UPDATE agent_business.runs SET open_model_calls=open_model_calls+1,"
+                "model_attempts=model_attempts+1 "
                 "WHERE run_id=%s",
                 (lease.run_id,),
             )
@@ -346,7 +351,8 @@ class RunRepository:
                 "SELECT r.* FROM agent_business.runs r JOIN agent_business.sessions s "
                 "ON s.session_id=r.conversation_id WHERE s.workspace_id=%s AND "
                 "((r.status='queued' AND r.queue_deadline<=clock_timestamp()) OR "
-                "(r.status IN ('running','cancelling') AND r.lease_until<=clock_timestamp())) "
+                "(r.status IN ('running','cancelling') AND "
+                "(r.lease_until<=clock_timestamp() OR r.execution_deadline<=clock_timestamp()))) "
                 "ORDER BY r.created_at,r.run_id LIMIT %s FOR UPDATE OF r SKIP LOCKED",
                 (self.sessions.workspace_id, limit),
             ).fetchall()
@@ -355,6 +361,8 @@ class RunRepository:
                     self._end(connection, row["run_id"], "cancelled")
                 elif row["open_model_calls"]:
                     self._end(connection, row["run_id"], "uncertain")
+                elif row["model_attempts"]:
+                    self._end(connection, row["run_id"], "recovery_required")
                 elif row["status"] == "queued":
                     self._end(connection, row["run_id"], "timed_out")
                 else:
