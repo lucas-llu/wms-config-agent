@@ -161,6 +161,7 @@ class GovernedLLM:
                 raise
             self.guard()
             self.repository.finish_call(self.lease, key, attempt, response)
+            self.repository.progress(self.lease, "validating")
             usage = response.metadata.get("usage", {})
             actual = usage.get("total_tokens") if isinstance(usage, dict) else None
             self.governor.release(permit, actual=actual)

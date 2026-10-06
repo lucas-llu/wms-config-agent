@@ -37,6 +37,38 @@ def navigate(page, url):
 @pytest.fixture(scope="module")
 def browser():
     env = {**os.environ, "PYTHONPATH": str(Path("src").resolve())}
+    execution = worker = None
+    if os.getenv("WMS_P3_LIVE") == "1":
+        env.update(
+            WMS_EXECUTION_URL="http://127.0.0.1:8531",
+            WMS_EXECUTION_TOKEN=os.environ["P3_EXECUTION_TOKEN"],
+            WMS_REDIS_URL=os.environ["P0_REDIS_URL"],
+        )
+        execution = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "scripts.p3_fixture_app:create_fixture_executor",
+                "--factory",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8531",
+                "--no-access-log",
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        worker = subprocess.Popen(
+            [sys.executable, "-m", "workers.runs"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     backend = subprocess.Popen(
         [
             sys.executable,
@@ -81,11 +113,16 @@ def browser():
             yield instance
             instance.close()
     finally:
-        for process in (frontend, backend):
+        for process in (frontend, backend, worker, execution):
+            if process is None:
+                continue
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGTERM)
         frontend.wait(timeout=10)
         backend.wait(timeout=10)
+        for process in (worker, execution):
+            if process:
+                process.wait(timeout=10)
 
 
 def signin(page, name, password):

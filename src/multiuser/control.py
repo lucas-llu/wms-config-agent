@@ -27,8 +27,15 @@ class RunControl:
                 "SELECT current_user AS name,rolsuper,rolbypassrls,rolcreaterole FROM pg_roles "
                 "WHERE rolname=current_user"
             ).fetchone()
-            if role["name"] != "p3_control" or any(
-                role[k] for k in ("rolsuper", "rolbypassrls", "rolcreaterole")
+            owners = connection.execute(
+                "SELECT count(*) AS n FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname IN ('identity_business','agent_business','agent_checkpoints') "
+                "AND pg_has_role(current_user,c.relowner,'MEMBER')"
+            ).fetchone()["n"]
+            if (
+                role["name"] != "p3_control"
+                or any(role[k] for k in ("rolsuper", "rolbypassrls", "rolcreaterole"))
+                or owners
             ):
                 self.close()
                 raise ValueError("Dedicated non-owner p3_control role required")

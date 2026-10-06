@@ -42,12 +42,34 @@ export class Api {
       ? (undefined as T)
       : (response.json() as Promise<T>);
   }
-  async events(path: string, cursor: string, signal: AbortSignal, receive: (id: string, data: string) => void): Promise<void> {
-    if (!path.startsWith("/v1/runs/") || path.includes("://") || path.startsWith("//")) throw new Error("Invalid event path");
-    const response = await fetch(path, { cache: "no-store", credentials: "omit", signal,
-      headers: { Authorization: `Bearer ${await this.auth.token()}`, "Last-Event-ID": cursor, Accept: "text/event-stream" } });
+  async events(
+    path: string,
+    cursor: string,
+    signal: AbortSignal,
+    receive: (id: string, data: string) => void,
+  ): Promise<void> {
+    if (
+      !path.startsWith("/v1/runs/") ||
+      path.includes("://") ||
+      path.startsWith("//")
+    )
+      throw new Error("Invalid event path");
+    const response = await fetch(path, {
+      cache: "no-store",
+      credentials: "omit",
+      signal,
+      headers: {
+        Authorization: `Bearer ${await this.auth.token()}`,
+        "Last-Event-ID": cursor,
+        Accept: "text/event-stream",
+      },
+    });
     if (!response.ok) throw new ApiError(response.status);
-    if (!response.headers.get("content-type")?.startsWith("text/event-stream") || !response.body) throw new Error("Invalid event stream");
+    if (
+      !response.headers.get("content-type")?.startsWith("text/event-stream") ||
+      !response.body
+    )
+      throw new Error("Invalid event stream");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -56,17 +78,25 @@ export class Api {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        if (buffer.length > 65536) throw new Error("Event stream exceeded limit");
+        if (buffer.length > 65536)
+          throw new Error("Event stream exceeded limit");
         let end: number;
         while ((end = buffer.indexOf("\n\n")) !== -1) {
-          const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
           const lines = block.split("\n");
-          const id = lines.find(line => line.startsWith("id: "))?.slice(4);
-          const data = lines.filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n");
+          const id = lines.find((line) => line.startsWith("id: "))?.slice(4);
+          const data = lines
+            .filter((line) => line.startsWith("data: "))
+            .map((line) => line.slice(6))
+            .join("\n");
           if (id && data && !signal.aborted) receive(id, data);
         }
       }
-    } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+    } finally {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
   }
   async download(path: string): Promise<void> {
     if (!path.startsWith("/v1/conversations/") || path.includes("://"))

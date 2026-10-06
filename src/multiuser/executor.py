@@ -34,7 +34,9 @@ async def copy_checkpoint(saver, source, target):
 
 
 class RunExecutor:
-    def __init__(self, store, control, authority, governor, agent, *, capacity=4):
+    def __init__(
+        self, store, control, authority, governor, agent, *, capacity=4, retrieval_governor=None
+    ):
         self.store, self.control, self.authority, self.governor, self.agent = (
             store,
             control,
@@ -46,6 +48,7 @@ class RunExecutor:
             raise ValueError("Bounded execution capacity required")
         self.capacity = threading.BoundedSemaphore(capacity)
         self.retrieval = threading.BoundedSemaphore(capacity)
+        self.retrieval_governor = retrieval_governor
 
     def repository(self, row):
         context = self.control.context(row)
@@ -104,7 +107,13 @@ class RunExecutor:
                     review=repository.execution(lease)["answer_strategy"] == "review",
                 )
                 knowledge = SharedKnowledge(
-                    self.agent.knowledge, guard, staged.workspace, self.retrieval, repository, lease
+                    self.agent.knowledge,
+                    guard,
+                    staged.workspace,
+                    self.retrieval,
+                    repository,
+                    lease,
+                    self.retrieval_governor,
                 )
                 runner = RequirementSessionRunner(
                     supervisor=Supervisor(
@@ -181,7 +190,7 @@ class RunExecutor:
                     run_id, lease.epoch if lease else row["epoch"], "authorization_required"
                 )
             return {"accepted": False, "reason": "authorization_required"}
-        except Exception:
+        except Exception as exc:
             if lease:
                 try:
                     current = repository.execution(lease)
@@ -192,7 +201,11 @@ class RunExecutor:
                     )
                 except (LostLease, AccessDenied):
                     pass
-            return {"accepted": False, "reason": "execution_failed"}
+            return {
+                "accepted": False,
+                "reason": "execution_failed",
+                "error_type": type(exc).__name__,
+            }
         finally:
             self.capacity.release()
 
@@ -213,11 +226,13 @@ class RunExecutor:
 
 
 class SharedKnowledge(GuardedKnowledge):
-    def __init__(self, delegate, guard, workspace, semaphore, repository, lease):
+    def __init__(self, delegate, guard, workspace, semaphore, repository, lease, governor=None):
         super().__init__(delegate, guard, workspace)
         self.semaphore, self.repository, self.lease = semaphore, repository, lease
+        self.governor = governor
 
     def search(self, *args, **kwargs):
+        permit = self.governor.acquire(1, self.guard) if self.governor else None
         while not self.semaphore.acquire(timeout=0.2):
             self.guard()
         try:
@@ -225,3 +240,5 @@ class SharedKnowledge(GuardedKnowledge):
             return super().search(*args, **kwargs)
         finally:
             self.semaphore.release()
+            if permit:
+                self.governor.release(permit)
