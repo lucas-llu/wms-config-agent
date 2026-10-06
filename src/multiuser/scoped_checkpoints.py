@@ -45,3 +45,14 @@ class UserPostgresSaver(AsyncPostgresSaver):
                     raise LostLease("Checkpoint execution fenced")
             async with connection.cursor(binary=True, row_factory=dict_row) as cursor:
                 yield cursor
+            if self.lease:
+                cursor = await connection.execute(
+                    "SELECT 1 FROM agent_business.runs WHERE run_id=%s AND epoch=%s "
+                    "AND status='running' AND lease_until>clock_timestamp() "
+                    "AND execution_deadline>clock_timestamp()",
+                    (self.lease.run_id, self.lease.epoch),
+                )
+                if await cursor.fetchone() is None:
+                    from multiuser.runs import LostLease
+
+                    raise LostLease("Checkpoint deadline crossed; transaction rolled back")

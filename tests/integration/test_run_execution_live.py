@@ -65,7 +65,20 @@ def executor(system, *, model=None, limits=None, capacity=4):
         SyntheticKnowledge(),
     )
     try:
-        yield RunExecutor(system[4], control, authority, governor, agent, capacity=capacity)
+        retrieval = ModelGovernor(
+            control,
+            "retrieval:" + uuid.uuid4().hex,
+            limits=ModelLimits(inflight=1, review_inflight=0, tpm=1000000),
+        )
+        yield RunExecutor(
+            system[4],
+            control,
+            authority,
+            governor,
+            agent,
+            capacity=capacity,
+            retrieval_governor=retrieval,
+        )
     finally:
         authority.close()
         control.close()
@@ -180,6 +193,10 @@ def test_global_permits_review_subcap_rpm_tpm_and_restart_do_not_reset(system):
         permit = tight.reserve(100)
         tight.release(permit)
         assert tight.reserve(1) is None  # releasing in-flight does NOT reset the one-minute window.
+        reading = service.retrieval_governor.reserve(1)
+        assert reading  # Independent from the exhausted model permits, still globally bounded.
+        assert service.retrieval_governor.reserve(1) is None
+        service.retrieval_governor.release(reading)
 
 
 def test_cancel_during_model_does_not_publish_partial_user_or_late_answer(system):

@@ -11,6 +11,7 @@ from agents.repositories import SessionRepository
 from libs.llm import ChatResponse
 from libs.llm.openai_compatible_llm import LLMProviderError
 from multiuser.access import AccessDenied, UserContext
+from multiuser.executor import SharedKnowledge
 from multiuser.governor import GovernedLLM, ModelLimits
 from multiuser.identity import IdentityUnavailable
 from multiuser.session_authority import SessionAuthority
@@ -216,3 +217,27 @@ def test_queue_worker_rejects_arbitrary_function_before_import():
     ):
         with pytest.raises(ValueError):
             worker.perform_job(job, None)
+
+
+def test_unused_model_slot_is_released_if_cancellation_precedes_provider():
+    wrapper, repository, governor, delegate = gateway()
+    wrapper.guard.side_effect = [None, AccessDenied("cancelled")]
+    with pytest.raises(AccessDenied):
+        wrapper.chat([{"role": "user", "content": "q"}])
+    governor.release.assert_called_once_with("permit", actual=0)
+    delegate.chat.assert_not_called()
+    repository.begin_call.assert_not_called()
+
+
+def test_unused_retrieval_slot_is_released_during_local_wait_cancellation():
+    governor, semaphore = Mock(), Mock()
+    governor.acquire.return_value = "permit"
+    semaphore.acquire.return_value = False
+    guard = Mock(side_effect=AccessDenied("cancelled"))
+    delegate = Mock()
+    knowledge = SharedKnowledge(delegate, guard, Mock(), semaphore, Mock(), "lease", governor)
+    with pytest.raises(AccessDenied):
+        knowledge.search("q", filters={})
+    governor.release.assert_called_once_with("permit")
+    semaphore.release.assert_not_called()
+    delegate.search.assert_not_called()

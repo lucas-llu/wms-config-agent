@@ -233,12 +233,15 @@ class SharedKnowledge(GuardedKnowledge):
 
     def search(self, *args, **kwargs):
         permit = self.governor.acquire(1, self.guard) if self.governor else None
-        while not self.semaphore.acquire(timeout=0.2):
-            self.guard()
+        acquired = False
         try:
+            while not self.semaphore.acquire(timeout=0.2):
+                self.guard()
+            acquired = True
             self.repository.progress(self.lease, "retrieving")
             return super().search(*args, **kwargs)
         finally:
-            self.semaphore.release()
+            if acquired:
+                self.semaphore.release()
             if permit:
                 self.governor.release(permit)

@@ -45,7 +45,18 @@ def create_fixture_executor():
         load_settings().agent,
         SyntheticKnowledge(),
     )
-    executor = RunExecutor(store, control, authority, governor, agent)
+    retrieval = ModelGovernor(
+        control,
+        "fixture:retrieval",
+        limits=ModelLimits(
+            inflight=4,
+            review_inflight=0,
+            rpm=100000,
+            tpm=1000000,
+            retries=0,
+        ),
+    )
+    executor = RunExecutor(store, control, authority, governor, agent, retrieval_governor=retrieval)
     return create_execution_app(executor, redis_client(), os.environ["WMS_EXECUTION_TOKEN"])
 
 
