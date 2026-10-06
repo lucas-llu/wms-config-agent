@@ -2,6 +2,35 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Api, ApiError, resource } from "../src/api";
 import { fakeAuth } from "./fixtures";
 afterEach(() => vi.unstubAllGlobals());
+it("maps only safe run conflict codes, never arbitrary backend error text", async () => {
+  const api = new Api(fakeAuth());
+  for (const [code, text] of [
+    ["conversation_busy", "正在处理"],
+    ["user_queue_full", "已满"],
+    ["idempotency_conflict", "不同内容"],
+  ]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: code }), { status: 409 }),
+      ),
+    );
+    await expect(
+      api.request("/v1/conversations/s/runs", "POST", {}),
+    ).rejects.toThrow(text);
+  }
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ detail: "PRIVATE DETAILS" }), {
+          status: 503,
+        }),
+    ),
+  );
+  await expect(api.request("/v1/me")).rejects.toThrow("服务暂时不可用");
+});
 it("gets a fresh in-memory token; never sends it to a foreign URL or retries writes", async () => {
   const fetcher = vi.fn(
     async (_url: RequestInfo | URL, _options?: RequestInit) =>

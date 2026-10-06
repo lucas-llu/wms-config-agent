@@ -2,6 +2,7 @@
 
 import uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from psycopg.rows import dict_row
@@ -37,8 +38,14 @@ def context_values(context):
 
 class AccessStore:
     def __init__(self, dsn, *, max_connections=8):
+        self._binding = ContextVar("owned_short_transaction", default=None)
         self.pool = ConnectionPool(
-            dsn, min_size=1, max_size=max_connections, kwargs={"row_factory": dict_row}, timeout=3
+            dsn,
+            min_size=1,
+            max_size=max_connections,
+            kwargs={"row_factory": dict_row},
+            timeout=3,
+            check=ConnectionPool.check_connection,
         )
         with self.pool.connection() as connection:
             role = connection.execute(
@@ -61,6 +68,19 @@ class AccessStore:
     def transaction(self, context, *, require_active=True):
         if not isinstance(context, UserContext):
             raise TypeError("Trusted UserContext required")
+        if bound := self._binding.get():
+            bound_context, connection = bound
+            if context != bound_context:
+                raise AccessDenied("Cannot switch identity inside a transaction")
+            if (
+                require_active
+                and not connection.execute(
+                    "SELECT identity_business.actor_active() AS active"
+                ).fetchone()["active"]
+            ):
+                raise AccessDenied("Account or session is unavailable")
+            yield connection
+            return
         with self.pool.connection() as connection, connection.transaction():
             connection.execute(
                 "SET LOCAL search_path TO pg_catalog,agent_business,identity_business"
@@ -75,6 +95,15 @@ class AccessStore:
             ):
                 raise AccessDenied("Account or session is unavailable")
             yield connection
+
+    @contextmanager
+    def bind(self, context, connection):
+        """Internal short-transaction composition; NEVER span retrieval/model calls."""
+        token = self._binding.set((context, connection))
+        try:
+            yield
+        finally:
+            self._binding.reset(token)
 
     def resolve(self, principal: Principal):
         if not principal.sid or principal.issued_at <= 0 or principal.expires_at <= 0:

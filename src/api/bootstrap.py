@@ -41,6 +41,8 @@ def from_environment():
     settings = load_settings(os.getenv("WMS_SETTINGS_PATH", "config/settings.yaml"))
     store = AccessStore(dsn)
     try:
+        if os.getenv("WMS_P3_ENABLED") == "1":
+            return queued_api(verifier, introspector, store, issuer, settings)
         vector = VectorStoreFactory.create(settings)
         sparse = BM25Indexer("data/db/bm25")
         if vector.count() == 0 or sparse.count() == 0:
@@ -88,3 +90,44 @@ def from_environment():
         verifier.close()
         introspector.close()
         raise
+
+
+def queued_api(verifier, introspector, store, issuer, settings):
+    from api.execution_bootstrap import execution_settings
+    from workers.runs import ExecutionClient
+
+    runs, _, _ = execution_settings()
+    client = ExecutionClient(os.environ["WMS_EXECUTION_URL"], os.environ["WMS_EXECUTION_TOKEN"])
+    try:
+        if client.request("/internal/ready") != {"ready": True, "protocol": "wms-runs-v1"}:
+            raise RuntimeError("Compatible shared execution service required")
+    finally:
+        client.close()
+    # Public API never loads model/index/embedding objects; only the private executor does.
+    images = EvidenceImages(
+        ImageStorage(
+            settings.ingestion.image_storage.root_path,
+            settings.ingestion.image_storage.database_path,
+            read_only=True,
+        ),
+        [settings.ingestion.image_storage.root_path],
+    )
+    application = OwnedApplication(
+        store, export_root=settings.agent.export_root / "users", images=images
+    )
+    app = create_app(
+        verifier,
+        introspector,
+        application,
+        allowed_origins=tuple(
+            o.strip() for o in os.getenv("WMS_WEB_ORIGINS", "").split(",") if o.strip()
+        ),
+        account=AccountClient(issuer),
+        run_limits=runs,
+        durable_execution=True,
+        web_config={"issuer": issuer, "client_id": os.getenv("WMS_WEB_CLIENT_ID", "wms-workbench")},
+    )
+    app.state.user_store = store
+    if directory := os.getenv("WMS_FRONTEND_DIST"):
+        mount_workbench(app, Path(directory), issuer)
+    return app

@@ -17,6 +17,7 @@ jobs:
       WMS_P0_LIVE: "1"
       WMS_P1_LIVE: "1"
       WMS_P2_LIVE: "1"
+      WMS_P3_LIVE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,6 +61,7 @@ jobs:
         run: |
           python scripts/wait_p0_services.py
           python scripts/prepare_p1_database.py
+          python scripts/prepare_p3_database.py
       - name: Test with coverage gate
         run: >-
           python -m pytest

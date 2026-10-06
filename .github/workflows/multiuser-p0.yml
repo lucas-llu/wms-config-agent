@@ -12,6 +12,7 @@ jobs:
       COMPOSE_PROJECT_NAME: wms-p0-${{ github.run_id }}
       WMS_P0_LIVE: "1"
       WMS_P1_LIVE: "1"
+      WMS_P3_LIVE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
@@ -35,8 +36,16 @@ jobs:
         run: python scripts/wait_p0_services.py
       - name: Prepare non-owner P1 runtime and row policies
         run: python scripts/prepare_p1_database.py
+      - name: Prepare versioned P3 durable-run schema
+        run: |
+          python scripts/prepare_p3_database.py
+          python scripts/prepare_p3_database.py
       - name: Real identity, recovery, checkpoint and admission probes
-        run: python -m pytest tests/unit/test_p0_identity.py tests/integration/test_multiuser_p0_live.py tests/integration/test_multiuser_p1_live.py -q --junitxml=data/p0-reports/junit.xml
+        run: python -m pytest tests/unit/test_p0_identity.py tests/unit/test_run_contracts.py tests/unit/test_run_execution.py tests/integration/test_multiuser_p0_live.py tests/integration/test_multiuser_p1_live.py tests/integration/test_multiuser_p3_live.py tests/integration/test_run_execution_live.py tests/integration/test_run_faults_live.py tests/integration/test_run_pressure_live.py -q --junitxml=data/p0-reports/junit.xml
+      - name: Report synthetic P3 execution samples (not production p95)
+        if: always()
+        run: |
+          python -c 'import json,pathlib; rows=[json.loads(p.read_text()) for p in sorted(pathlib.Path("data/p3-reports").glob("synthetic-*.json"))]; print(json.dumps(rows))'
       - name: Report synthetic admission baseline
         if: always()
         run: python scripts/report_p0.py

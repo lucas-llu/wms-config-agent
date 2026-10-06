@@ -53,15 +53,16 @@ class UserAgent:
         self.locks, self.lock = {}, Lock()
 
     @asynccontextmanager
-    async def saver(self, context):
+    async def saver(self, context, *, lease=None):
         async with AsyncConnectionPool(
             self.dsn,
             min_size=0,
             max_size=4,
             open=False,
+            check=AsyncConnectionPool.check_connection,
             kwargs={"autocommit": True, "row_factory": dict_row, "prepare_threshold": 0},
         ) as pool:
-            yield UserPostgresSaver(pool, context)
+            yield UserPostgresSaver(pool, context, lease=lease)
 
     def runner(self, context, repository, identity_check=None):
         def guard():

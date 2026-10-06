@@ -112,6 +112,7 @@ class RequirementSessionRunner:
         checkpointer: BaseCheckpointSaver[Any],
         session_id: str | None = None,
         answer_strategy: str = "standard",
+        checkpoint_thread_id: str | None = None,
     ) -> WorkflowResult:
         validate_answer_strategy(answer_strategy)
         session = self.sessions.create_session(user_message, session_id=session_id)
@@ -122,7 +123,7 @@ class RequirementSessionRunner:
             message=user_message,
         )
         graph = self.supervisor.compile(checkpointer)
-        config = session_checkpoint_config(session.session_id)
+        config = session_checkpoint_config(checkpoint_thread_id or session.session_id)
         initial: AgentGraphState = {
             "workspace_id": self.sessions.repository.workspace_id,
             "answer_strategy": answer_strategy,
@@ -169,6 +170,7 @@ class RequirementSessionRunner:
         *,
         checkpointer: BaseCheckpointSaver[Any],
         answer_strategy: str = "standard",
+        checkpoint_thread_id: str | None = None,
     ) -> WorkflowResult:
         validate_answer_strategy(answer_strategy)
         session = self.sessions.get_session(session_id)
@@ -179,7 +181,7 @@ class RequirementSessionRunner:
             message=user_message,
         )
         graph = self.supervisor.compile(checkpointer)
-        config = session_checkpoint_config(session_id)
+        config = session_checkpoint_config(checkpoint_thread_id or session_id)
         snapshot = await graph.aget_state(config)
         through = int(snapshot.values.get("memory_through_sequence", 0))
         history = [

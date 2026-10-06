@@ -1,5 +1,10 @@
 # 用户中心、对话隔离与并发优化开发计划
 
+2026-10-06 进度：P3 后台执行、公平调度/全局资源、检查点接管及 React 恢复
+已在 `feature/run-recovery` 实现并通过开发/故障门禁，合并状态见 PR #140。
+见 [P3 执行与部署合同](MULTIUSER_P3_EXECUTION.md)。P4 真实计量/额度、P5 正式迁移部署仍未完成；
+合成并发数据不代表生产多人灰度达标。
+
 日期：2026-10-05。状态：总体开发计划；P0 原型和设计确认见 [MULTIUSER_P0_DESIGN.md](MULTIUSER_P0_DESIGN.md)。
 P1 身份与归属隔离的增量实现及实测结果见 [MULTIUSER_P1_ISOLATION.md](MULTIUSER_P1_ISOLATION.md)。
 P2 用户中心与 React 工作台及退出门禁见 [MULTIUSER_P2_WORKBENCH.md](MULTIUSER_P2_WORKBENCH.md)。

@@ -37,6 +37,38 @@ def navigate(page, url):
 @pytest.fixture(scope="module")
 def browser():
     env = {**os.environ, "PYTHONPATH": str(Path("src").resolve())}
+    execution = worker = None
+    if os.getenv("WMS_P3_LIVE") == "1":
+        env.update(
+            WMS_EXECUTION_URL="http://127.0.0.1:8531",
+            WMS_EXECUTION_TOKEN=os.environ["P3_EXECUTION_TOKEN"],
+            WMS_REDIS_URL=os.environ["P0_REDIS_URL"],
+        )
+        execution = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "scripts.p3_fixture_app:create_fixture_executor",
+                "--factory",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8531",
+                "--no-access-log",
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        worker = subprocess.Popen(
+            [sys.executable, "-m", "workers.runs"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     backend = subprocess.Popen(
         [
             sys.executable,
@@ -81,11 +113,16 @@ def browser():
             yield instance
             instance.close()
     finally:
-        for process in (frontend, backend):
+        for process in (frontend, backend, worker, execution):
+            if process is None:
+                continue
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGTERM)
         frontend.wait(timeout=10)
         backend.wait(timeout=10)
+        for process in (worker, execution):
+            if process:
+                process.wait(timeout=10)
 
 
 def signin(page, name, password):
@@ -391,3 +428,50 @@ def test_real_device_center_revoke_others_preserves_current_browser(browser):
     finally:
         for context in contexts:
             context.close()
+
+
+@pytest.mark.skipif(os.getenv("WMS_P3_LIVE") != "1", reason="P3 browser requires real RQ execution")
+def test_p3_refresh_and_second_tab_recover_the_same_accepted_run(browser):
+    context = browser.new_context(viewport={"width": 1360, "height": 900})
+    auth = [""]
+    posts = []
+    try:
+        page = context.new_page()
+
+        def capture(request):
+            if request.url.endswith("/v1/me"):
+                auth[0] = request.headers.get("authorization", "")
+            if request.method == "POST" and "/v1/conversations" in request.url:
+                posts.append(request.url)
+
+        page.on("request", capture)
+        register_verified(page)
+        profile = httpx.get(
+            "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
+        ).json()
+        provision(profile["user_id"])
+        navigate(page, WEB)
+        question = "SYN_MODE 是什么？"
+        page.get_by_role("textbox", name="输入问题").fill(question)
+        with page.expect_response(
+            lambda r: r.url.endswith("/v1/conversations") and r.status == 202
+        ) as accepted:
+            page.get_by_role("button", name="发送问题").click()
+        run = accepted.value.json()
+        page.reload()
+        page.get_by_text("SYN_MODE 为可选项。", exact=False).first.wait_for(timeout=20000)
+        assert len(posts) == 1
+        second = context.new_page()
+        navigate(second, WEB)
+        second.locator(".conversation-title").first.click()
+        second.get_by_text("SYN_MODE 为可选项。", exact=False).first.wait_for(timeout=15000)
+        data = httpx.get(
+            "http://127.0.0.1:8510/v1/conversations/" + run["conversation_id"] + "/workbench",
+            headers={"Authorization": auth[0]},
+            timeout=5,
+        ).json()
+        assert [turn["role"] for turn in data["turns"]] == ["user", "assistant"]
+        assert data["session"]["current_revision"] == 2
+        assert len(posts) == 1
+    finally:
+        context.close()

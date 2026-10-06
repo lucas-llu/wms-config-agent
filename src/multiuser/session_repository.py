@@ -160,7 +160,9 @@ class PostgresSessionRepository(SessionRepository):
                 connection.execute("SELECT set_config('app.purge','1',true)")
                 for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
                     connection.execute(
-                        f"DELETE FROM agent_checkpoints.{table} WHERE thread_id=%s", (session_id,)
+                        f"DELETE FROM agent_checkpoints.{table} WHERE thread_id IN "
+                        "(SELECT thread_id FROM checkpoint_threads WHERE session_id=%s)",
+                        (session_id,),
                     )
                 connection.execute("DELETE FROM sessions WHERE session_id=%s", (session_id,))
         return len(expected_revisions)

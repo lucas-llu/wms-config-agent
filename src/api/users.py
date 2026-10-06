@@ -25,6 +25,7 @@ class Start(Input):
     goal: str = Field(min_length=1, max_length=16000)
     workspace_id: str
     answer_strategy: Literal["standard", "review"] = "standard"
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class Rename(Input):
@@ -82,7 +83,15 @@ class Tool(Input):
 
 
 def create_app(
-    verifier, introspector, application, *, allowed_origins=(), account=None, web_config=None
+    verifier,
+    introspector,
+    application,
+    *,
+    allowed_origins=(),
+    account=None,
+    web_config=None,
+    run_limits=None,
+    durable_execution=False,
 ):
     @asynccontextmanager
     async def lifespan(app):
@@ -166,6 +175,8 @@ def create_app(
     @app.get("/v1/me")
     def me(request: Request, context: CurrentUser):
         profile = application.store.profile(context)
+        if durable_execution:
+            profile["durable_runs"] = True
         if account:
             profile.update(account.profile(context, request.state.access_token))
         return profile
@@ -227,9 +238,22 @@ def create_app(
 
     @app.post("/v1/conversations")
     def start(body: Start, request: Request, context: CurrentUser):
-        return application.start(
-            context, **body.model_dump(), identity_check=request.state.identity_check
-        )
+        if durable_execution:
+            from multiuser.queued_application import start_run
+
+            if body.idempotency_key is None:
+                raise HTTPException(422, "Idempotency key required")
+            return JSONResponse(
+                status_code=202,
+                content=start_run(
+                    application,
+                    context,
+                    **body.model_dump(),
+                    limits=run_limits,
+                ),
+            )
+        values = body.model_dump(exclude={"idempotency_key"})
+        return application.start(context, **values, identity_check=request.state.identity_check)
 
     @app.get("/v1/conversations/{session_id}")
     def get(session_id: str, context: CurrentUser):
@@ -278,6 +302,8 @@ def create_app(
 
     @app.post("/v1/conversations/{session_id}/continue")
     def continue_session(session_id: str, body: Continue, request: Request, context: CurrentUser):
+        if durable_execution:
+            raise HTTPException(409, "Submit an idempotent background run")
         return application.continue_session(
             context, session_id, **body.model_dump(), identity_check=request.state.identity_check
         )
@@ -361,6 +387,13 @@ def create_app(
 
     @app.post("/v1/tools/call")
     def tool(body: Tool, request: Request, context: CurrentUser):
+        if durable_execution and body.name in {
+            "start_configuration_session",
+            "continue_configuration_session",
+        }:
+            raise HTTPException(
+                409, "Use authenticated run submission; synchronous generation is disabled"
+            )
         return application.tool(
             context, body.name, body.arguments, identity_check=request.state.identity_check
         )
@@ -399,6 +432,11 @@ def create_app(
                 from multiuser.tools import parse
 
                 parsed = parse(arguments.name, arguments.arguments)
+                if durable_execution and arguments.name in {
+                    "start_configuration_session",
+                    "continue_configuration_session",
+                }:
+                    raise ValueError("Use authenticated background runs")
             except (ValueError, ValidationError):
                 return {
                     "jsonrpc": "2.0",
@@ -444,4 +482,10 @@ def create_app(
             }
         return {"jsonrpc": "2.0", "id": body.id, "result": result}
 
+    if durable_execution and run_limits is None:
+        raise ValueError("Durable execution requires configured run limits")
+    if run_limits is not None:
+        from api.runs import install_run_routes
+
+        install_run_routes(app, identity, application, run_limits)
     return app

@@ -1,0 +1,10 @@
+# Disposable additional PostgreSQL for fault drills; never touches P0 or user databases.
+services:
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: p0_admin
+      POSTGRES_PASSWORD: ${P0_DB_PASSWORD:?synthetic fixture required}
+      POSTGRES_DB: wms_p0
+    ports:
+      - "127.0.0.1:25433:5432"
