@@ -240,6 +240,44 @@ def test_ambiguous_provider_attempt_never_auto_replays(system):
     assert repo.claim(lease.run_id) is None
 
 
+def test_known_model_result_needs_checkpoint_takeover_not_restart(system):
+    repo, _, _, accepted = submit(system)
+    lease = repo.claim(accepted["run_id"])
+    repo.model_started(lease)
+    repo.model_finished(lease)
+    expire(system, lease.run_id)
+    assert repo.recover() == 1
+    assert repo.get(lease.run_id)["status"] == "recovery_required"
+    assert repo.pending() == []
+    assert repo.claim(lease.run_id) is None
+    with pytest.raises(LostLease):
+        repo.heartbeat(lease)
+
+
+def test_execution_deadline_independently_fences_and_recovers(system):
+    repo = repository(system, limits=RunLimits(lease_seconds=120, execution_seconds=5))
+    _, _, _, accepted = submit(system, repo)
+    lease = repo.claim(accepted["run_id"])
+    bounds = (
+        system[-1]
+        .execute(
+            "SELECT lease_until<=execution_deadline FROM agent_business.runs WHERE run_id=%s",
+            (lease.run_id,),
+        )
+        .fetchone()
+    )
+    assert bounds[0]
+    system[-1].execute(
+        "UPDATE agent_business.runs SET execution_deadline=clock_timestamp()-interval '1 second' "
+        "WHERE run_id=%s",
+        (lease.run_id,),
+    )
+    with pytest.raises(LostLease):
+        repo.heartbeat(lease)
+    assert repo.recover() == 1
+    assert repo.get(lease.run_id)["status"] == "queued"
+
+
 def test_recovery_bounded_cancel_timeout_and_delivery_ceiling(system):
     repo = repository(system, limits=RunLimits(max_deliveries=1))
     _, _, _, failed = submit(system, repo)
