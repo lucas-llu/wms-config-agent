@@ -82,7 +82,14 @@ class Tool(Input):
 
 
 def create_app(
-    verifier, introspector, application, *, allowed_origins=(), account=None, web_config=None
+    verifier,
+    introspector,
+    application,
+    *,
+    allowed_origins=(),
+    account=None,
+    web_config=None,
+    run_limits=None,
 ):
     @asynccontextmanager
     async def lifespan(app):
@@ -444,4 +451,8 @@ def create_app(
             }
         return {"jsonrpc": "2.0", "id": body.id, "result": result}
 
+    if run_limits is not None:
+        from api.runs import install_run_routes
+
+        install_run_routes(app, identity, application, run_limits)
     return app
