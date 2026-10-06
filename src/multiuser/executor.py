@@ -129,6 +129,13 @@ class RunExecutor:
                     # Pool is loop-scoped and bounded; model/index objects remain shared.
                     async with self.agent.saver(repository.context, lease=lease) as saver:
                         current = repository.execution(lease)
+                        with repository.store.transaction(repository.context) as connection:
+                            if not connection.execute(
+                                "SELECT 1 FROM agent_business.checkpoint_threads "
+                                "WHERE thread_id=%s AND session_id=%s",
+                                (current["source_thread"], lease.conversation_id),
+                            ).fetchone():
+                                raise RuntimeError("Checkpoint source conversation mismatch")
                         copied = await copy_checkpoint(
                             saver, current["source_thread"], lease.checkpoint_thread
                         )

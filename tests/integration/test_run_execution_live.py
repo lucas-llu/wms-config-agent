@@ -215,6 +215,19 @@ def test_cancel_during_model_does_not_publish_partial_user_or_late_answer(system
         assert repo.sessions.get_session(run["conversation_id"]).current_revision == 1
 
 
+def test_other_owned_conversation_checkpoint_source_is_rejected(system):
+    repo, run, _ = accepted(system)
+    other = new(system)
+    system[-1].execute(
+        "UPDATE agent_business.runs SET source_thread=%s WHERE run_id=%s", (other, run["run_id"])
+    )
+    with executor(system) as service:
+        result = service.execute(run["run_id"])
+        assert result["reason"] == "execution_failed"
+        assert repo.get(run["run_id"])["status"] == "failed"
+        assert repo.sessions.list_turns(run["conversation_id"]) == ()
+
+
 def test_real_authority_device_revocation_blocks_execution(system):
     repo, run, _ = accepted(system)
     with executor(system) as service:
