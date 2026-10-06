@@ -1,5 +1,6 @@
 export type Workspace = { workspace_id: string; role: string };
 export type Profile = {
+  durable_runs?: boolean;
   user_id: string;
   nickname: string;
   status: string;

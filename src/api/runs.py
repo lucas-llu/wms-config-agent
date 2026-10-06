@@ -60,6 +60,19 @@ def install_run_routes(app, identity, application, limits):
         repo = RunRepository(application.store, context, workspace, limits=limits)
         return repo.submit(session_id, RunRequest(**body.model_dump()))
 
+    @app.get("/v1/runs/lookup")
+    def lookup(
+        context: CurrentUser,
+        workspace_id: str,
+        idempotency_key: str,
+        conversation_id: str | None = None,
+    ):
+        from multiuser.queued_application import lookup_run
+
+        return lookup_run(
+            application, context, workspace_id, idempotency_key, conversation_id, limits=limits
+        )
+
     @app.get("/v1/conversations/{session_id}/runs/active")
     def active(session_id: str, context: CurrentUser):
         workspace = application.store.workspace_for(context, session_id)
@@ -70,6 +83,12 @@ def install_run_routes(app, identity, application, limits):
     @app.get("/v1/runs/{run_id}")
     def get(run_id: str, context: CurrentUser):
         return owned(context, run_id).get(run_id)
+
+    @app.get("/v1/runs/{run_id}/request")
+    def request_message(run_id: str, context: CurrentUser):
+        repo = owned(context, run_id)
+        with repo.store.transaction(context) as connection:
+            return {"message": repo._row(connection, run_id)["message"]}
 
     @app.post("/v1/runs/{run_id}/cancel")
     def cancel(run_id: str, context: CurrentUser):

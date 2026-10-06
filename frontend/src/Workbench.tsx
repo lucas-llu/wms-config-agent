@@ -7,6 +7,7 @@ import {
 } from "react";
 import Markdown from "react-markdown";
 import { Api, ApiError, resource } from "./api";
+import { clearPending, pendingRun, runLabel, savePending, terminal, watchRun, type Run } from "./runs";
 import { canReview, canSend, cleanEvidence, sidebarWidth } from "./view";
 import type {
   Auth,
@@ -173,6 +174,9 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState("");
+  const [activeRun, setActiveRun] = useState<Run>();
+  const [disconnected, setDisconnected] = useState(false);
+  const runStream = useRef<AbortController | undefined>(undefined);
   const [error, setError] = useState("");
   const [locked, setLocked] = useState(false);
   const [action, setAction] = useState<{
@@ -203,11 +207,52 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
   const handleError = (e: unknown) => {
     setError(e instanceof Error ? e.message : "操作未完成，请稍后再试。");
     if (e instanceof ApiError && [401, 403].includes(e.status)) {
+      runStream.current?.abort();
+      if (profile) clearPending(profile.user_id, workspace);
+      setPending(""); setActiveRun(undefined); setBusy(false);
       setLocked(true);
       setData(undefined);
       setSessions([]);
     }
   };
+  useEffect(() => () => runStream.current?.abort(), []);
+  const follow = (run: Run, epoch: number) => {
+    runStream.current?.abort();
+    const controller = new AbortController(); runStream.current = controller;
+    setActiveRun(run); setDisconnected(false); setBusy(!terminal(run.status));
+    requestLock.current = !terminal(run.status);
+    void watchRun(api, run, value => { if (epoch === viewEpoch.current && !controller.signal.aborted) setActiveRun(value); }, controller.signal)
+      .then(async result => {
+        if (controller.signal.aborted || epoch !== viewEpoch.current) return;
+        if (terminal(result.status)) {
+          setBusy(false); requestLock.current = false; setPending(""); setActiveRun(undefined);
+          if (profile) clearPending(profile.user_id, workspace);
+          if (result.status !== "succeeded") setError(runLabel(result));
+          await open(result.conversation_id);
+          if (result.status !== "succeeded") setError(runLabel(result));
+          await list();
+        }
+      }).catch(error => {
+        if (controller.signal.aborted || epoch !== viewEpoch.current) return;
+        handleError(error); setDisconnected(true);
+      });
+  };
+  const reconnect = async () => {
+    if (!profile) return;
+    try {
+      const saved = pendingRun(profile.user_id, workspace);
+      const params = new URLSearchParams({ workspace_id: workspace, idempotency_key: saved?.key || "" });
+      if (saved?.conversation) params.set("conversation_id", saved.conversation);
+      const run = activeRun || await api.request<Run>(`/v1/runs/lookup?${params}`);
+      setError(""); setDisconnected(false);
+      await open(run.conversation_id, undefined, run);
+    } catch (error) { handleError(error); }
+  };
+  useEffect(() => {
+    runStream.current?.abort(); viewEpoch.current++;
+    setData(undefined); setPending(""); setActiveRun(undefined); setBusy(false);
+    requestLock.current = false;
+  }, [workspace]);
   const list = async () => {
     const epoch = ++listEpoch.current;
     const path = listMode === "trash" ? "/v1/trash" : "/v1/conversations";
@@ -289,11 +334,24 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     };
   }, [workspace, query, listMode]);
   useEffect(() => {
+    if (!profile?.durable_runs || !workspace) return;
+    const saved = pendingRun(profile.user_id, workspace);
+    if (!saved) return;
+    let alive = true;
+    const parameters = new URLSearchParams({ workspace_id: workspace, idempotency_key: saved.key });
+    if (saved.conversation) parameters.set("conversation_id", saved.conversation);
+    void api.request<Run>(saved.run ? `/v1/runs/${encodeURIComponent(saved.run)}` : `/v1/runs/lookup?${parameters}`)
+      .then(run => { if (alive) return open(run.conversation_id, undefined, run); })
+      .catch(error => { if (alive) handleError(error); });
+    return () => { alive = false; runStream.current?.abort(); };
+  }, [profile?.user_id, profile?.durable_runs, workspace]);
+  useEffect(() => {
     if (data?.turns.length || pending)
       latest.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
     else if (messages.current) messages.current.scrollTop = 0;
   }, [data?.turns.length, pending, busy]);
-  const open = async (id: string, revision?: number) => {
+  const open = async (id: string, revision?: number, accepted?: Run) => {
+    runStream.current?.abort();
     setSidebarOpen(false);
     const epoch = ++viewEpoch.current;
     setError("");
@@ -305,9 +363,26 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       setPending("");
       setTab("chat");
       setPanel(undefined);
+      if (profile?.durable_runs && !revision) {
+        const run = accepted || await api.request<Run | null>(`${resource(id)}/runs/active`);
+        if (epoch !== viewEpoch.current) return;
+        if (run && !terminal(run.status)) {
+          const question = await api.request<{ message: string }>(`/v1/runs/${encodeURIComponent(run.run_id)}/request`);
+          if (epoch !== viewEpoch.current) return;
+          setPending(question.message); follow(run, epoch);
+        } else {
+          setBusy(false); requestLock.current = false; setActiveRun(undefined);
+          if (accepted && terminal(accepted.status)) {
+            clearPending(profile.user_id, workspace);
+            if (accepted.status !== "succeeded") setError(runLabel(accepted));
+          }
+        }
+      }
     }
   };
   const newChat = () => {
+    runStream.current?.abort();
+    if (profile?.durable_runs) { setBusy(false); requestLock.current = false; setActiveRun(undefined); }
     setSidebarOpen(false);
     viewEpoch.current++;
     setData(undefined);
@@ -330,6 +405,17 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     const strategy = review ? "review" : "standard";
     setReview(false);
     try {
+      if (profile?.durable_runs) {
+        const key = crypto.randomUUID();
+        const id = data?.session.session_id;
+        savePending(profile.user_id, workspace, { key, workspace, conversation: id });
+        const run = await api.request<Run>(id ? `${resource(id)}/runs` : "/v1/conversations", "POST",
+          id ? { message: message.trim(), expected_revision: data!.session.current_revision, answer_strategy: strategy, idempotency_key: key }
+             : { goal: message.trim(), workspace_id: workspace, answer_strategy: strategy, idempotency_key: key });
+        savePending(profile.user_id, workspace, { key, workspace, conversation: run.conversation_id, run: run.run_id });
+        await open(run.conversation_id, undefined, run); await list();
+        return;
+      }
       const result = await api.request<{
         session?: Session;
         session_id?: string;
@@ -356,11 +442,13 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       await list();
     } catch (e) {
       handleError(e);
+      if (profile?.durable_runs) setDisconnected(true);
       setError(
         (e instanceof Error ? e.message : "连接中断。") +
           " 不会自动重复发送，请刷新列表查看已保存的结果。",
       );
     } finally {
+      if (profile?.durable_runs && runStream.current && !runStream.current.signal.aborted) return;
       requestLock.current = false;
       setBusy(false);
     }
@@ -473,7 +561,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
             WMS Assistant<small>你的配置工作台</small>
           </span>
         </div>
-        <button className="new-chat" disabled={busy} onClick={newChat}>
+        <button className="new-chat" disabled={busy && !activeRun} onClick={newChat}>
           <Icon name="plus" />
           新对话<span aria-hidden="true">↵</span>
         </button>
@@ -1235,10 +1323,13 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                           <span />
                           <span />
                           <span />
-                          <p>正在处理你的问题…</p>
+                          <p>{activeRun ? runLabel(activeRun) : "正在处理你的问题…"}</p>
+                          {activeRun && <button type="button" disabled={activeRun.status === "cancelling"}
+                            onClick={() => void api.request<Run>(`/v1/runs/${encodeURIComponent(activeRun.run_id)}/cancel`, "POST").then(setActiveRun).catch(handleError)}>取消处理</button>}
                         </div>
                       </article>
                     )}
+                    {disconnected && profile?.durable_runs && <button type="button" onClick={() => void reconnect()}>重新连接进度</button>}
                     {!busy && data?.state.open_questions?.length ? (
                       <section className="questions">
                         <h3>还需要补充的信息</h3>

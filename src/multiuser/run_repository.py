@@ -5,7 +5,9 @@ Every operation uses the non-owner P1 role and a short RLS transaction. Worker
 integration must supply a freshly authorized context, never a queued bearer token.
 """
 
+import json
 import uuid
+from dataclasses import asdict
 
 from agents.repositories import SessionNotFoundError, SessionRevisionConflict
 from multiuser.runs import (
@@ -97,8 +99,10 @@ class RunRepository:
             connection.execute(
                 "INSERT INTO agent_business.runs(run_id,conversation_id,idempotency_key,"
                 "content_hash,message,answer_strategy,expected_revision,status,stage,"
-                "queue_deadline) "
+                "identity_issuer,identity_subject,identity_sid,identity_iat,"
+                "source_thread,queue_deadline) "
                 "VALUES(%s,%s,%s,%s,%s,%s,%s,'queued','queued',"
+                "%s,%s,%s,%s,%s,"
                 "clock_timestamp()+(%s*interval '1 second'))",
                 (
                     run_id,
@@ -108,6 +112,11 @@ class RunRepository:
                     request.message,
                     request.answer_strategy,
                     request.expected_revision,
+                    self.context.issuer,
+                    self.context.subject,
+                    self.context.sid,
+                    self.context.issued_at,
+                    session.get("last_checkpoint_thread") or session["checkpoint_thread_id"],
                     self.limits.queue_seconds,
                 ),
             )
@@ -212,8 +221,9 @@ class RunRepository:
             ).fetchone()
             thread = f"{run_id}:epoch:{row['epoch']}"
             connection.execute(
-                "INSERT INTO agent_business.checkpoint_threads(thread_id,session_id) VALUES(%s,%s)",
-                (thread, row["conversation_id"]),
+                "INSERT INTO agent_business.checkpoint_threads(thread_id,session_id,run_id,epoch) "
+                "VALUES(%s,%s,%s,%s)",
+                (thread, row["conversation_id"], run_id, row["epoch"]),
             )
             self._event(connection, run_id, "running", "retrieving")
             return RunLease(run_id, row["conversation_id"], row["epoch"], thread)
@@ -307,6 +317,10 @@ class RunRepository:
                 (revision, lease.run_id),
             )
             self._event(connection, lease.run_id, "succeeded", "succeeded", revision)
+            connection.execute(
+                "UPDATE agent_business.sessions SET last_checkpoint_thread=%s WHERE session_id=%s",
+                (lease.checkpoint_thread, lease.conversation_id),
+            )
             return public_run(self._row(connection, lease.run_id))
 
     @classmethod
@@ -334,6 +348,108 @@ class RunRepository:
             row = self._row(connection, lease.run_id, lock=True)
             if row["status"] == "cancelling" and row["epoch"] == lease.epoch:
                 self._end(connection, lease.run_id, "cancelled")
+                return True
+            return False
+
+    def execution(self, lease):
+        with self.store.transaction(self.context) as connection:
+            return self._fence(connection, lease)
+
+    def cached_call(self, lease, key):
+        from libs.llm import ChatResponse
+
+        with self.store.transaction(self.context) as connection:
+            self._fence(connection, lease)
+            row = connection.execute(
+                "SELECT response_json FROM agent_business.run_model_calls WHERE run_id=%s "
+                "AND call_key=%s AND status='returned' ORDER BY attempt DESC LIMIT 1",
+                (lease.run_id, key),
+            ).fetchone()
+            return ChatResponse(**json.loads(row["response_json"])) if row else None
+
+    def begin_call(self, lease, key):
+        with self.store.transaction(self.context) as connection:
+            self._fence(connection, lease)
+            row = connection.execute(
+                "SELECT coalesce(max(attempt),0)+1 AS n FROM agent_business.run_model_calls "
+                "WHERE run_id=%s AND call_key=%s",
+                (lease.run_id, key),
+            ).fetchone()
+            connection.execute(
+                "INSERT INTO agent_business.run_model_calls VALUES(%s,%s,%s,'inflight',NULL)",
+                (lease.run_id, key, row["n"]),
+            )
+            connection.execute(
+                "UPDATE agent_business.runs SET open_model_calls=open_model_calls+1,"
+                "model_attempts=model_attempts+1 WHERE run_id=%s",
+                (lease.run_id,),
+            )
+            return row["n"]
+
+    def finish_call(self, lease, key, attempt, response=None, *, rejected=False):
+        with self.store.transaction(self.context) as connection:
+            self._fence(connection, lease)
+            row = connection.execute(
+                "UPDATE agent_business.run_model_calls SET status=%s,response_json=%s "
+                "WHERE run_id=%s AND call_key=%s AND attempt=%s "
+                "AND status='inflight' RETURNING run_id",
+                (
+                    "rejected" if rejected else "returned",
+                    None if rejected else json.dumps(asdict(response), ensure_ascii=False),
+                    lease.run_id,
+                    key,
+                    attempt,
+                ),
+            ).fetchone()
+            if row is None:
+                raise RunConflict("model_attempt_changed")
+            connection.execute(
+                "UPDATE agent_business.runs SET open_model_calls=open_model_calls-1 "
+                "WHERE run_id=%s",
+                (lease.run_id,),
+            )
+
+    def prepared(self, lease):
+        with self.store.transaction(self.context) as connection:
+            self._fence(connection, lease)
+            connection.execute(
+                "UPDATE agent_business.runs SET resume_ready=true WHERE run_id=%s", (lease.run_id,)
+            )
+
+    def take_over(self, run_id):
+        """Caller has confirmed current SID validity; unknown calls never replay."""
+        with self.store.transaction(self.context) as connection:
+            self._account_lock(connection)
+            row = self._row(connection, run_id, lock=True)
+            session = self.sessions._select_session(connection, row["conversation_id"])
+            if (
+                session["current_revision"] != row["expected_revision"]
+                or connection.execute(
+                    "SELECT 1 FROM agent_business.runs WHERE conversation_id=%s AND run_id<>%s "
+                    "AND status IN ('queued','running','cancelling')",
+                    (row["conversation_id"], run_id),
+                ).fetchone()
+            ):
+                return False
+            old_thread = f"{run_id}:epoch:{row['epoch']}"
+            checkpoint = connection.execute(
+                "SELECT 1 FROM agent_checkpoints.checkpoints WHERE thread_id=%s LIMIT 1",
+                (old_thread,),
+            ).fetchone()
+            if row["status"] == "recovery_required" and checkpoint and not row["open_model_calls"]:
+                connection.execute(
+                    "UPDATE agent_business.runs SET status='queued',source_thread=%s,epoch=epoch+1,"
+                    "lease_until=NULL,execution_deadline=NULL,resume_ready=true,"
+                    "dispatch_after=clock_timestamp() "
+                    "WHERE run_id=%s",
+                    (old_thread, run_id),
+                )
+                connection.execute(
+                    "UPDATE agent_business.run_outbox SET dispatched=false,delivery_id=%s "
+                    "WHERE run_id=%s",
+                    (uuid.uuid4().hex, run_id),
+                )
+                self._event(connection, run_id, "queued", "queued")
                 return True
             return False
 

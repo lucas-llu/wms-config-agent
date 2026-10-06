@@ -12,7 +12,6 @@ TERMINAL = frozenset(
         "uncertain",
         "timed_out",
         "authorization_required",
-        "recovery_required",
     }
 )
 STAGES = frozenset({"queued", "retrieving", "generating", "validating", "persisting"})

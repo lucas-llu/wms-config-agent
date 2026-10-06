@@ -10,8 +10,9 @@ from multiuser.access import AccessDenied, context_values
 
 
 class UserPostgresSaver(AsyncPostgresSaver):
-    def __init__(self, pool, context):
+    def __init__(self, pool, context, *, lease=None):
         self.context = context
+        self.lease = lease
         super().__init__(pool, serde=JsonPlusSerializer(allowed_msgpack_modules=[]))
 
     async def setup(self):
@@ -31,5 +32,16 @@ class UserPostgresSaver(AsyncPostgresSaver):
             cursor = await connection.execute("SELECT identity_business.actor_active() AS active")
             if not (await cursor.fetchone())["active"]:
                 raise AccessDenied("Account or session is unavailable")
+            if self.lease:
+                cursor = await connection.execute(
+                    "SELECT 1 FROM agent_business.runs WHERE run_id=%s AND epoch=%s "
+                    "AND status='running' AND lease_until>clock_timestamp() "
+                    "AND execution_deadline>clock_timestamp() FOR SHARE",
+                    (self.lease.run_id, self.lease.epoch),
+                )
+                if await cursor.fetchone() is None:
+                    from multiuser.runs import LostLease
+
+                    raise LostLease("Checkpoint execution fenced")
             async with connection.cursor(binary=True, row_factory=dict_row) as cursor:
                 yield cursor
