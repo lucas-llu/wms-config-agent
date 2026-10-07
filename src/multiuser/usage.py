@@ -108,6 +108,8 @@ class UsageService:
         ).fetchone()
         if usage_run is None or usage_run["closed"]:
             raise QuotaExceeded()
+        if usage_run["provider_key"] != self.provider_key or usage_run["model"] != self.model:
+            raise RunConflict("metering_configuration_changed")
         reservation = connection.execute(
             "SELECT * FROM agent_business.quota_reservations WHERE run_id=%s AND period=%s",
             (run["run_id"], period),
@@ -202,7 +204,12 @@ class UsageService:
                     row["allocated"] if reservation["closed"] else charge,
                 )
             else:
-                removed = min(reservation["held_tokens"], max(0, charge - previous_charge))
+                delta = charge - previous_charge
+                removed = (
+                    delta
+                    if delta < 0 and not reservation["closed"]
+                    else min(reservation["held_tokens"], max(0, delta))
+                )
             connection.execute(
                 "UPDATE agent_business.quota_accounts SET used_tokens=used_tokens+%s,"
                 "held_tokens=held_tokens-%s WHERE user_id=%s AND period=%s",
