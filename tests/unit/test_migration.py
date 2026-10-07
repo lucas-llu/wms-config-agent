@@ -119,6 +119,8 @@ def test_unknown_provenance_and_corrupted_state_are_not_inferred(tmp_path):
     repository, sid = legacy(tmp_path, scoped=False)
     records = read_database(repository.database_path)
     assert project(records, *plan(sid))["receipts"] == []
+    records["turns"][0]["metadata_json"] = "{}"
+    assert project(records, *plan(sid))["receipts"] == []
     records["revisions"][0]["state_fingerprint"] = "bad"
     assert project(records, *plan(sid))["receipts"] == []
 
@@ -220,4 +222,28 @@ def test_post_cutover_preservation_does_not_restore_or_expose_credentials(tmp_pa
             tmp_path / "failed.dump",
             workers_stopped=True,
             runner=lambda *a, **kw: SimpleNamespace(returncode=1),
+        )
+
+
+def test_backup_rejects_implicit_routing_and_preserves_tls(monkeypatch, tmp_path):
+    monkeypatch.setenv("PGHOSTADDR", "wrong-server")
+    monkeypatch.setenv("PGSERVICE", "wrong-service")
+
+    def runner(argv, *, env, stdout, **kwargs):
+        assert "PGHOSTADDR" not in env and "PGSERVICE" not in env
+        assert env["PGSSLROOTCERT"] == "/private/root.pem" and env["PGSSLMODE"] == "verify-full"
+        assert "--schema=agent_checkpoints" in argv
+        stdout.write(b"fixture dump")
+        return SimpleNamespace(returncode=0)
+
+    preserve_post_cutover(
+        "host=localhost dbname=fixture user=operator "
+        "sslmode=verify-full sslrootcert=/private/root.pem",
+        tmp_path / "tls.dump",
+        workers_stopped=True,
+        runner=runner,
+    )
+    with pytest.raises(ValueError):
+        preserve_post_cutover(
+            "dbname=fixture", tmp_path / "bad.dump", workers_stopped=True, runner=runner
         )

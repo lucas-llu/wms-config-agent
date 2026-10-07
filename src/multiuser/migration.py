@@ -161,6 +161,8 @@ def project(records, assignments, policies, identities):
                 row["state_fingerprint"] = state_fingerprint(state)
             for row in subset["turns"]:
                 citations = json.loads(row["metadata_json"]).get("citations", [])
+                if row["role"] == "assistant" and not citations:
+                    raise ValueError("Unstructured historical assistant provenance")
                 if any(not workspace.permits_metadata(c) for c in citations):
                     raise ValueError("Unknown citation scope")
             for row in subset["exports"]:

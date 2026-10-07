@@ -169,3 +169,18 @@ def test_release_freeze_revision_and_readonly_rollback_are_not_runtime_permissio
         admin.execute(
             "UPDATE agent_business.release_state SET phase='active',revision=1 WHERE singleton"
         )
+
+
+def test_missing_release_metadata_blocks_new_business_writes(system):
+    admin = system[-1]
+    old = admin.execute("SELECT * FROM agent_business.release_state").fetchone()
+    admin.execute("DELETE FROM agent_business.release_state")
+    try:
+        result = system[0].post(
+            "/v1/conversations",
+            headers=system[1][0],
+            json={"workspace_id": system[3].workspace_id, "goal": "Synthetic must be denied"},
+        )
+        assert result.status_code == 503
+    finally:
+        admin.execute("INSERT INTO agent_business.release_state VALUES(%s,%s,%s,%s,%s)", old)
