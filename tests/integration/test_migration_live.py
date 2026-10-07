@@ -8,7 +8,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from psycopg import sql
-from psycopg.conninfo import make_conninfo
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from test_multiuser_p3_live import p1_system as base_system
 from test_multiuser_p3_live import system as base_fixture
 from test_multiuser_p3_live import tokens as base_tokens
@@ -237,7 +237,7 @@ def test_disposable_pg_dump_restore_keeps_post_cutover_usage_and_private_ownersh
     restored_db = "p5_restore_" + uuid.uuid4().hex
     system[-1].execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(restored_db)))
     with backup.open("rb") as stream:
-        result = subprocess.run(
+        restore_code = subprocess.run(
             [
                 *compose,
                 "exec",
@@ -245,15 +245,15 @@ def test_disposable_pg_dump_restore_keeps_post_cutover_usage_and_private_ownersh
                 "postgres",
                 "pg_restore",
                 "--exit-on-error",
-                "--username=postgres",
+                "--username=" + conninfo_to_dict(os.environ["P0_POSTGRES_DSN"])["user"],
                 "--dbname=" + restored_db,
             ],
             stdin=stream,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             check=False,
-        )
-    assert result.returncode == 0, "Disposable restore failed; raw diagnostics withheld"
+        ).returncode
+    assert restore_code == 0, "Disposable restore failed; raw diagnostics withheld"
     restored = AccessStore(make_conninfo(os.environ["P1_POSTGRES_DSN"], dbname=restored_db))
     try:
         owner = system[2][0]
