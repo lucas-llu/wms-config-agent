@@ -470,7 +470,23 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
         )
         a.get_by_role("button", name="我的账号", exact=False).click()
         a.get_by_role("button", name="我的用量", exact=True).click()
-        a.get_by_text("已用 24", exact=False).wait_for(timeout=15000)
+        usage = httpx.get(
+            "http://127.0.0.1:8510/v1/me/usage",
+            headers={"Authorization": auth[0]},
+            timeout=5,
+        ).json()
+        attempts = httpx.get(
+            "http://127.0.0.1:8510/v1/me/usage/attempts",
+            headers={"Authorization": auth[0]},
+            timeout=5,
+        ).json()
+        assert attempts and all(
+            r["source"] == "provider" and r["total_tokens"] == 12 for r in attempts
+        )
+        baseline = sum(r["total_tokens"] for r in attempts)
+        assert usage["used"] == baseline and usage["reserved"] == 0
+        assert usage["month_requests"] == 1
+        a.get_by_text(f"已用 {baseline} · 预留 0", exact=False).wait_for(timeout=15000)
         a.get_by_text("费用未知或价格未配置，不显示为 0", exact=True).wait_for()
         seed_unknown_usage(auth[0], ids[0], ws)
         b.get_by_role("button", name="刷新用量", exact=True).click()
@@ -508,14 +524,14 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
             == 409
         )
         a.get_by_role("button", name="刷新用量", exact=True).click()
-        a.get_by_text("已用 144 · 预留 0", exact=False).wait_for()
+        a.get_by_text(f"已用 {baseline + 120} · 预留 0", exact=False).wait_for()
         b.get_by_role("button", name=ids[0] + " · active", exact=True).click()
         b.get_by_label("月 token 额度", exact=True).fill("200000")
         b.get_by_label("管理操作原因", exact=True).fill("Synthetic approved quota")
         b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
         b.get_by_role("button", name="保存额度", exact=True).click()
         a.get_by_role("button", name="刷新用量", exact=True).click()
-        a.get_by_text("剩余 199856 / 200000 tokens", exact=False).wait_for()
+        a.get_by_text(f"剩余 {200000 - baseline - 120} / 200000 tokens", exact=False).wait_for()
         b.get_by_label("启用成员授权", exact=True).uncheck()
         confirm_authorization()
         b.get_by_role("button", name="保存成员授权", exact=True).click()
