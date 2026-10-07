@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { UsagePanel } from "../src/UsagePanel";
@@ -137,4 +137,28 @@ it("failed management writes remain visible without pretending they succeeded", 
   await screen.findByRole("alert");
   expect(screen.getByText("权限已撤销")).toBeInTheDocument();
   await user.click(screen.getByText("取消修改"));
+});
+
+it("does not overwrite newer usage filters with an older completed response", async () => {
+  let finish!: (value: unknown) => void;
+  const request = vi.fn(async (path: string) => {
+    if (path === "/v1/me/usage") return summary;
+    if (path.includes("strategy=review"))
+      return [{ ...row, model: "latest-model" }];
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  });
+  render(<UsagePanel api={{ request } as unknown as Api} />);
+  await userEvent
+    .setup()
+    .selectOptions(screen.getByLabelText("用量策略"), "review");
+  await screen.findByText("latest-model / standard");
+  await act(async () => {
+    finish([{ ...row, model: "obsolete-model" }]);
+  });
+  expect(screen.getByText("latest-model / standard")).toBeInTheDocument();
+  expect(
+    screen.queryByText("obsolete-model / standard"),
+  ).not.toBeInTheDocument();
 });

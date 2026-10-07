@@ -80,6 +80,8 @@ def install_usage_routes(app, identity, store, service):
 
         return JSONResponse(status_code=404, content={"detail": "Record not found"})
 
+    app.add_exception_handler(psycopg.errors.ForeignKeyViolation, missing_management)
+
     def require_admin(connection):
         if not connection.execute(
             "SELECT identity_business.platform_admin() AS allowed"

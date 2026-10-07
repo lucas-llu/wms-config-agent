@@ -470,7 +470,23 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
         )
         a.get_by_role("button", name="我的账号", exact=False).click()
         a.get_by_role("button", name="我的用量", exact=True).click()
-        a.get_by_text("已用 24", exact=False).wait_for(timeout=15000)
+        usage = httpx.get(
+            "http://127.0.0.1:8510/v1/me/usage",
+            headers={"Authorization": auth[0]},
+            timeout=5,
+        ).json()
+        attempts = httpx.get(
+            "http://127.0.0.1:8510/v1/me/usage/attempts",
+            headers={"Authorization": auth[0]},
+            timeout=5,
+        ).json()
+        assert attempts and all(
+            r["source"] == "provider" and r["total_tokens"] == 12 for r in attempts
+        )
+        baseline = sum(r["total_tokens"] for r in attempts)
+        assert usage["used"] == baseline and usage["reserved"] == 0
+        assert usage["month_requests"] == 1
+        a.get_by_text(f"已用 {baseline} · 预留 0", exact=False).wait_for(timeout=15000)
         a.get_by_text("费用未知或价格未配置，不显示为 0", exact=True).wait_for()
         seed_unknown_usage(auth[0], ids[0], ws)
         b.get_by_role("button", name="刷新用量", exact=True).click()
@@ -508,14 +524,28 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
             == 409
         )
         a.get_by_role("button", name="刷新用量", exact=True).click()
-        a.get_by_text("已用 144 · 预留 0", exact=False).wait_for()
-        b.get_by_role("button", name=ids[0] + " · active", exact=True).click()
+        a.get_by_text(f"已用 {baseline + 120} · 预留 0", exact=False).wait_for()
+        b.get_by_role("button", name="管理账号 " + ids[0], exact=True).click()
         b.get_by_label("月 token 额度", exact=True).fill("200000")
         b.get_by_label("管理操作原因", exact=True).fill("Synthetic approved quota")
         b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
-        b.get_by_role("button", name="保存额度", exact=True).click()
+        with b.expect_response(lambda r: r.url.endswith("/quota") and r.status == 200):
+            b.get_by_role("button", name="保存额度", exact=True).click()
         a.get_by_role("button", name="刷新用量", exact=True).click()
-        a.get_by_text("剩余 199856 / 200000 tokens", exact=False).wait_for()
+        a.get_by_text(f"剩余 {200000 - baseline - 120} / 200000 tokens", exact=False).wait_for()
+        b.get_by_role("button", name="Browser P4 fixture · " + ws, exact=True).click()
+        b.get_by_label("授权站点", exact=True).fill("DC02")
+        confirm_authorization()
+        with b.expect_response(lambda r: r.url.endswith("/scope") and r.status == 200):
+            b.get_by_role("button", name="保存知识范围", exact=True).click()
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/conversations/" + cid + "/workbench",
+                headers={"Authorization": auth[0]},
+                timeout=5,
+            ).status_code
+            == 403
+        )
         b.get_by_label("启用成员授权", exact=True).uncheck()
         confirm_authorization()
         b.get_by_role("button", name="保存成员授权", exact=True).click()
@@ -542,8 +572,44 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
         reports.mkdir(parents=True, exist_ok=True)
         b.screenshot(path=str(reports / "p4-management-desktop.png"), full_page=True)
         b.set_viewport_size({"width": 390, "height": 844})
+        b.get_by_role("button", name="打开侧栏", exact=True).click()
+        b.get_by_role("button", name="关闭侧栏", exact=True).click()
+        b.wait_for_function("document.querySelector('.sidebar').getBoundingClientRect().right <= 0")
+        b.get_by_text("工作区授权", exact=True).scroll_into_view_if_needed()
+        assert b.locator(
+            ".account-panel input:not([type=checkbox]),"
+            ".account-panel select,.account-panel textarea"
+        ).evaluate_all(
+            "elements => elements.filter(e => e.getClientRects().length).every(e => { "
+            "const r=e.getBoundingClientRect(); "
+            "return r.left >= 0 && r.right <= window.innerWidth; })"
+        )
         b.screenshot(path=str(reports / "p4-management-mobile.png"), full_page=True)
         assert b.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        b.set_viewport_size({"width": 1360, "height": 1000})
+        b.get_by_role("button", name="管理账号 " + ids[0], exact=True).click()
+        b.get_by_label("管理操作原因", exact=True).fill("Synthetic disable account approval")
+        b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
+        with b.expect_response(lambda r: r.url.endswith("/status") and r.status == 200):
+            b.get_by_role("button", name="停用账号", exact=True).click()
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
+            ).status_code
+            == 403
+        )
+        b.get_by_role("button", name="管理账号 " + ids[0], exact=True).click()
+        b.get_by_label("管理操作原因", exact=True).fill("Synthetic enable account approval")
+        b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
+        with b.expect_response(lambda r: r.url.endswith("/status") and r.status == 200):
+            b.get_by_role("button", name="启用账号", exact=True).click()
+        # Re-enabling must not resurrect the older browser token.
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
+            ).status_code
+            == 403
+        )
     finally:
         for context in contexts:
             context.close()

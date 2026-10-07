@@ -342,7 +342,32 @@ def test_manual_reconciliation_rejects_inflight_and_preserves_provider_result(sy
         assert service.summary(system[4], system[2][0])["used"] == 120
 
 
-def test_authorization_management_is_versioned_audited_and_scope_enforced(system):
+@pytest.fixture
+def management_workspace(system):
+    workspace = "workspace:" + uuid.uuid4().hex
+    try:
+        yield workspace
+    finally:
+        # Only this generated fixture scope; the global scheduler legitimately sees all runs.
+        system[-1].execute(
+            "DELETE FROM agent_business.runs r USING agent_business.sessions s "
+            "WHERE r.conversation_id=s.session_id AND s.workspace_id=%s",
+            (workspace,),
+        )
+        system[-1].execute(
+            "DELETE FROM agent_business.sessions WHERE workspace_id=%s", (workspace,)
+        )
+        system[-1].execute(
+            "DELETE FROM identity_business.memberships WHERE workspace_id=%s", (workspace,)
+        )
+        system[-1].execute(
+            "DELETE FROM identity_business.workspaces WHERE workspace_id=%s", (workspace,)
+        )
+
+
+def test_authorization_management_is_versioned_audited_and_scope_enforced(
+    system, management_workspace
+):
     with metered(system):
         issuer = os.environ["P0_OIDC_ISSUER"]
         with TestClient(
@@ -355,7 +380,7 @@ def test_authorization_management_is_versioned_audited_and_scope_enforced(system
             )
         ) as client:
             owner, admin = system[1]
-            ws = "workspace:" + uuid.uuid4().hex
+            ws = management_workspace
             path = f"/v1/admin/workspaces/{ws}/scope"
             body = {
                 "name": "Management fixture",
@@ -405,6 +430,34 @@ def test_authorization_management_is_versioned_audited_and_scope_enforced(system
             PostgresSessionRepository(system[4], system[2][0], ws).workspace.check(
                 "sites", ["DC01"]
             )
+            accepted = client.post(
+                "/v1/conversations",
+                headers=owner,
+                json={
+                    "workspace_id": ws,
+                    "goal": "Synthetic protected history",
+                    "answer_strategy": "standard",
+                    "idempotency_key": uuid.uuid4().hex,
+                },
+            ).json()
+            cid = accepted["conversation_id"]
+            repository = PostgresSessionRepository(system[4], system[2][0], ws)
+            repository.append_turn(
+                session_id=cid,
+                expected_revision=1,
+                role="assistant",
+                message="Synthetic DC01 answer",
+                metadata={
+                    "citations": [
+                        {
+                            "collection": "fixture",
+                            "module": "inbound",
+                            "site": "DC01",
+                            "environment": "test",
+                        }
+                    ]
+                },
+            )
             assert (
                 client.put(
                     path, headers=admin, json={**body, "expected_revision": 1, "sites": ["DC02"]}
@@ -415,6 +468,25 @@ def test_authorization_management_is_versioned_audited_and_scope_enforced(system
                 PostgresSessionRepository(system[4], system[2][0], ws).workspace.check(
                     "sites", ["DC01"]
                 )
+            assert (
+                client.get(f"/v1/conversations/{cid}/workbench", headers=owner).status_code == 403
+            )
+            for read in (
+                lambda: PostgresSessionRepository(system[4], system[2][0], ws).get_revision(cid, 1),
+                lambda: PostgresSessionRepository(system[4], system[2][0], ws).list_exports(cid),
+            ):
+                with pytest.raises(AccessDenied):
+                    read()
+            assert (
+                system[-1]
+                .execute(
+                    "SELECT count(*) FROM agent_business.turns "
+                    "WHERE session_id=%s AND role='assistant'",
+                    (cid,),
+                )
+                .fetchone()[0]
+                == 1
+            )
             assert (
                 client.put(
                     "/v1/admin/memberships",
@@ -443,6 +515,34 @@ def test_unknown_management_records_return_safe_errors(system):
                 system[5],
             )
         ) as client:
+            missing_id = uuid.uuid4().hex
+            assert (
+                client.put(
+                    "/v1/admin/accounts/" + missing_id + "/quota",
+                    headers=system[1][1],
+                    json={
+                        "monthly_tokens": 1000,
+                        "expected_revision": 0,
+                        "reason": "Synthetic absent quota target",
+                    },
+                ).status_code
+                == 404
+            )
+            assert (
+                client.put(
+                    "/v1/admin/memberships",
+                    headers=system[1][1],
+                    json={
+                        "user_id": missing_id,
+                        "workspace_id": system[3].workspace_id,
+                        "role": "member",
+                        "enabled": True,
+                        "expected_revision": 0,
+                        "reason": "Synthetic absent membership target",
+                    },
+                ).status_code
+                == 404
+            )
             assert (
                 client.put(
                     "/v1/admin/accounts/" + uuid.uuid4().hex + "/status",

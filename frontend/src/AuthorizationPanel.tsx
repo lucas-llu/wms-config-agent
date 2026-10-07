@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Api } from "./api";
 
 type Policy = {
@@ -64,16 +64,26 @@ export function AuthorizationPanel({
   const [revision, setRevision] = useState(0);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const generation = useRef(0);
   const load = async () => {
+    const current = ++generation.current;
     const [s, a] = await Promise.all([
       api.request<Snapshot>("/v1/admin/authorization"),
       api.request<Audit[]>("/v1/admin/audit"),
     ]);
+    if (current !== generation.current) return;
     setSnapshot(s);
     setAudit(a);
   };
   useEffect(() => {
-    void load().catch((e) => setError(e.message));
+    let alive = true;
+    void load().catch((e) => {
+      if (alive) setError(e.message);
+    });
+    return () => {
+      alive = false;
+      generation.current++;
+    };
   }, [api]);
   const member = snapshot.memberships.find(
     (m) => m.user_id === user && m.workspace_id === workspace,
