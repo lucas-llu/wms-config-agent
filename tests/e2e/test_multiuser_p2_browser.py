@@ -525,11 +525,12 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
         )
         a.get_by_role("button", name="刷新用量", exact=True).click()
         a.get_by_text(f"已用 {baseline + 120} · 预留 0", exact=False).wait_for()
-        b.get_by_role("button", name=ids[0] + " · active", exact=True).click()
+        b.get_by_role("button", name="管理账号 " + ids[0], exact=True).click()
         b.get_by_label("月 token 额度", exact=True).fill("200000")
         b.get_by_label("管理操作原因", exact=True).fill("Synthetic approved quota")
         b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
-        b.get_by_role("button", name="保存额度", exact=True).click()
+        with b.expect_response(lambda r: r.url.endswith("/quota") and r.status == 200):
+            b.get_by_role("button", name="保存额度", exact=True).click()
         a.get_by_role("button", name="刷新用量", exact=True).click()
         a.get_by_text(f"剩余 {200000 - baseline - 120} / 200000 tokens", exact=False).wait_for()
         b.get_by_label("启用成员授权", exact=True).uncheck()
@@ -560,6 +561,30 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
         b.set_viewport_size({"width": 390, "height": 844})
         b.screenshot(path=str(reports / "p4-management-mobile.png"), full_page=True)
         assert b.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        b.set_viewport_size({"width": 1360, "height": 1000})
+        b.get_by_role("button", name="管理账号 " + ids[0], exact=True).click()
+        b.get_by_label("管理操作原因", exact=True).fill("Synthetic disable account approval")
+        b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
+        with b.expect_response(lambda r: r.url.endswith("/status") and r.status == 200):
+            b.get_by_role("button", name="停用账号", exact=True).click()
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
+            ).status_code
+            == 401
+        )
+        b.get_by_role("button", name="管理账号 " + ids[0], exact=True).click()
+        b.get_by_label("管理操作原因", exact=True).fill("Synthetic enable account approval")
+        b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
+        with b.expect_response(lambda r: r.url.endswith("/status") and r.status == 200):
+            b.get_by_role("button", name="启用账号", exact=True).click()
+        # Re-enabling must not resurrect the older browser token.
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
+            ).status_code
+            == 401
+        )
     finally:
         for context in contexts:
             context.close()

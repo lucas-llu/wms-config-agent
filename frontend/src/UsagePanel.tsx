@@ -244,6 +244,7 @@ export function UsagePanel({
           {accounts.map((a) => (
             <button
               key={a.user_id}
+              aria-label={`管理账号 ${a.user_id}`}
               onClick={() => {
                 setTarget(a);
                 setQuota(a.monthly_tokens);
