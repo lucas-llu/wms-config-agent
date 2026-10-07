@@ -443,6 +443,34 @@ def test_unknown_management_records_return_safe_errors(system):
                 system[5],
             )
         ) as client:
+            missing_id = uuid.uuid4().hex
+            assert (
+                client.put(
+                    "/v1/admin/accounts/" + missing_id + "/quota",
+                    headers=system[1][1],
+                    json={
+                        "monthly_tokens": 1000,
+                        "expected_revision": 0,
+                        "reason": "Synthetic absent quota target",
+                    },
+                ).status_code
+                == 404
+            )
+            assert (
+                client.put(
+                    "/v1/admin/memberships",
+                    headers=system[1][1],
+                    json={
+                        "user_id": missing_id,
+                        "workspace_id": system[3].workspace_id,
+                        "role": "member",
+                        "enabled": True,
+                        "expected_revision": 0,
+                        "reason": "Synthetic absent membership target",
+                    },
+                ).status_code
+                == 404
+            )
             assert (
                 client.put(
                     "/v1/admin/accounts/" + uuid.uuid4().hex + "/status",

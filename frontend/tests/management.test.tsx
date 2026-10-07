@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { AuthorizationPanel } from "../src/AuthorizationPanel";
@@ -201,4 +201,37 @@ it("shows an empty reconciliation queue", () => {
     <ReconciliationPanel api={{} as Api} rows={[]} reload={async () => {}} />,
   );
   expect(screen.getByText("暂无待对账记录")).toBeVisible();
+});
+
+it("does not publish authorization replies from the previous API identity", async () => {
+  let resolveOld!: (value: unknown) => void;
+  const oldRequest = vi.fn((path: string) =>
+    path.endsWith("audit")
+      ? Promise.resolve([])
+      : new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+  );
+  const newRequest = vi.fn(async (path: string) =>
+    path.endsWith("audit") ? [] : { workspaces: [], memberships: [] },
+  );
+  const { rerender } = render(
+    <AuthorizationPanel
+      api={{ request: oldRequest } as unknown as Api}
+      accounts={[a]}
+    />,
+  );
+  rerender(
+    <AuthorizationPanel
+      api={{ request: newRequest } as unknown as Api}
+      accounts={[a]}
+    />,
+  );
+  await waitFor(() => expect(newRequest).toHaveBeenCalledTimes(2));
+  await act(async () => {
+    resolveOld({ workspaces: [w], memberships: [m] });
+  });
+  expect(
+    screen.queryByText("测试库 · workspace:fixture"),
+  ).not.toBeInTheDocument();
 });
