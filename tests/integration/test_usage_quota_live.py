@@ -53,6 +53,10 @@ def metered(system, *, limit=1000, budget=300):
     store = system[4]
     store.usage = service
     # Shared synthetic identity across tests, reset only these fixture user quota limits.
+    for table in ("usage_attempts", "quota_reservations", "usage_runs"):
+        system[-1].execute(
+            f"DELETE FROM agent_business.{table} WHERE owner_user_id=%s", (system[2][0].user_id,)
+        )
     system[-1].execute(
         "DELETE FROM agent_business.quota_accounts WHERE user_id=%s", (system[2][0].user_id,)
     )
