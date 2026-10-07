@@ -175,8 +175,12 @@ class GovernedLLM:
                 raise
             if self.accounting is not None:
                 self.accounting.record(self.lease.run_id, key, attempt, response)
+                returned_usage = response.metadata.get("usage")
                 self.governor.release(
-                    permit, actual=response.metadata.get("usage", {}).get("total_tokens")
+                    permit,
+                    actual=returned_usage.get("total_tokens")
+                    if isinstance(returned_usage, dict)
+                    else None,
                 )
             self.guard()
             self.repository.finish_call(self.lease, key, attempt, response)

@@ -115,3 +115,16 @@ CREATE TRIGGER immutable_usage_run BEFORE UPDATE ON agent_business.usage_runs
  FOR EACH ROW EXECUTE FUNCTION agent_business.immutable_accounting();
 CREATE TRIGGER immutable_usage_attempt BEFORE UPDATE ON agent_business.usage_attempts
  FOR EACH ROW EXECUTE FUNCTION agent_business.immutable_accounting();
+CREATE FUNCTION agent_business.immutable_meter_details() RETURNS trigger LANGUAGE plpgsql
+AS $$ BEGIN
+ IF (to_jsonb(NEW)-ARRAY['closed','held_tokens','status','source','input_tokens','output_tokens',
+ 'total_tokens','cached_tokens','reasoning_tokens','estimated_cost','provider_request_id','revision','finished_at'])
+ IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['closed','held_tokens','status','source','input_tokens','output_tokens',
+ 'total_tokens','cached_tokens','reasoning_tokens','estimated_cost','provider_request_id','revision','finished_at']) THEN
+ RAISE EXCEPTION 'immutable meter detail' USING ERRCODE='42501'; END IF; RETURN NEW; END $$;
+CREATE TRIGGER immutable_run_details BEFORE UPDATE ON agent_business.usage_runs
+ FOR EACH ROW EXECUTE FUNCTION agent_business.immutable_meter_details();
+CREATE TRIGGER immutable_attempt_details BEFORE UPDATE ON agent_business.usage_attempts
+ FOR EACH ROW EXECUTE FUNCTION agent_business.immutable_meter_details();
+CREATE TRIGGER immutable_reservation_details BEFORE UPDATE ON agent_business.quota_reservations
+ FOR EACH ROW EXECUTE FUNCTION agent_business.immutable_meter_details();

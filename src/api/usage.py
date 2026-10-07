@@ -160,7 +160,7 @@ def install_usage_routes(app, identity, store, service):
                 "attempt_id,owner_user_id,run_id,period,allocated,status,source,"
                 "revision,started_at "
                 "FROM agent_business.usage_attempts WHERE source IN "
-                "('unknown','estimated') ORDER BY started_at LIMIT 100"
+                "('unknown','estimated') AND status<>'inflight' ORDER BY started_at LIMIT 100"
             ).fetchall()
 
     @app.post("/v1/admin/usage/{attempt_id}/reconcile")
@@ -179,10 +179,15 @@ def install_usage_routes(app, identity, store, service):
                 "SELECT * FROM agent_business.usage_attempts WHERE attempt_id=%s FOR UPDATE",
                 (attempt_id,),
             ).fetchone()
-            if row["revision"] != body.expected_revision or row["source"] not in {
-                "unknown",
-                "estimated",
-            }:
+            if (
+                row["status"] == "inflight"
+                or row["revision"] != body.expected_revision
+                or row["source"]
+                not in {
+                    "unknown",
+                    "estimated",
+                }
+            ):
                 raise RunConflict("usage_changed")
             usage = Usage(
                 "provider",
