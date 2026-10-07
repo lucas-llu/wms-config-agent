@@ -34,6 +34,7 @@ def prepare():
             (4, "004_review_dispatch.sql"),
             (5, "005_usage_quota.sql"),
             (6, "006_authorization_management.sql"),
+            (7, "007_migration_release.sql"),
         ):
             source = Path("migrations", name).read_text(encoding="utf-8")
             digest = hashlib.sha256(source.encode()).hexdigest()
@@ -53,6 +54,8 @@ def prepare():
             connection.execute(
                 "INSERT INTO agent_business.schema_migrations VALUES(%s,%s)", (version, digest)
             )
+        # This script is explicitly a disposable test fixture, never a production installer.
+        connection.execute("UPDATE agent_business.release_state SET phase='active' WHERE singleton")
     print("P3 durable-run migration ready; P1 runtime remains non-owner and RLS-enforced")
 
 

@@ -569,7 +569,10 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
       else await open(id);
     }
   };
-  const historical = !!data && data.revision !== data.session.current_revision;
+  const legacyReadonly = !!data?.session.legacy_readonly;
+  const historical =
+    !!data &&
+    (data.revision !== data.session.current_revision || legacyReadonly);
   const role = profile?.workspaces.find(
     (w) => w.workspace_id === workspace,
   )?.role;
@@ -1074,7 +1077,9 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
               <>
                 {historical && (
                   <p className="notice">
-                    正在查看历史轮次，只读，不会修改当前方案。
+                    {legacyReadonly
+                      ? "迁入的旧对话仅供阅读，旧检查点不自动恢复；请在新对话继续。"
+                      : "正在查看历史轮次，只读，不会修改当前方案。"}
                   </p>
                 )}
                 <div className="workspace-grid">
@@ -1479,6 +1484,11 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
               </div>
             </div>
             <div className="composer-dock">
+              {legacyReadonly && (
+                <p className="notice">
+                  迁入的旧对话仅供阅读；请新建对话继续配置。
+                </p>
+              )}
               <form className="composer" onSubmit={submit}>
                 <textarea
                   aria-label="输入问题"
