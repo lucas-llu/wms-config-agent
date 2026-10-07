@@ -1,20 +1,27 @@
 """P5 offline import and read-only rollback guard in disposable real PG/OIDC."""
 
 import os
+import subprocess
 import uuid
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg import sql
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from test_multiuser_p3_live import p1_system as base_system
 from test_multiuser_p3_live import system as base_fixture
 from test_multiuser_p3_live import tokens as base_tokens
+from test_usage_quota_live import metered, start
 
 from agents.repositories import SessionRepository
 from api.users import create_app
+from libs.llm import ChatResponse
+from multiuser.access import AccessStore
 from multiuser.identity import OIDCVerifier
 from multiuser.migration import import_snapshot, snapshot
-from multiuser.release import prepare_phase
+from multiuser.release import prepare_phase, preserve_post_cutover
+from multiuser.run_repository import RunRepository
 from multiuser.runs import RunLimits
 from multiuser.session_auth import TokenIntrospector
 
@@ -169,3 +176,113 @@ def test_release_freeze_revision_and_readonly_rollback_are_not_runtime_permissio
         admin.execute(
             "UPDATE agent_business.release_state SET phase='active',revision=1 WHERE singleton"
         )
+
+
+def test_missing_release_metadata_blocks_new_business_writes(system):
+    admin = system[-1]
+    old = admin.execute("SELECT * FROM agent_business.release_state").fetchone()
+    admin.execute("DELETE FROM agent_business.release_state")
+    try:
+        result = system[0].post(
+            "/v1/conversations",
+            headers=system[1][0],
+            json={"workspace_id": system[3].workspace_id, "goal": "Synthetic must be denied"},
+        )
+        assert result.status_code == 503
+    finally:
+        admin.execute("INSERT INTO agent_business.release_state VALUES(%s,%s,%s,%s,%s)", old)
+
+
+def test_disposable_pg_dump_restore_keeps_post_cutover_usage_and_private_ownership(
+    system, tmp_path
+):
+    """Use the fixture container's matching PG client; never target a real database."""
+    with metered(system) as service:
+        run = start(system)
+        repo = RunRepository(system[4], system[2][0], system[3].workspace_id)
+        lease = repo.claim(run["run_id"])
+        number = repo.begin_call(lease, "fixture", usage=(service, 200, 100))
+        response = ChatResponse(
+            "Synthetic returned metadata", metadata={"usage": {"total_tokens": 37}}
+        )
+        service.record(lease.run_id, "fixture", number, response)
+        repo.finish_call(lease, "fixture", number, response)
+        repo.cancel(lease.run_id)
+        repo.acknowledge_cancel(lease)
+        service.reconcile_terminal()
+    compose = [
+        "docker",
+        "compose",
+        "--env-file",
+        "data/p0-fixture/.env",
+        "-f",
+        "infra/p0/compose.yml",
+    ]
+
+    def container(argv, *, env, stdout, stderr, check):
+        fixture_env = {**os.environ, **env, "PGHOST": "127.0.0.1", "PGPORT": "5432"}
+        prefix = [*compose, "exec", "-T"]
+        for name in ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"):
+            if name in fixture_env:
+                prefix += ["-e", name]
+        return subprocess.run(
+            [*prefix, "postgres", *argv], env=fixture_env, stdout=stdout, stderr=stderr, check=check
+        )
+
+    backup = tmp_path / "post-cutover.dump"
+    preserved = preserve_post_cutover(
+        os.environ["P0_POSTGRES_DSN"], backup, workers_stopped=True, runner=container
+    )
+    assert preserved["bytes"] > 0 and preserved["legacy_writes_allowed"] is False
+    restored_db = "p5_restore_" + uuid.uuid4().hex
+    system[-1].execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(restored_db)))
+    with backup.open("rb") as stream:
+        restore_code = subprocess.run(
+            [
+                *compose,
+                "exec",
+                "-T",
+                "postgres",
+                "pg_restore",
+                "--exit-on-error",
+                "--username=" + conninfo_to_dict(os.environ["P0_POSTGRES_DSN"])["user"],
+                "--dbname=" + restored_db,
+            ],
+            stdin=stream,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        ).returncode
+    assert restore_code == 0, "Disposable restore failed; raw diagnostics withheld"
+    restored = AccessStore(make_conninfo(os.environ["P1_POSTGRES_DSN"], dbname=restored_db))
+    try:
+        owner = system[2][0]
+        with restored.transaction(owner) as connection:
+            assert connection.execute(
+                "SELECT used_tokens,held_tokens FROM agent_business.quota_accounts "
+                "WHERE user_id=%s",
+                (owner.user_id,),
+            ).fetchone() == {"used_tokens": 37, "held_tokens": 0}
+            assert (
+                connection.execute(
+                    "SELECT count(*) AS n FROM agent_business.usage_attempts "
+                    "WHERE owner_user_id=%s",
+                    (owner.user_id,),
+                ).fetchone()["n"]
+                == 1
+            )
+            assert connection.execute(
+                "SELECT session_id FROM agent_business.sessions WHERE session_id=%s",
+                (run["conversation_id"],),
+            ).fetchone()
+        with restored.transaction(system[2][1]) as connection:
+            assert (
+                connection.execute(
+                    "SELECT session_id FROM agent_business.sessions WHERE session_id=%s",
+                    (run["conversation_id"],),
+                ).fetchone()
+                is None
+            )
+    finally:
+        restored.close()
+    # This database belongs solely to this compose project; job teardown destroys its volume.

@@ -71,16 +71,25 @@ def preserve_post_cutover(dsn, destination, *, workers_stopped=False, runner=sub
         raise ValueError("New private backup destination required")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     info = conninfo_to_dict(dsn)
-    env = {**os.environ}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PG")}
+    names = {
+        "host": "PGHOST",
+        "hostaddr": "PGHOSTADDR",
+        "port": "PGPORT",
+        "dbname": "PGDATABASE",
+        "user": "PGUSER",
+        "password": "PGPASSWORD",
+        "passfile": "PGPASSFILE",
+        "sslmode": "PGSSLMODE",
+        "sslrootcert": "PGSSLROOTCERT",
+        "sslcert": "PGSSLCERT",
+        "sslkey": "PGSSLKEY",
+        "connect_timeout": "PGCONNECT_TIMEOUT",
+    }
+    if set(info) - set(names) or not all(info.get(k) for k in ("host", "dbname", "user")):
+        raise ValueError("Explicit supported database/TLS configuration required")
     # Credentials stay in child environment, never argv or output. Operators protect that host.
-    for source, target in (
-        ("host", "PGHOST"),
-        ("port", "PGPORT"),
-        ("dbname", "PGDATABASE"),
-        ("user", "PGUSER"),
-        ("password", "PGPASSWORD"),
-        ("sslmode", "PGSSLMODE"),
-    ):
+    for source, target in names.items():
         if source in info:
             env[target] = info[source]
     with path.open("xb") as output:
@@ -91,6 +100,9 @@ def preserve_post_cutover(dsn, destination, *, workers_stopped=False, runner=sub
                 "--no-password",
                 "--role=p1_migrator",
                 "--enable-row-security",
+                "--schema=identity_business",
+                "--schema=agent_business",
+                "--schema=agent_checkpoints",
             ],
             env=env,
             stdout=output,

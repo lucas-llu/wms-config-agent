@@ -35,6 +35,7 @@ def prepare():
             (5, "005_usage_quota.sql"),
             (6, "006_authorization_management.sql"),
             (7, "007_migration_release.sql"),
+            (8, "008_release_safety.sql"),
         ):
             source = Path("migrations", name).read_text(encoding="utf-8")
             digest = hashlib.sha256(source.encode()).hexdigest()
