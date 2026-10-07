@@ -584,7 +584,7 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
             httpx.get(
                 "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
             ).status_code
-            == 401
+            == 403
         )
         b.get_by_role("button", name="管理账号 " + ids[0], exact=True).click()
         b.get_by_label("管理操作原因", exact=True).fill("Synthetic enable account approval")
@@ -596,7 +596,7 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
             httpx.get(
                 "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[0]}, timeout=5
             ).status_code
-            == 401
+            == 403
         )
     finally:
         for context in contexts:
