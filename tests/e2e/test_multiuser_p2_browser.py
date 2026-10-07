@@ -533,6 +533,19 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
             b.get_by_role("button", name="保存额度", exact=True).click()
         a.get_by_role("button", name="刷新用量", exact=True).click()
         a.get_by_text(f"剩余 {200000 - baseline - 120} / 200000 tokens", exact=False).wait_for()
+        b.get_by_role("button", name="Browser P4 fixture · " + ws, exact=True).click()
+        b.get_by_label("授权站点", exact=True).fill("DC02")
+        confirm_authorization()
+        with b.expect_response(lambda r: r.url.endswith("/scope") and r.status == 200):
+            b.get_by_role("button", name="保存知识范围", exact=True).click()
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/conversations/" + cid + "/workbench",
+                headers={"Authorization": auth[0]},
+                timeout=5,
+            ).status_code
+            == 403
+        )
         b.get_by_label("启用成员授权", exact=True).uncheck()
         confirm_authorization()
         b.get_by_role("button", name="保存成员授权", exact=True).click()

@@ -115,6 +115,23 @@ class PostgresSessionRepository(SessionRepository):
         ).fetchone()
         if row is None:
             raise SessionNotFoundError("Conversation not found")
+        # P4 policies are editable: check historical evidence at the common parent gate.
+        for saved in connection.execute(
+            "SELECT state_json FROM revisions WHERE session_id=%s", (session_id,)
+        ).fetchall():
+            try:
+                self.workspace.validate_state(json.loads(saved["state_json"]))
+            except ValueError as exc:
+                raise AccessDenied("Conversation evidence is outside current scope") from exc
+        for saved in connection.execute(
+            "SELECT metadata_json FROM turns WHERE session_id=%s AND role='assistant'",
+            (session_id,),
+        ).fetchall():
+            if any(
+                not self.workspace.permits_metadata(citation)
+                for citation in json.loads(saved["metadata_json"]).get("citations", [])
+            ):
+                raise AccessDenied("Conversation evidence is outside current scope")
         return row
 
     def list_sessions(self, *, limit=100):

@@ -405,6 +405,34 @@ def test_authorization_management_is_versioned_audited_and_scope_enforced(system
             PostgresSessionRepository(system[4], system[2][0], ws).workspace.check(
                 "sites", ["DC01"]
             )
+            accepted = client.post(
+                "/v1/conversations",
+                headers=owner,
+                json={
+                    "workspace_id": ws,
+                    "goal": "Synthetic protected history",
+                    "answer_strategy": "standard",
+                    "idempotency_key": uuid.uuid4().hex,
+                },
+            ).json()
+            cid = accepted["conversation_id"]
+            repository = PostgresSessionRepository(system[4], system[2][0], ws)
+            repository.append_turn(
+                session_id=cid,
+                expected_revision=1,
+                role="assistant",
+                message="Synthetic DC01 answer",
+                metadata={
+                    "citations": [
+                        {
+                            "collection": "fixture",
+                            "module": "inbound",
+                            "site": "DC01",
+                            "environment": "test",
+                        }
+                    ]
+                },
+            )
             assert (
                 client.put(
                     path, headers=admin, json={**body, "expected_revision": 1, "sites": ["DC02"]}
@@ -415,6 +443,24 @@ def test_authorization_management_is_versioned_audited_and_scope_enforced(system
                 PostgresSessionRepository(system[4], system[2][0], ws).workspace.check(
                     "sites", ["DC01"]
                 )
+            assert (
+                client.get(f"/v1/conversations/{cid}/workbench", headers=owner).status_code == 403
+            )
+            for read in (
+                lambda: PostgresSessionRepository(system[4], system[2][0], ws).get_revision(cid, 1),
+                lambda: PostgresSessionRepository(system[4], system[2][0], ws).list_exports(cid),
+            ):
+                with pytest.raises(AccessDenied):
+                    read()
+            assert (
+                system[-1]
+                .execute(
+                    "SELECT count(*) FROM agent_business.turns WHERE session_id=%s AND role='assistant'",
+                    (cid,),
+                )
+                .fetchone()[0]
+                == 1
+            )
             assert (
                 client.put(
                     "/v1/admin/memberships",
