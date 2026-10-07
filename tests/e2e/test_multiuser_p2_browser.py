@@ -575,9 +575,12 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
         b.get_by_role("button", name="关闭侧栏", exact=True).click()
         b.get_by_text("工作区授权", exact=True).scroll_into_view_if_needed()
         assert b.locator(
-            ".account-panel input:not([type=checkbox]),.account-panel select,.account-panel textarea"
+            ".account-panel input:not([type=checkbox]),"
+            ".account-panel select,.account-panel textarea"
         ).evaluate_all(
-            "elements => elements.filter(e => e.getClientRects().length).every(e => { const r=e.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })"
+            "elements => elements.filter(e => e.getClientRects().length).every(e => { "
+            "const r=e.getBoundingClientRect(); "
+            "return r.left >= 0 && r.right <= window.innerWidth; })"
         )
         b.screenshot(path=str(reports / "p4-management-mobile.png"), full_page=True)
         assert b.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
