@@ -342,7 +342,32 @@ def test_manual_reconciliation_rejects_inflight_and_preserves_provider_result(sy
         assert service.summary(system[4], system[2][0])["used"] == 120
 
 
-def test_authorization_management_is_versioned_audited_and_scope_enforced(system):
+@pytest.fixture
+def management_workspace(system):
+    workspace = "workspace:" + uuid.uuid4().hex
+    try:
+        yield workspace
+    finally:
+        # Only this generated fixture scope; the global scheduler legitimately sees all runs.
+        system[-1].execute(
+            "DELETE FROM agent_business.runs r USING agent_business.sessions s "
+            "WHERE r.conversation_id=s.session_id AND s.workspace_id=%s",
+            (workspace,),
+        )
+        system[-1].execute(
+            "DELETE FROM agent_business.sessions WHERE workspace_id=%s", (workspace,)
+        )
+        system[-1].execute(
+            "DELETE FROM identity_business.memberships WHERE workspace_id=%s", (workspace,)
+        )
+        system[-1].execute(
+            "DELETE FROM identity_business.workspaces WHERE workspace_id=%s", (workspace,)
+        )
+
+
+def test_authorization_management_is_versioned_audited_and_scope_enforced(
+    system, management_workspace
+):
     with metered(system):
         issuer = os.environ["P0_OIDC_ISSUER"]
         with TestClient(
@@ -355,7 +380,7 @@ def test_authorization_management_is_versioned_audited_and_scope_enforced(system
             )
         ) as client:
             owner, admin = system[1]
-            ws = "workspace:" + uuid.uuid4().hex
+            ws = management_workspace
             path = f"/v1/admin/workspaces/{ws}/scope"
             body = {
                 "name": "Management fixture",
