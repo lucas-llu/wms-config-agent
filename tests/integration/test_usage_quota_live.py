@@ -455,7 +455,8 @@ def test_authorization_management_is_versioned_audited_and_scope_enforced(system
             assert (
                 system[-1]
                 .execute(
-                    "SELECT count(*) FROM agent_business.turns WHERE session_id=%s AND role='assistant'",
+                    "SELECT count(*) FROM agent_business.turns "
+                    "WHERE session_id=%s AND role='assistant'",
                     (cid,),
                 )
                 .fetchone()[0]
