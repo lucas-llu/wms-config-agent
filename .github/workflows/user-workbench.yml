@@ -59,6 +59,16 @@ jobs:
           python scripts/prepare_p3_database.py
       - name: Real registration, verified mail, private chat and password revocation
         run: python -m pytest tests/e2e/test_multiuser_p2_browser.py -q --junitxml=data/p2-reports/browser.xml
+      - name: Preserve synthetic browser acceptance reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-acceptance
+          path: |
+            data/p2-reports/*.png
+            data/p2-reports/browser.xml
+          retention-days: 7
+          if-no-files-found: warn
       - name: Stop only this job's disposable services
         if: always()
         run: docker compose --env-file data/p0-fixture/.env -f infra/p0/compose.yml -f infra/p2/compose.yml down --volumes
