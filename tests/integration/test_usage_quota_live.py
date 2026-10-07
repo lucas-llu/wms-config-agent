@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from test_multiuser_p3_live import p1_system as base_system
 from test_multiuser_p3_live import system as system_fixture
 from test_multiuser_p3_live import tokens as tokens_fixture
+from test_run_execution_live import executor
 
 from api.users import create_app
 from libs.llm import ChatResponse
@@ -278,3 +279,62 @@ def test_month_rollover_preserves_previous_usage_and_rechecks_new_quota(system, 
             .fetchone()
         )
         assert old == (80, 0) and new == (0, 220)
+
+
+def test_whole_executor_records_each_real_attempt_once_and_releases_unused_budget(system):
+    with metered(system, budget=100000, limit=200000) as service:
+        run = start(system)
+        with executor(system) as worker:
+            result = worker.execute(run["run_id"])
+            assert result.get("committed"), result
+            assert not worker.execute(run["run_id"])["accepted"]
+        summary = service.summary(system[4], system[2][0])
+        assert summary["reserved"] == 0 and summary["used"] > 0
+        assert summary["used"] == sum(
+            r["total_tokens"] for r in service.details(system[4], system[2][0])
+        )
+        assert summary["month_requests"] == 1
+
+
+def test_manual_reconciliation_rejects_inflight_and_preserves_provider_result(system):
+    with metered(system) as service:
+        run = start(system)
+        repo = RunRepository(system[4], system[2][0], system[3].workspace_id)
+        lease = repo.claim(run["run_id"])
+        n = repo.begin_call(lease, "live", usage=(service, 200, 100))
+        row = (
+            system[-1]
+            .execute(
+                "SELECT attempt_id,revision FROM agent_business.usage_attempts WHERE run_id=%s",
+                (run["run_id"],),
+            )
+            .fetchone()
+        )
+        issuer = os.environ["P0_OIDC_ISSUER"]
+        with TestClient(
+            create_app(
+                OIDCVerifier(issuer, "wms-api", allow_local_http=True),
+                TokenIntrospector(issuer, "wms-api", os.environ["P1_API_CLIENT_SECRET"]),
+                system[5],
+                run_limits=RunLimits(),
+                durable_execution=True,
+            )
+        ) as client:
+            body = {
+                "expected_revision": row[1],
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "cached_tokens": 0,
+                "reasoning_tokens": 0,
+                "reason": "Synthetic reconciliation must wait",
+            }
+            assert (
+                client.post(
+                    "/v1/admin/usage/" + row[0] + "/reconcile", headers=system[1][1], json=body
+                ).status_code
+                == 409
+            )
+        service.record(
+            lease.run_id, "live", n, ChatResponse("ok", metadata={"usage": {"total_tokens": 120}})
+        )
+        assert service.summary(system[4], system[2][0])["used"] == 120
