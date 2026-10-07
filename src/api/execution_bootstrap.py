@@ -66,6 +66,9 @@ def from_environment():
         raise ValueError("Model hold must exceed provider timeout plus uncertainty guard")
     store = AccessStore(os.environ["WMS_USER_DB_DSN"], max_connections=8)
     control = RunControl(os.environ["WMS_CONTROL_DB_DSN"], limits=runs)
+    from multiuser.usage_bootstrap import metering_from_environment
+
+    store.usage = metering_from_environment(settings, control=control)
     authority = SessionAuthority(
         os.environ["WMS_OIDC_ISSUER"],
         os.environ["WMS_SESSION_CLIENT_ID"],

@@ -1194,3 +1194,93 @@ dialog.modal::backdrop {
     width: 100%;
   }
 }
+/* Operator forms remain readable at desktop and mobile widths. */
+.management-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+.management-section details {
+  margin: 1rem 0;
+}
+.management-section summary {
+  cursor: pointer;
+  padding: 0.75rem 0;
+}
+.management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.management-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.management-section fieldset {
+  padding: 1.25rem;
+  margin-top: 1rem;
+  min-width: 0;
+}
+.management-section p,
+.management-list button {
+  overflow-wrap: anywhere;
+}
+.account-panel label {
+  display: block;
+  margin: 1rem 0;
+}
+.management-grid label {
+  margin: 0;
+  min-width: 0;
+}
+.account-panel input:not([type="checkbox"]),
+.account-panel select,
+.account-panel textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.4rem;
+}
+.account-panel input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+.account-panel .profile-line {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 1rem;
+}
+.account-panel .profile-line p {
+  margin: 0;
+}
+.account-panel > button,
+.account-panel fieldset > button {
+  margin: 0.4rem 0.5rem 0.4rem 0;
+}
+.account-panel fieldset {
+  border: 1px solid #e1e2e4;
+  border-radius: 12px;
+  padding: 1.25rem;
+  min-width: 0;
+}
+.usage-table {
+  overflow-x: auto;
+  width: 100%;
+  margin: 1.5rem 0;
+}
+.usage-table table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.usage-table th,
+.usage-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+.usage-table caption {
+  text-align: left;
+  padding-bottom: 0.75rem;
+}

@@ -33,6 +33,10 @@ def test_private_round_evidence_and_workbench_image_endpoint(system):
                         "source": f"synthetic-{index}.pdf",
                         "excerpt": "Evidence [IMAGE: marker]",
                         "full_excerpt": f"PRIVATE Evidence round {index + 1}",
+                        "collection": workspace.collections[0],
+                        "module": workspace.modules[0],
+                        "site": workspace.sites[0],
+                        "environment": workspace.environments[0],
                     }
                 ]
             },
@@ -75,6 +79,35 @@ def test_invalid_review_strategy_does_not_start_owned_execution(system):
         },
     )
     assert result.status_code == 422
+
+
+def test_unscoped_historical_citation_is_not_authorized_by_inference(system):
+    client, headers, contexts, workspace, store, application, admin = system
+    session_id = client.post(
+        "/v1/conversations",
+        headers=headers[0],
+        json={"workspace_id": workspace.workspace_id, "goal": "Synthetic unscoped history"},
+    ).json()["session_id"]
+    repository = application.repository(contexts[0], session_id)
+    repository.append_turn(
+        session_id=session_id,
+        expected_revision=1,
+        role="assistant",
+        message="Synthetic unscoped answer",
+        metadata={
+            "citations": [{"source": "synthetic.pdf", "excerpt": "Synthetic unknown provenance"}]
+        },
+    )
+    assert (
+        client.get(f"/v1/conversations/{session_id}/workbench", headers=headers[0]).status_code
+        == 403
+    )
+    assert (
+        client.get(
+            f"/v1/conversations/{session_id}/workbench?revision=1", headers=headers[0]
+        ).status_code
+        == 403
+    )
 
 
 def test_empty_trash_handles_more_than_one_page_and_preserves_other_owner(system):

@@ -51,7 +51,12 @@ def install_run_routes(app, identity, application, limits):
 
     @app.exception_handler(RunConflict)
     async def conflict(request, exc):
-        status = 429 if isinstance(exc, RunBusy) and exc.code == "user_queue_full" else 409
+        status = (
+            429
+            if exc.code == "quota_exhausted"
+            or (isinstance(exc, RunBusy) and exc.code == "user_queue_full")
+            else 409
+        )
         return JSONResponse(status_code=status, content={"detail": exc.code})
 
     @app.post("/v1/conversations/{session_id}/runs", status_code=202)

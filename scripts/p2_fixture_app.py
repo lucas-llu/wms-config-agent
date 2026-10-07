@@ -64,6 +64,10 @@ def create_fixture_app():
         raise RuntimeError("Synthetic backend requires the explicit disposable test job")
     issuer = os.environ["P0_OIDC_ISSUER"]
     store = AccessStore(os.environ["P1_POSTGRES_DSN"])
+    if os.getenv("WMS_P4_BROWSER") == "1":
+        from multiuser.usage import UsageService
+
+        store.usage = UsageService(model="synthetic", provider_key="fixture:synthetic")
     settings = replace(load_settings().agent, export_root=Path("data/p2-exports"))
     application = OwnedApplication(
         store,

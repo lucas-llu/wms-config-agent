@@ -115,6 +115,7 @@ class RunExecutor:
                     lease,
                     guard,
                     review=repository.execution(lease)["answer_strategy"] == "review",
+                    accounting=self.store.usage,
                 )
                 knowledge = SharedKnowledge(
                     self.agent.knowledge,
@@ -230,6 +231,8 @@ class RunExecutor:
             self.capacity.release()
 
     def reconcile(self):
+        if self.store.usage is not None:
+            self.store.usage.reconcile_terminal()
         for row in self.control.expired():
             try:
                 repository = self.repository(row)

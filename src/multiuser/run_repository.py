@@ -125,6 +125,11 @@ class RunRepository:
                 (run_id, uuid.uuid4().hex),
             )
             self._event(connection, run_id, "queued", "queued")
+            if self.store.usage is not None:
+                run = self._row(connection, run_id)
+                self.store.usage.reserve_run(
+                    connection, {**run, "workspace_id": self.sessions.workspace_id}
+                )
             return public_run(self._row(connection, run_id))
 
     def get(self, run_id):
@@ -317,6 +322,8 @@ class RunRepository:
                 (revision, lease.run_id),
             )
             self._event(connection, lease.run_id, "succeeded", "succeeded", revision)
+            if self.store.usage is not None:
+                self.store.usage.settle(connection, lease.run_id)
             connection.execute(
                 "UPDATE agent_business.sessions SET last_checkpoint_thread=%s WHERE session_id=%s",
                 (lease.checkpoint_thread, lease.conversation_id),
@@ -336,6 +343,8 @@ class RunRepository:
             row = self._row(connection, run_id, lock=True)
             if row["status"] == "queued":
                 self._end(connection, run_id, "cancelled")
+                if self.store.usage is not None:
+                    self.store.usage.settle(connection, run_id)
             elif row["status"] == "running":
                 connection.execute(
                     "UPDATE agent_business.runs SET status='cancelling' WHERE run_id=%s", (run_id,)
@@ -367,9 +376,9 @@ class RunRepository:
             ).fetchone()
             return ChatResponse(**json.loads(row["response_json"])) if row else None
 
-    def begin_call(self, lease, key):
+    def begin_call(self, lease, key, *, usage=None):
         with self.store.transaction(self.context) as connection:
-            self._fence(connection, lease)
+            run = self._fence(connection, lease)
             row = connection.execute(
                 "SELECT coalesce(max(attempt),0)+1 AS n FROM agent_business.run_model_calls "
                 "WHERE run_id=%s AND call_key=%s",
@@ -384,6 +393,9 @@ class RunRepository:
                 "model_attempts=model_attempts+1 WHERE run_id=%s",
                 (lease.run_id,),
             )
+            if usage is not None:
+                service, allocated, incoming = usage
+                service.begin_attempt(connection, run, key, row["n"], allocated, incoming)
             return row["n"]
 
     def finish_call(self, lease, key, attempt, response=None, *, rejected=False):

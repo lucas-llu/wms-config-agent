@@ -7,6 +7,7 @@ import {
 } from "react";
 import Markdown from "react-markdown";
 import { Api, ApiError, resource } from "./api";
+import { UsagePanel } from "./UsagePanel";
 import {
   clearPending,
   pendingRun,
@@ -175,7 +176,9 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     "active",
   );
   const [tab, setTab] = useState<"chat" | "workspace">("chat");
-  const [panel, setPanel] = useState<"profile" | "devices">();
+  const [panel, setPanel] = useState<
+    "profile" | "devices" | "usage" | "management"
+  >();
   const [devices, setDevices] = useState<Device[]>([]);
   const [nickname, setNickname] = useState("");
   const [message, setMessage] = useState("");
@@ -917,7 +920,17 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                 登录设备
               </button>
             </nav>
-            {panel === "profile" ? (
+            {profile?.usage_enabled && (
+              <button onClick={() => setPanel("usage")}>我的用量</button>
+            )}
+            {profile?.platform_admin && (
+              <button onClick={() => setPanel("management")}>
+                额度与账号管理
+              </button>
+            )}
+            {panel === "usage" || panel === "management" ? (
+              <UsagePanel api={api} admin={panel === "management"} />
+            ) : panel === "profile" ? (
               <>
                 <form
                   className="account-card"

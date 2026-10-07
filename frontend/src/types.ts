@@ -1,5 +1,7 @@
 export type Workspace = { workspace_id: string; role: string };
 export type Profile = {
+  usage_enabled?: boolean;
+  platform_admin?: boolean;
   durable_runs?: boolean;
   user_id: string;
   nickname: string;

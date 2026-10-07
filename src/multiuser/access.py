@@ -39,6 +39,7 @@ def context_values(context):
 class AccessStore:
     def __init__(self, dsn, *, max_connections=8):
         self._binding = ContextVar("owned_short_transaction", default=None)
+        self.usage = None
         self.pool = ConnectionPool(
             dsn,
             min_size=1,
