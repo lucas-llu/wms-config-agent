@@ -572,7 +572,9 @@ def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser
         reports.mkdir(parents=True, exist_ok=True)
         b.screenshot(path=str(reports / "p4-management-desktop.png"), full_page=True)
         b.set_viewport_size({"width": 390, "height": 844})
+        b.get_by_role("button", name="打开侧栏", exact=True).click()
         b.get_by_role("button", name="关闭侧栏", exact=True).click()
+        b.wait_for_function("document.querySelector('.sidebar').getBoundingClientRect().right <= 0")
         b.get_by_text("工作区授权", exact=True).scroll_into_view_if_needed()
         assert b.locator(
             ".account-panel input:not([type=checkbox]),"
