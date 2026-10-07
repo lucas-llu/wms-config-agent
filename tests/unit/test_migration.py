@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from types import SimpleNamespace
 
 import pytest
@@ -29,7 +30,7 @@ def legacy(tmp_path, *, scoped=True):
         metadata={"citations": [citation]},
     )
     FeedbackRepository(repository).record(sid, 1, "thumbs_up")
-    with sqlite3.connect(repository.database_path) as connection:
+    with closing(sqlite3.connect(repository.database_path)) as connection, connection:
         connection.execute(
             "INSERT INTO approvals VALUES(?,?,1,'approved','host_process',"
             "'Original approval','2026-10-07T00:00:00Z')",
