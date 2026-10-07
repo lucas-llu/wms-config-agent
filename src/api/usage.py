@@ -1,12 +1,16 @@
 """Own usage and audited operator metadata; no private chat administration."""
 
+import json
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Literal
 
+import psycopg
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from agents.workspace import Workspace
 from multiuser.access import AccessDenied, UserContext
 from multiuser.metering import Usage
 from multiuser.runs import RunConflict
@@ -31,6 +35,17 @@ class Membership(Status):
     user_id: uuid.UUID
     workspace_id: str = Field(min_length=1, max_length=120)
     role: Literal["member", "reviewer", "workspace_admin"]
+    expected_revision: int = Field(ge=0, strict=True)
+
+
+class Scope(Input):
+    name: str = Field(min_length=1, max_length=120)
+    collections: list[str] = Field(min_length=1, max_length=100)
+    modules: list[str] = Field(min_length=1, max_length=100)
+    sites: list[str] = Field(min_length=1, max_length=100)
+    environments: list[str] = Field(min_length=1, max_length=100)
+    expected_revision: int = Field(ge=0, strict=True)
+    reason: str = Field(min_length=5, max_length=500)
 
 
 class Reconcile(Input):
@@ -44,6 +59,26 @@ class Reconcile(Input):
 
 def install_usage_routes(app, identity, store, service):
     CurrentUser = Annotated[UserContext, Depends(identity)]
+
+    @app.exception_handler(psycopg.errors.SerializationFailure)
+    async def stale_management(request, exc):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=409, content={"detail": "Management state changed; refresh"}
+        )
+
+    @app.exception_handler(psycopg.errors.InsufficientPrivilege)
+    async def denied_management(request, exc):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=403, content={"detail": "Management denied"})
+
+    @app.exception_handler(psycopg.errors.NoDataFound)
+    async def missing_management(request, exc):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=404, content={"detail": "Record not found"})
 
     def require_admin(connection):
         if not connection.execute(
@@ -129,11 +164,54 @@ def install_usage_routes(app, identity, store, service):
     def membership(body: Membership, context: CurrentUser):
         with store.transaction(context) as connection:
             require_admin(connection)
-            connection.execute(
-                "SELECT identity_business.manage_membership(%s,%s,%s,%s,%s)",
-                (body.user_id, body.workspace_id, body.role, body.enabled, body.reason),
-            )
-        return {"status": "updated"}
+            row = connection.execute(
+                "SELECT identity_business.manage_membership_v2(%s,%s,%s,%s,%s,%s) AS revision",
+                (
+                    body.user_id,
+                    body.workspace_id,
+                    body.role,
+                    body.enabled,
+                    body.expected_revision,
+                    body.reason,
+                ),
+            ).fetchone()
+        return {"status": "updated", **row}
+
+    @app.get("/v1/admin/authorization")
+    def authorization(context: CurrentUser):
+        with store.transaction(context) as connection:
+            require_admin(connection)
+            return connection.execute(
+                "SELECT identity_business.authorization_snapshot() AS value"
+            ).fetchone()["value"]
+
+    @app.put("/v1/admin/workspaces/{workspace_id}/scope")
+    def scope(workspace_id: str, body: Scope, context: CurrentUser):
+        values = body.model_dump(exclude={"reason", "expected_revision"})
+        for dimension in ("collections", "modules", "sites", "environments"):
+            if any(v == "*" or len(v) > 120 for v in values[dimension]):
+                raise HTTPException(422, "Explicit finite allowlist required")
+            values[dimension] = tuple(values[dimension])
+        policy = Workspace(workspace_id=workspace_id, **values)
+        if workspace_id == "workspace:legacy":
+            raise HTTPException(422, "Legacy unrestricted scope forbidden")
+        with store.transaction(context) as connection:
+            require_admin(connection)
+            row = connection.execute(
+                "SELECT identity_business.manage_scope(%s,%s::jsonb,%s,%s) AS revision",
+                (workspace_id, json.dumps(asdict(policy)), body.expected_revision, body.reason),
+            ).fetchone()
+        return {"status": "updated", **row}
+
+    @app.get("/v1/admin/audit")
+    def management_audit(context: CurrentUser):
+        with store.transaction(context) as connection:
+            require_admin(connection)
+            return connection.execute(
+                "SELECT action,actor_user_id,target_user_id,resource_id,reason,created_at "
+                "FROM agent_business.management_audit "
+                "ORDER BY created_at DESC,audit_id DESC LIMIT 100"
+            ).fetchall()
 
     @app.get("/v1/admin/usage")
     def aggregate(context: CurrentUser):

@@ -27,6 +27,12 @@ def create_fixture_executor():
             lease_seconds=int(os.getenv("P3_FIXTURE_LEASE", "45")),
         ),
     )
+    if os.getenv("WMS_P4_BROWSER") == "1":
+        from multiuser.usage import UsageService
+
+        store.usage = UsageService(
+            model="synthetic", provider_key="fixture:synthetic", control=control
+        )
     authority = SessionAuthority(
         os.environ["P0_OIDC_ISSUER"],
         "wms-session-reader",

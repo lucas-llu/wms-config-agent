@@ -360,6 +360,195 @@ def test_registration_mail_verification_and_reset_revoke_old_sessions(browser):
         context.close()
 
 
+def seed_unknown_usage(bearer, user_id, workspace_id):
+    """Only this disposable browser job: a synthetic lost-return ledger, never a public endpoint."""
+    from multiuser.access import AccessStore
+    from multiuser.control import RunControl
+    from multiuser.identity import OIDCVerifier
+    from multiuser.usage import UsageService
+
+    store = AccessStore(os.environ["P1_POSTGRES_DSN"])
+    verifier = OIDCVerifier(os.environ["P0_OIDC_ISSUER"], "wms-api", allow_local_http=True)
+    control = RunControl(os.environ["P3_CONTROL_DSN"])
+    service = UsageService(model="synthetic", provider_key="fixture:synthetic", control=control)
+    try:
+        context = store.resolve(verifier.verify(bearer.removeprefix("Bearer ")))
+        assert context.user_id == user_id
+        run = {
+            "run_id": uuid.uuid4().hex,
+            "owner_user_id": user_id,
+            "workspace_id": workspace_id,
+            "conversation_id": "session:" + uuid.uuid4().hex,
+            "answer_strategy": "standard",
+        }
+        with store.transaction(context) as connection:
+            service.reserve_run(connection, run)
+            service.begin_attempt(connection, run, "synthetic-lost-return", 1, 200, 100)
+        service.reconcile_terminal()
+    finally:
+        control.close()
+        store.close()
+        verifier.close()
+
+
+@pytest.mark.skipif(
+    os.getenv("WMS_P4_BROWSER") != "1", reason="P4 browser requires explicit metering fixture"
+)
+def test_p4_real_authorization_usage_reconciliation_quota_and_revocation(browser):
+    contexts = [browser.new_context(viewport={"width": 1360, "height": 1000}) for _ in range(2)]
+    auth = ["", ""]
+    try:
+        pages = [c.new_page() for c in contexts]
+        ids = []
+        for index, page in enumerate(pages):
+
+            def capture(request, index=index):
+                if request.url.endswith("/v1/me"):
+                    auth[index] = request.headers.get("authorization", "")
+
+            page.on("request", capture)
+            register_verified(page)
+            ids.append(
+                httpx.get(
+                    "http://127.0.0.1:8510/v1/me", headers={"Authorization": auth[index]}, timeout=5
+                ).json()["user_id"]
+            )
+        # Bootstrap only the synthetic operator; all scope/member changes use the real UI.
+        with psycopg.connect(os.environ["P0_POSTGRES_DSN"], autocommit=True) as admin:
+            admin.execute(
+                "UPDATE identity_business.users SET is_platform_admin=true WHERE user_id=%s",
+                (ids[1],),
+            )
+        a, b = pages
+        navigate(b, WEB)
+        b.get_by_role("button", name="我的账号", exact=False).click()
+        b.get_by_role("button", name="额度与账号管理", exact=True).click()
+        b.get_by_text("知识范围与工作区", exact=True).click()
+        ws = "workspace:p4_" + uuid.uuid4().hex[:12]
+        for label, value in [
+            ("授权工作区编号", ws),
+            ("授权工作区名称", "Browser P4 fixture"),
+            ("授权知识集合", "fixture"),
+            ("授权业务模块", "inbound"),
+            ("授权站点", "DC01"),
+            ("授权环境", "test"),
+        ]:
+            b.get_by_label(label, exact=True).fill(value)
+
+        def confirm_authorization():
+            b.get_by_label("授权操作原因", exact=True).fill(
+                "Synthetic approved browser authorization"
+            )
+            b.get_by_label("我确认授权范围与角色变更，操作将被审计", exact=True).check()
+
+        confirm_authorization()
+        b.get_by_role("button", name="保存知识范围", exact=True).click()
+        b.get_by_text("授权变更已保存并审计", exact=True).wait_for()
+        b.get_by_text("成员与角色", exact=True).click()
+        b.get_by_label("授权成员", exact=True).select_option(ids[0])
+        b.get_by_label("授权工作区", exact=True).select_option(ws)
+        b.get_by_label("授权角色", exact=True).select_option("workspace_admin")
+        confirm_authorization()
+        b.get_by_role("button", name="保存成员授权", exact=True).click()
+        b.get_by_text("当前角色 workspace_admin", exact=False).wait_for()
+        navigate(a, WEB)
+        assert not a.get_by_role("button", name="额度与账号管理", exact=True).count()
+        a.get_by_role("textbox", name="输入问题").fill("SYN_MODE 是什么？")
+        with a.expect_response(
+            lambda r: r.url.endswith("/v1/conversations") and r.status == 202
+        ) as accepted:
+            a.get_by_role("button", name="发送问题").click()
+        cid = accepted.value.json()["conversation_id"]
+        a.get_by_text("SYN_MODE 为可选项。", exact=False).first.wait_for(timeout=20000)
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/conversations/" + cid + "/workbench",
+                headers={"Authorization": auth[1]},
+                timeout=5,
+            ).status_code
+            == 404
+        )
+        a.get_by_role("button", name="我的账号", exact=False).click()
+        a.get_by_role("button", name="我的用量", exact=True).click()
+        a.get_by_text("已用 24", exact=False).wait_for(timeout=15000)
+        a.get_by_text("费用未知或价格未配置，不显示为 0", exact=True).wait_for()
+        seed_unknown_usage(auth[0], ids[0], ws)
+        b.get_by_role("button", name="刷新用量", exact=True).click()
+        b.get_by_role("button", name=re.compile(r"unknown · 调用预算 200")).click()
+        for label, value in [
+            ("确认输入 tokens", "100"),
+            ("确认输出 tokens", "20"),
+            ("缓存命中 tokens", "30"),
+            ("推理 tokens", "10"),
+        ]:
+            b.get_by_label(label, exact=True).fill(value)
+        b.get_by_label("对账依据与原因", exact=True).fill("Synthetic provider record confirmed")
+        b.get_by_label("我已核对供应商记录，确认结算且将被审计", exact=True).check()
+        b.get_by_text("确认总量 120 tokens", exact=True).wait_for()
+        with b.expect_response(
+            lambda r: r.url.endswith("/reconcile") and r.status == 200
+        ) as reconciled:
+            b.get_by_role("button", name="确认对账", exact=True).click()
+        reconcile_path = urlsplit(reconciled.value.url).path
+        b.get_by_text("对账已完成并审计，额度已重新结算", exact=True).wait_for()
+        assert (
+            httpx.post(
+                "http://127.0.0.1:8510" + reconcile_path,
+                headers={"Authorization": auth[1]},
+                json={
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "cached_tokens": 30,
+                    "reasoning_tokens": 10,
+                    "expected_revision": 2,
+                    "reason": "Synthetic duplicate confirmed",
+                },
+                timeout=5,
+            ).status_code
+            == 409
+        )
+        a.get_by_role("button", name="刷新用量", exact=True).click()
+        a.get_by_text("已用 144 · 预留 0", exact=False).wait_for()
+        b.get_by_role("button", name=ids[0] + " · active", exact=True).click()
+        b.get_by_label("月 token 额度", exact=True).fill("200000")
+        b.get_by_label("管理操作原因", exact=True).fill("Synthetic approved quota")
+        b.get_by_label("我确认此操作影响账号/额度且将被审计", exact=True).check()
+        b.get_by_role("button", name="保存额度", exact=True).click()
+        a.get_by_role("button", name="刷新用量", exact=True).click()
+        a.get_by_text("剩余 199856 / 200000 tokens", exact=False).wait_for()
+        b.get_by_label("启用成员授权", exact=True).uncheck()
+        confirm_authorization()
+        b.get_by_role("button", name="保存成员授权", exact=True).click()
+        b.get_by_text("已撤销", exact=False).wait_for()
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/conversations/" + cid + "/workbench",
+                headers={"Authorization": auth[0]},
+                timeout=5,
+            ).status_code
+            == 404
+        )
+        assert (
+            httpx.get(
+                "http://127.0.0.1:8510/v1/admin/authorization",
+                headers={"Authorization": auth[0]},
+                timeout=5,
+            ).status_code
+            == 403
+        )
+        b.get_by_text("最近管理审计（最多 100 条）", exact=True).click()
+        b.get_by_text("usage_reconcile", exact=False).first.wait_for()
+        reports = Path("data/p2-reports")
+        reports.mkdir(parents=True, exist_ok=True)
+        b.screenshot(path=str(reports / "p4-management-desktop.png"), full_page=True)
+        b.set_viewport_size({"width": 390, "height": 844})
+        b.screenshot(path=str(reports / "p4-management-mobile.png"), full_page=True)
+        assert b.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    finally:
+        for context in contexts:
+            context.close()
+
+
 def test_unknown_account_recovery_is_uniform_and_expired_link_is_rejected(browser):
     contexts = []
     texts = []

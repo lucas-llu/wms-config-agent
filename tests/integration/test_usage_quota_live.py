@@ -15,6 +15,7 @@ from test_run_execution_live import executor
 
 from api.users import create_app
 from libs.llm import ChatResponse
+from multiuser.access import AccessDenied
 from multiuser.control import RunControl
 from multiuser.identity import OIDCVerifier
 from multiuser.metering import Usage
@@ -22,6 +23,7 @@ from multiuser.queued_application import start_run
 from multiuser.run_repository import RunRepository
 from multiuser.runs import RunConflict, RunLimits
 from multiuser.session_auth import TokenIntrospector
+from multiuser.session_repository import PostgresSessionRepository
 from multiuser.usage import QuotaExceeded, UsageService
 
 p1_system = base_system
@@ -338,3 +340,122 @@ def test_manual_reconciliation_rejects_inflight_and_preserves_provider_result(sy
             lease.run_id, "live", n, ChatResponse("ok", metadata={"usage": {"total_tokens": 120}})
         )
         assert service.summary(system[4], system[2][0])["used"] == 120
+
+
+def test_authorization_management_is_versioned_audited_and_scope_enforced(system):
+    with metered(system):
+        issuer = os.environ["P0_OIDC_ISSUER"]
+        with TestClient(
+            create_app(
+                OIDCVerifier(issuer, "wms-api", allow_local_http=True),
+                TokenIntrospector(issuer, "wms-api", os.environ["P1_API_CLIENT_SECRET"]),
+                system[5],
+                run_limits=RunLimits(),
+                durable_execution=True,
+            )
+        ) as client:
+            owner, admin = system[1]
+            ws = "workspace:" + uuid.uuid4().hex
+            path = f"/v1/admin/workspaces/{ws}/scope"
+            body = {
+                "name": "Management fixture",
+                "collections": ["fixture"],
+                "modules": ["inbound"],
+                "sites": ["DC01"],
+                "environments": ["test"],
+                "expected_revision": 0,
+                "reason": "Synthetic approved scope",
+            }
+            for endpoint in ("/v1/admin/authorization", "/v1/admin/audit"):
+                assert client.get(endpoint, headers=owner).status_code == 403
+                assert client.get(endpoint, headers=admin).status_code == 200
+            assert client.put(path, headers=owner, json=body).status_code == 403
+            assert client.put(path, headers=admin, json=body).json()["revision"] == 1
+            assert client.put(path, headers=admin, json=body).status_code == 409
+            for change in (
+                {"collections": ["*"]},
+                {"sites": []},
+                {"modules": ["inbound", "inbound"]},
+                {"name": " "},
+            ):
+                assert client.put(path, headers=admin, json={**body, **change}).status_code == 422
+            assert (
+                client.put(
+                    "/v1/admin/workspaces/workspace:legacy/scope", headers=admin, json=body
+                ).status_code
+                == 422
+            )
+            grant = {
+                "user_id": system[2][0].user_id,
+                "workspace_id": ws,
+                "role": "workspace_admin",
+                "enabled": True,
+                "expected_revision": 0,
+                "reason": "Synthetic member approval",
+            }
+            assert client.put("/v1/admin/memberships", headers=owner, json=grant).status_code == 403
+            assert (
+                client.put("/v1/admin/memberships", headers=admin, json=grant).json()["revision"]
+                == 1
+            )
+            assert client.put("/v1/admin/memberships", headers=admin, json=grant).status_code == 409
+            assert client.get("/v1/admin/accounts", headers=owner).status_code == 403
+            own = client.get("/v1/me", headers=owner).json()
+            assert ws in {w["workspace_id"] for w in own["workspaces"]}
+            PostgresSessionRepository(system[4], system[2][0], ws).workspace.check(
+                "sites", ["DC01"]
+            )
+            assert (
+                client.put(
+                    path, headers=admin, json={**body, "expected_revision": 1, "sites": ["DC02"]}
+                ).json()["revision"]
+                == 2
+            )
+            with pytest.raises(ValueError):
+                PostgresSessionRepository(system[4], system[2][0], ws).workspace.check(
+                    "sites", ["DC01"]
+                )
+            assert (
+                client.put(
+                    "/v1/admin/memberships",
+                    headers=admin,
+                    json={**grant, "expected_revision": 1, "enabled": False},
+                ).json()["revision"]
+                == 2
+            )
+            with pytest.raises(AccessDenied):
+                PostgresSessionRepository(system[4], system[2][0], ws)
+            snapshot = client.get("/v1/admin/authorization", headers=admin).json()
+            member = next(m for m in snapshot["memberships"] if m["workspace_id"] == ws)
+            assert member["active"] is False and member["revision"] == 2
+            audit = client.get("/v1/admin/audit", headers=admin).json()
+            assert sum(a["resource_id"] == ws for a in audit) == 4
+            assert all("chat" not in a and "state_json" not in a for a in audit)
+
+
+def test_unknown_management_records_return_safe_errors(system):
+    with metered(system):
+        issuer = os.environ["P0_OIDC_ISSUER"]
+        with TestClient(
+            create_app(
+                OIDCVerifier(issuer, "wms-api", allow_local_http=True),
+                TokenIntrospector(issuer, "wms-api", os.environ["P1_API_CLIENT_SECRET"]),
+                system[5],
+            )
+        ) as client:
+            assert (
+                client.put(
+                    "/v1/admin/accounts/" + uuid.uuid4().hex + "/status",
+                    headers=system[1][1],
+                    json={"enabled": False, "reason": "Synthetic missing account"},
+                ).status_code
+                == 404
+            )
+            assert (
+                client.put(
+                    "/v1/admin/accounts/" + system[2][1].user_id + "/status",
+                    headers=system[1][1],
+                    json={"enabled": False, "reason": "Synthetic self disable rejected"},
+                ).status_code
+                == 403
+            )

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Api } from "./api";
+import { AuthorizationPanel } from "./AuthorizationPanel";
+import { ReconciliationPanel, type Unresolved } from "./ReconciliationPanel";
 
 type Summary = {
   period: string;
@@ -65,14 +67,7 @@ export function UsagePanel({
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [unresolved, setUnresolved] = useState<
-    {
-      attempt_id: string;
-      revision: number;
-      source: string;
-      allocated: number;
-    }[]
-  >([]);
+  const [unresolved, setUnresolved] = useState<Unresolved[]>([]);
   const load = async () => {
     const params = new URLSearchParams();
     if (filter) params.set("strategy", filter);
@@ -260,13 +255,8 @@ export function UsagePanel({
               {a.unknown_attempts}
             </p>
           ))}
-          <h3>待对账</h3>
-          {unresolved.map((u) => (
-            <p key={u.attempt_id}>
-              {u.attempt_id} · {u.source} · 预留 {u.allocated}
-              （通过受保护对账接口确认）
-            </p>
-          ))}
+          <ReconciliationPanel api={api} rows={unresolved} reload={load} />
+          <AuthorizationPanel api={api} accounts={accounts} />
           {target && (
             <fieldset>
               <legend>修改 {target.nickname || target.user_id}</legend>
