@@ -194,50 +194,57 @@ export function UsagePanel({
       <button onClick={() => void load().catch((e) => setError(e.message))}>
         刷新用量
       </button>
-      <table>
-        <caption>逐次调用明细（最多 100 条）</caption>
-        <thead>
-          <tr>
-            <th>时间</th>
-            <th>模型/策略</th>
-            <th>来源</th>
-            <th>tokens</th>
-            <th>估算费用</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.attempt_id}>
-              <td>
-                {new Date(r.started_at).toLocaleString("zh-CN", {
-                  timeZone: "Asia/Shanghai",
-                })}
-              </td>
-              <td>
-                {r.model} / {r.strategy}
-              </td>
-              <td>
-                {
-                  (
-                    {
-                      provider: "供应商返回",
-                      estimated: "平台估算",
-                      unknown: "未知/待对账",
-                      rejected: "已拒绝",
-                    } as Record<string, string>
-                  )[r.source]
-                }
-              </td>
-              <td>{r.total_tokens ?? "未知"}</td>
-              <td>
-                {r.estimated_cost === null
-                  ? "未定价/未知"
-                  : `${r.estimated_cost} ${r.currency}（${r.price_version}）`}
-              </td>
+      <div
+        className="usage-table"
+        role="region"
+        aria-label="调用明细表"
+        tabIndex={0}
+      >
+        <table>
+          <caption>逐次调用明细（最多 100 条）</caption>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>模型/策略</th>
+              <th>来源</th>
+              <th>tokens</th>
+              <th>估算费用</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.attempt_id}>
+                <td>
+                  {new Date(r.started_at).toLocaleString("zh-CN", {
+                    timeZone: "Asia/Shanghai",
+                  })}
+                </td>
+                <td>
+                  {r.model} / {r.strategy}
+                </td>
+                <td>
+                  {
+                    (
+                      {
+                        provider: "供应商返回",
+                        estimated: "平台估算",
+                        unknown: "未知/待对账",
+                        rejected: "已拒绝",
+                      } as Record<string, string>
+                    )[r.source]
+                  }
+                </td>
+                <td>{r.total_tokens ?? "未知"}</td>
+                <td>
+                  {r.estimated_cost === null
+                    ? "未定价/未知"
+                    : `${r.estimated_cost} ${r.currency}（${r.price_version}）`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {admin && (
         <>
           <h3>平台账号（不提供私人聊天正文）</h3>
@@ -249,6 +256,7 @@ export function UsagePanel({
                 setTarget(a);
                 setQuota(a.monthly_tokens);
                 setConfirmed(false);
+                setReason("");
               }}
             >
               {a.nickname || a.user_id} · {a.status}
