@@ -41,6 +41,9 @@ def from_environment():
     settings = load_settings(os.getenv("WMS_SETTINGS_PATH", "config/settings.yaml"))
     store = AccessStore(dsn)
     try:
+        from multiuser.usage_bootstrap import metering_from_environment
+
+        store.usage = metering_from_environment(settings)
         if os.getenv("WMS_P3_ENABLED") == "1":
             return queued_api(verifier, introspector, store, issuer, settings)
         vector = VectorStoreFactory.create(settings)

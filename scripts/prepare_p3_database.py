@@ -32,6 +32,7 @@ def prepare():
             (2, "002_durable_runs.sql"),
             (3, "003_run_execution.sql"),
             (4, "004_review_dispatch.sql"),
+            (5, "005_usage_quota.sql"),
         ):
             source = Path("migrations", name).read_text(encoding="utf-8")
             digest = hashlib.sha256(source.encode()).hexdigest()

@@ -6,23 +6,25 @@ export class ApiError extends Error {
     public code?: string,
   ) {
     super(
-      code === "conversation_busy"
-        ? "该对话正在处理，请等待或重新打开查看进度。"
-        : code === "user_queue_full"
-          ? "你的待处理请求已满，请等待已有任务完成。"
-          : code === "idempotency_conflict"
-            ? "发送标识已用于不同内容，请重新发起操作。"
-            : status === 401
-              ? "登录已过期，请重新登录。"
-              : status === 403
-                ? "当前账号没有此操作权限，或授权已失效。"
-                : status === 404
-                  ? "对话不存在或你无权访问。"
-                  : status === 409
-                    ? "对话已更新，请重新打开后再操作。"
-                    : status === 422
-                      ? "请检查输入内容。"
-                      : "服务暂时不可用，请稍后查看已保存的结果。",
+      code === "quota_exhausted"
+        ? "可用 token 额度不足，请等待释放预留或联系管理员。"
+        : code === "conversation_busy"
+          ? "该对话正在处理，请等待或重新打开查看进度。"
+          : code === "user_queue_full"
+            ? "你的待处理请求已满，请等待已有任务完成。"
+            : code === "idempotency_conflict"
+              ? "发送标识已用于不同内容，请重新发起操作。"
+              : status === 401
+                ? "登录已过期，请重新登录。"
+                : status === 403
+                  ? "当前账号没有此操作权限，或授权已失效。"
+                  : status === 404
+                    ? "对话不存在或你无权访问。"
+                    : status === 409
+                      ? "对话已更新，请重新打开后再操作。"
+                      : status === 422
+                        ? "请检查输入内容。"
+                        : "服务暂时不可用，请稍后查看已保存的结果。",
     );
   }
 }
@@ -54,6 +56,7 @@ export class Api {
           "conversation_busy",
           "user_queue_full",
           "idempotency_conflict",
+          "quota_exhausted",
         ].includes(body.detail)
           ? body.detail
           : undefined;

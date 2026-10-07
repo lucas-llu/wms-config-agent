@@ -197,6 +197,8 @@ def _normalize_response(payload: dict[str, Any], *, requested_model: str) -> Cha
     }
     if isinstance(usage, dict):
         metadata["usage"] = usage
+    if isinstance(payload.get("id"), str):
+        metadata["provider_request_id"] = payload["id"][:128]
     return ChatResponse(
         content=content.strip(),
         model=model if isinstance(model, str) and model else requested_model,

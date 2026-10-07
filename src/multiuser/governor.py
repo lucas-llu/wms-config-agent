@@ -117,7 +117,9 @@ class ModelGovernor:
 
 
 class GovernedLLM:
-    def __init__(self, delegate, governor, repository, lease, guard, *, review=False):
+    def __init__(
+        self, delegate, governor, repository, lease, guard, *, review=False, accounting=None
+    ):
         self.delegate, self.governor, self.repository, self.lease, self.guard = (
             delegate,
             governor,
@@ -126,6 +128,7 @@ class GovernedLLM:
             guard,
         )
         self.review = review
+        self.accounting = accounting
         if getattr(delegate, "max_retries", 0) != 0:
             raise ValueError("Provider retries must be zero beneath the global gateway")
 
@@ -139,14 +142,19 @@ class GovernedLLM:
         if response := self.repository.cached_call(self.lease, key):
             return response
         # UTF-8 bytes plus framing conservatively bound input; reserve max output, not context size.
-        tokens = sum(len(m["content"].encode()) + 32 for m in messages) + getattr(
-            self.delegate, "max_tokens", 4096
-        )
+        incoming = sum(len(m["content"].encode()) + 32 for m in messages)
+        tokens = incoming + getattr(self.delegate, "max_tokens", 4096)
         for retry in range(self.governor.limits.retries + 1):
             permit = self.governor.acquire(tokens, self.guard, review=self.review)
             try:
                 self.guard()
-                attempt = self.repository.begin_call(self.lease, key)
+                attempt = (
+                    self.repository.begin_call(
+                        self.lease, key, usage=(self.accounting, tokens, incoming)
+                    )
+                    if self.accounting is not None
+                    else self.repository.begin_call(self.lease, key)
+                )
                 self.repository.progress(self.lease, "generating")
             except Exception:
                 self.governor.release(permit, actual=0)
@@ -156,6 +164,8 @@ class GovernedLLM:
             except LLMProviderError as exc:
                 # Only explicit 429 is a definite rejection. Timeouts/5xx stay unknown.
                 if exc.status_code == 429:
+                    if self.accounting is not None:
+                        self.accounting.record(self.lease.run_id, key, attempt, rejected=True)
                     self.repository.finish_call(self.lease, key, attempt, rejected=True)
                     self.governor.release(permit, actual=0)
                     if retry < self.governor.limits.retries:
@@ -163,6 +173,11 @@ class GovernedLLM:
                         time.sleep(min(0.25 * 2**retry, 1))
                         continue
                 raise
+            if self.accounting is not None:
+                self.accounting.record(self.lease.run_id, key, attempt, response)
+                self.governor.release(
+                    permit, actual=response.metadata.get("usage", {}).get("total_tokens")
+                )
             self.guard()
             self.repository.finish_call(self.lease, key, attempt, response)
             self.repository.progress(self.lease, "validating")

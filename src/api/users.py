@@ -93,6 +93,11 @@ def create_app(
     run_limits=None,
     durable_execution=False,
 ):
+    from multiuser.usage import UsageService
+
+    metering = getattr(application.store, "usage", None)
+    metering = metering if isinstance(metering, UsageService) else None
+
     @asynccontextmanager
     async def lifespan(app):
         yield
@@ -177,6 +182,12 @@ def create_app(
         profile = application.store.profile(context)
         if durable_execution:
             profile["durable_runs"] = True
+        if metering is not None:
+            with application.store.transaction(context) as connection:
+                profile["usage_enabled"] = True
+                profile["platform_admin"] = connection.execute(
+                    "SELECT identity_business.platform_admin() AS admin"
+                ).fetchone()["admin"]
         if account:
             profile.update(account.profile(context, request.state.access_token))
         return profile
@@ -488,4 +499,8 @@ def create_app(
         from api.runs import install_run_routes
 
         install_run_routes(app, identity, application, run_limits)
+    if metering is not None:
+        from api.usage import install_usage_routes
+
+        install_usage_routes(app, identity, application.store, metering)
     return app
