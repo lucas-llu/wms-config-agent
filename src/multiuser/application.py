@@ -53,14 +53,13 @@ class OwnedApplication:
         repository = self.repository(context, session_id)
         if not self.agent:
             raise RuntimeError("Agent execution is not configured")
-        if repository.get_session(session_id).legacy_readonly:
+        current = repository.get_session(session_id)
+        if current.legacy_readonly:
             raise AccessDenied("Legacy history cannot resume; start a new conversation")
-        if repository.get_session(session_id).current_revision != expected_revision:
+        if current.current_revision != expected_revision:
             from agents.repositories import SessionRevisionConflict
 
-            raise SessionRevisionConflict(
-                session_id, expected_revision, repository.get_session(session_id).current_revision
-            )
+            raise SessionRevisionConflict(session_id, expected_revision, current.current_revision)
         return self.agent.continue_session(
             context,
             repository,

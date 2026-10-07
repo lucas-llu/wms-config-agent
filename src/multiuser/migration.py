@@ -42,7 +42,7 @@ def file_digest(path):
 
 def read_database(path):
     path = Path(path).resolve(strict=True)
-    with closing(sqlite3.connect(path.as_uri() + "?mode=ro")) as connection:
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as connection:
         connection.row_factory = sqlite3.Row
         if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ValueError("Source integrity check failed")
@@ -79,15 +79,20 @@ def snapshot(source, destination, *, writers_stopped=False, checkpoints=None):
             continue
         path = Path(path).resolve(strict=True)
         with (
-            closing(sqlite3.connect(path.as_uri() + "?mode=ro")) as original,
+            closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as original,
             closing(sqlite3.connect(destination / name)) as copy,
         ):
             original.backup(copy)
+            copy.execute("PRAGMA journal_mode=DELETE")
     records = read_database(destination / "business.sqlite")
     manifest = {
         "version": 1,
         "business_hash": digest(records),
-        "files": {p.name: file_digest(p) for p in destination.iterdir()},
+        "files": {
+            name: file_digest(destination / name)
+            for name in ("business.sqlite", "checkpoints.sqlite")
+            if (destination / name).is_file()
+        },
         "counts": {t: len(rows) for t, rows in records.items()},
         "checkpoint_mode": "archive_only",
         "source_writers_stopped": True,
