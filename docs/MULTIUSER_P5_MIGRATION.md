@@ -13,8 +13,9 @@ P4 合并后的复跑已全部通过。P5 当前只开发和演练；没有切�
    不创建默认拥有者、不把所有历史分给首位用户。未分配、证据来源缺失/越界、状态摘要损坏均隔离保留。
    同一用户在另一工作区的成员关系不能替代本次目标工作区授权。
 3. 目标必须已安装/核验 P1–P4 schema 和 007/008，处于 frozen。迁移用独立离线 p1_migrator 凭据，
-   运行/API 用户不能持有或继承此角色。001–006 校验和不改；生产角色/数据库 bootstrap 尚待环境确认，
-   `prepare_p1_database.py` / `prepare_p3_database.py` **仍仅限一次性 CI，不是生产安装器**。
+   运行/API 用户不能持有或继承此角色。001–006 校验和不改；新空库安装器已实现并经隔离 PG 验证，
+   正式环境角色/数据库权限仍需运维核验。`prepare_p1_database.py` / `prepare_p3_database.py`
+   **仍仅限一次性 CI，不是生产安装器**。
 4. 同一事务写入并核对目标行内容，保存源/投影摘要和审批原记录；不扩大旧批准权限。
    重试同一批次不重复写；后续补充归属可新增批次，但已有绑定/内容不同会拒绝，不能自动改拥有者。
    新用户月额度不导入旧 state.tokens_used；旧估算不伪装为供应商会计账本。
@@ -31,6 +32,26 @@ P4 合并后的复跑已全部通过。P5 当前只开发和演练；没有切�
    反向迁移与源端防双写封锁/恢复验证仍是正式切换前置条件，不能把“有备份”当成“回退已验收”。
 
 ## 使用（只在授权副本/测试库）
+
+新建空目标库时，先由 DBA 确认目标数据库、独立的 schema 管理账号，以及三个预期角色的权限边界。
+安装器读取 `WMS_SCHEMA_ADMIN_DSN`、`WMS_P1_RUNTIME_PASSWORD`、`WMS_P3_CONTROL_PASSWORD`
+三个私有环境变量；不得将密码写进命令行、仓库或报告。先运行只读预检，再显式安装：
+
+```text
+python -m scripts.install_multiuser_schema --expected-db <目标数据库名>
+python -m scripts.install_multiuser_schema --expected-db <目标数据库名> --apply
+```
+
+安装器仅接纳新空库或完整匹配校验和的已安装库；它在单个事务内安装 001–008 与检查点表，
+初始 `release_state` 为 `frozen`，不会自动开放写入。重复运行只核验版本、表所有权、
+强制行级隔离和运行账号；现有一次性 CI 库没有 001 安装账本，不能直接冒充已安装生产库。
+检查点依赖版本变化时必须先审查，不自动迁移未知 SQL。
+
+若 `p1_runtime` 和 `p3_control` 已存在，且 DBA 对这个新库撤销了 `PUBLIC CONNECT`，
+安装器会保持失败关闭，绝不跳过已有角色密码校验。DBA 在核实目标库与角色后，
+须先仅对这两个运行角色显式授予目标库 `CONNECT`，然后再执行上述 `--apply`；
+错误密码仍会拒绝安装，目标业务 schema 保持空白。此预授权是正式部署的人工权限前置条件，
+不能把迁移所有者设为 LOGIN，也不能授权运行角色继承它。
 
 ```text
 python -m scripts.p5_tools snapshot --source <业务库副本> --destination <新私有备份目录> --checkpoints <检查点副本> --confirm-source-stopped
