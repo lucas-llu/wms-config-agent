@@ -118,6 +118,28 @@ PostgreSQL 17、Redis、Keycloak 26.7.4 与一个 Linux RQ Worker；知识与模
 同一批任务的只读账本复核：58 条 `usage_runs` 均关闭、66 次合成模型调用均有终态，
 在途调用、未关闭预留与 held tokens 均为 0。合成模型提供的用量元数据不等于外部供应商账单。
 
+## 证据图片索引的离线搬迁准备
+
+`p5_image_bundle.py` 只处理明确列入 allowlist 的图片 collection。默认仅生成无源路径的数量、
+字节数和源索引 SHA256 报告；会逐条验证索引完整性、源文件位于批准的图片根目录、
+文件名内容寻址与实际 SHA256 一致、格式和大小受限。不会自动扫描其他 collection，
+也不会把图片送往模型或公开日志。先在停止源索引写入、确认来源权限与目标私有 ACL 后，
+才允许向**全新**目录暂存；暂存会重建绝对路径为目标路径，并逐条核对图片及索引元数据。
+
+```text
+python -m scripts.p5_image_bundle --source-index <图片索引> --source-root <图片根目录> --collection <已授权collection>
+python -m scripts.p5_image_bundle --source-index <图片索引> --source-root <图片根目录> --collection <已授权collection> --destination <全新私有目录> --apply --confirm-source-writers-stopped --confirm-private-destination
+```
+
+同一来源的多个已授权 collection 可重复提供 `--collection`；空列表和重复项拒绝。
+Windows 上目录创建模式不能替代 ACL 核验。暂存成功只表示 `staged_not_activated`，
+不更改当前应用的图片路径配置，也不证明用户归属或知识库授权；失败后留下的目标目录
+必须由运维审计，不能当成已完成包使用。真实 WMS 图片尚未复制或切换。
+
+对当前旧索引的**只读**盘点得到 3,316 行、1,883 个唯一 PNG 文件，约 70.8 MB；
+未发现文件缺失、越出来源根目录或 SHA256 不匹配。该盘点不是停写证明，
+也不能代替来源 collection 的业务授权或最终搬迁验收。
+
 ## P5 尚待完成/外部前置
 
 - 部署主机/域名/HTTPS、PG/Redis/OIDC 与发信服务、正式管理员和已有历史的归属/证据来源确认。
