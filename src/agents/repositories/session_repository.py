@@ -64,6 +64,7 @@ class SessionRecord:
     cancelled_at: str | None
     workspace_id: str = "workspace:legacy"
     display_title: str | None = None
+    legacy_readonly: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1059,7 +1060,9 @@ def _create_schema(connection: sqlite3.Connection) -> None:
 
 
 def _session_from_row(row: sqlite3.Row) -> SessionRecord:
+    columns = set(row.keys())
     return SessionRecord(
+        legacy_readonly=bool(row["legacy_readonly"]) if "legacy_readonly" in columns else False,
         display_title=row["display_title"],
         workspace_id=str(row["workspace_id"]),
         session_id=str(row["session_id"]),

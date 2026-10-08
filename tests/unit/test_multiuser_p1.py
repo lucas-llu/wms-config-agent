@@ -302,7 +302,10 @@ def test_continue_rechecks_expected_revision_after_acquiring_conversation_lock(t
     agent.saver = must_not_open
     application = OwnedApplication(store, export_root=tmp_path, agent=agent)
     repository = Mock()
-    repository.get_session.side_effect = [Mock(current_revision=1), Mock(current_revision=2)]
+    repository.get_session.side_effect = [
+        Mock(current_revision=1, legacy_readonly=False),
+        Mock(current_revision=2, legacy_readonly=False),
+    ]
     application.repository = Mock(return_value=repository)
     with pytest.raises(SessionRevisionConflict):
         application.continue_session(

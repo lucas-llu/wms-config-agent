@@ -1,0 +1,177 @@
+"""Production-style P5 DDL against fresh databases, never an existing workspace."""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+import psycopg
+import pytest
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
+
+from multiuser.schema_install import inspect_schema, install_schema
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("WMS_P5_INSTALL_TEST") != "1" and os.getenv("WMS_P5_LIVE") != "1",
+    reason="Schema installation requires an explicit isolated PostgreSQL test target",
+)
+MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
+
+
+@pytest.fixture
+def fresh_database():
+    admin_dsn = os.getenv("WMS_P5_INSTALL_TEST_DSN") or os.environ["P0_POSTGRES_DSN"]
+    names = []
+    with psycopg.connect(admin_dsn, autocommit=True) as server:
+
+        def create():
+            name = "wms_p5_schema_" + uuid.uuid4().hex[:16]
+            server.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+            names.append(name)
+            return make_conninfo(admin_dsn, dbname=name), name
+
+        try:
+            yield create
+        finally:
+            for name in names:
+                server.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
+
+
+def _secrets():
+    return (
+        os.getenv("WMS_P5_INSTALL_RUNTIME_PASSWORD") or os.environ["P1_DB_PASSWORD"],
+        os.getenv("WMS_P5_INSTALL_CONTROL_PASSWORD") or os.environ["P3_DB_PASSWORD"],
+    )
+
+
+def test_fresh_install_is_atomic_frozen_and_repeat_safe(fresh_database, tmp_path):
+    broken_dsn, broken_name = fresh_database()
+    broken_sources = tmp_path / "broken"
+    shutil.copytree(MIGRATIONS, broken_sources)
+    with (broken_sources / "008_release_safety.sql").open("a", encoding="utf-8") as output:
+        output.write("\nSELECT * FROM agent_business.missing_p5_install_probe;\n")
+    with psycopg.connect(broken_dsn, autocommit=True) as target:
+        assert inspect_schema(target, broken_sources, broken_name)["state"] == "fresh"
+        with pytest.raises(psycopg.errors.UndefinedTable):
+            install_schema(target, broken_sources, broken_name, *_secrets())
+        assert inspect_schema(target, MIGRATIONS, broken_name)["state"] == "fresh"
+        assert target.execute("SELECT to_regclass('agent_business.sessions')").fetchone()[0] is None
+
+    dsn, name = fresh_database()
+    with psycopg.connect(dsn, autocommit=True) as target:
+        assert inspect_schema(target, MIGRATIONS, name)["pending_versions"] == list(range(1, 9))
+        first = install_schema(target, MIGRATIONS, name, *_secrets())
+        assert first == {
+            "state": "installed",
+            "versions": list(range(1, 9)),
+            "release_phase": "frozen",
+            "release_revision": 1,
+            "runtime_roles_non_owner": True,
+            "applied": True,
+        }
+        assert install_schema(target, MIGRATIONS, name, *_secrets())["applied"] is False
+        assert (
+            target.execute("SELECT count(*) FROM agent_business.schema_migrations").fetchone()[0]
+            == 8
+        )
+        assert target.execute("SELECT count(*) FROM agent_business.sessions").fetchone()[0] == 0
+        with pytest.raises(psycopg.OperationalError):
+            install_schema(target, MIGRATIONS, name, "x" * 32, _secrets()[1])
+        assert inspect_schema(target, MIGRATIONS, name)["release_phase"] == "frozen"
+        for role, password in zip(("p1_runtime", "p3_control"), _secrets(), strict=True):
+            with psycopg.connect(make_conninfo(dsn, user=role, password=password)) as runtime:
+                assert runtime.execute("SELECT current_user").fetchone()[0] == role
+                with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                    runtime.execute("UPDATE agent_business.release_state SET phase='active'")
+
+    changed = tmp_path / "changed"
+    shutil.copytree(MIGRATIONS, changed)
+    with (changed / "003_run_execution.sql").open("a", encoding="utf-8") as output:
+        output.write("\n-- deliberately changed after application\n")
+    with psycopg.connect(dsn, autocommit=True) as target:
+        with pytest.raises(ValueError, match="checksum"):
+            inspect_schema(target, changed, name)
+        assert inspect_schema(target, MIGRATIONS, name)["release_phase"] == "frozen"
+
+
+def test_existing_unversioned_schema_is_refused(fresh_database):
+    dsn, name = fresh_database()
+    with psycopg.connect(dsn, autocommit=True) as target:
+        target.execute("CREATE SCHEMA agent_business")
+        with pytest.raises(ValueError, match="Unversioned"):
+            install_schema(target, MIGRATIONS, name, *_secrets())
+        assert (
+            target.execute("SELECT to_regclass('agent_business.schema_migrations')").fetchone()[0]
+            is None
+        )
+
+
+def test_wrong_target_is_refused_before_any_ddl(fresh_database):
+    dsn, name = fresh_database()
+    with psycopg.connect(dsn, autocommit=True) as target:
+        with pytest.raises(ValueError, match="target database"):
+            install_schema(target, MIGRATIONS, "unrelated_db", *_secrets())
+        assert inspect_schema(target, MIGRATIONS, name)["state"] == "fresh"
+
+
+def test_cli_plan_apply_and_repeat_without_activation(fresh_database):
+    dsn, name = fresh_database()
+    env = os.environ.copy()
+    env.update(
+        WMS_SCHEMA_ADMIN_DSN=dsn,
+        WMS_P1_RUNTIME_PASSWORD=_secrets()[0],
+        WMS_P3_CONTROL_PASSWORD=_secrets()[1],
+    )
+    command = [sys.executable, "-m", "scripts.install_multiuser_schema", "--expected-db", name]
+    root = MIGRATIONS.parent
+    dry = subprocess.run(command, cwd=root, env=env, text=True, capture_output=True, check=False)
+    assert dry.returncode == 0
+    assert json.loads(dry.stdout)["state"] == "fresh"
+    for applied in (True, False):
+        run = subprocess.run(
+            [*command, "--apply"], cwd=root, env=env, text=True, capture_output=True, check=False
+        )
+        assert run.returncode == 0
+        result = json.loads(run.stdout)
+        assert result["state"] == "installed"
+        assert result["release_phase"] == "frozen"
+        assert result["applied"] is applied
+
+
+def test_restricted_database_requires_explicit_existing_role_connect(fresh_database):
+    seed_dsn, seed_name = fresh_database()
+    with psycopg.connect(seed_dsn, autocommit=True) as seed:
+        assert install_schema(seed, MIGRATIONS, seed_name, *_secrets())["state"] == "installed"
+    dsn, name = fresh_database()
+    with psycopg.connect(dsn, autocommit=True) as target:
+        target.execute(
+            sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
+        )
+        for role in ("p1_runtime", "p3_control"):
+            assert not target.execute(
+                "SELECT has_database_privilege(%s,current_database(),'CONNECT')", (role,)
+            ).fetchone()[0]
+        with pytest.raises(psycopg.OperationalError):
+            install_schema(target, MIGRATIONS, name, *_secrets())
+        assert inspect_schema(target, MIGRATIONS, name)["state"] == "fresh"
+        # Deliberate DBA precondition: never skip the existing-role password check.
+        target.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO p1_runtime,p3_control").format(
+                sql.Identifier(name)
+            )
+        )
+        with pytest.raises(psycopg.OperationalError):
+            install_schema(target, MIGRATIONS, name, "x" * 32, _secrets()[1])
+        assert inspect_schema(target, MIGRATIONS, name)["state"] == "fresh"
+        result = install_schema(target, MIGRATIONS, name, *_secrets())
+        assert result["state"] == "installed" and result["release_phase"] == "frozen"
+        public_connect = target.execute(
+            "SELECT EXISTS(SELECT 1 FROM aclexplode(datacl) "
+            "WHERE grantee=0 AND privilege_type='CONNECT') AS enabled "
+            "FROM pg_database WHERE datname=current_database()"
+        ).fetchone()[0]
+        assert not public_connect
