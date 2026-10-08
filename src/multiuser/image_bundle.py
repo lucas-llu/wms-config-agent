@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ingestion.storage import ImageStorage
+from libs.sqlite_snapshot import connect_sqlite_snapshot
 
 _DIGEST = re.compile(r"^[a-f0-9]{64}$")
 _SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"})
@@ -53,7 +54,7 @@ def plan_image_bundle(source_index, source_root, allowed_collections, *, max_byt
     if type(max_bytes) is not int or not 1 <= max_bytes <= 5_000_000:
         raise ValueError("Bounded image size required")
     before = _hash(index)
-    with closing(sqlite3.connect(index.as_uri() + "?mode=ro", uri=True)) as connection:
+    with closing(connect_sqlite_snapshot(index)) as connection:
         if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ValueError("Source image index integrity failed")
         if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
@@ -182,7 +183,9 @@ def verify_staged_image_bundle(bundle):
         raise ValueError("Image bundle directory may not be a symlink")
     path = path.resolve(strict=True)
     if not path.is_dir() or {item.name for item in path.iterdir()} != {
-        "manifest.json", "image_index.db", "images"
+        "manifest.json",
+        "image_index.db",
+        "images",
     }:
         raise ValueError("Unexpected image bundle layout")
     manifest_file = path / "manifest.json"
@@ -195,9 +198,17 @@ def verify_staged_image_bundle(bundle):
     before = _hash(manifest_file)
     manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
     expected_fields = {
-        "bundle_version", "collections", "status", "source_index_sha256",
-        "destination_index_sha256", "indexed", "selected", "excluded",
-        "distinct_files", "created_files", "bytes",
+        "bundle_version",
+        "collections",
+        "status",
+        "source_index_sha256",
+        "destination_index_sha256",
+        "indexed",
+        "selected",
+        "excluded",
+        "distinct_files",
+        "created_files",
+        "bytes",
     }
     if not isinstance(manifest, dict) or set(manifest) != expected_fields:
         raise ValueError("Unsupported image bundle manifest")
@@ -210,12 +221,23 @@ def verify_staged_image_bundle(bundle):
         or not collections
         or any(not isinstance(value, str) or not value.strip() for value in collections)
         or collections != sorted(set(collections))
-        or any(type(manifest[key]) is not int or manifest[key] < 0 for key in
-               ("indexed", "selected", "excluded", "distinct_files", "created_files", "bytes"))
+        or any(
+            type(manifest[key]) is not int or manifest[key] < 0
+            for key in (
+                "indexed",
+                "selected",
+                "excluded",
+                "distinct_files",
+                "created_files",
+                "bytes",
+            )
+        )
         or manifest["indexed"] != manifest["selected"] + manifest["excluded"]
         or manifest["created_files"] != manifest["distinct_files"]
-        or any(not isinstance(manifest[key], str) or not _DIGEST.fullmatch(manifest[key])
-               for key in ("source_index_sha256", "destination_index_sha256"))
+        or any(
+            not isinstance(manifest[key], str) or not _DIGEST.fullmatch(manifest[key])
+            for key in ("source_index_sha256", "destination_index_sha256")
+        )
     ):
         raise ValueError("Invalid image bundle manifest")
     if _hash(index) != manifest["destination_index_sha256"]:
