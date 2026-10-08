@@ -140,3 +140,38 @@ def test_cli_plan_apply_and_repeat_without_activation(fresh_database):
         assert result["state"] == "installed"
         assert result["release_phase"] == "frozen"
         assert result["applied"] is applied
+
+
+def test_restricted_database_requires_explicit_existing_role_connect(fresh_database):
+    seed_dsn, seed_name = fresh_database()
+    with psycopg.connect(seed_dsn, autocommit=True) as seed:
+        assert install_schema(seed, MIGRATIONS, seed_name, *_secrets())["state"] == "installed"
+    dsn, name = fresh_database()
+    with psycopg.connect(dsn, autocommit=True) as target:
+        target.execute(
+            sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
+        )
+        for role in ("p1_runtime", "p3_control"):
+            assert not target.execute(
+                "SELECT has_database_privilege(%s,current_database(),'CONNECT')", (role,)
+            ).fetchone()[0]
+        with pytest.raises(psycopg.OperationalError):
+            install_schema(target, MIGRATIONS, name, *_secrets())
+        assert inspect_schema(target, MIGRATIONS, name)["state"] == "fresh"
+        # Deliberate DBA precondition: never skip the existing-role password check.
+        target.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO p1_runtime,p3_control").format(
+                sql.Identifier(name)
+            )
+        )
+        with pytest.raises(psycopg.OperationalError):
+            install_schema(target, MIGRATIONS, name, "x" * 32, _secrets()[1])
+        assert inspect_schema(target, MIGRATIONS, name)["state"] == "fresh"
+        result = install_schema(target, MIGRATIONS, name, *_secrets())
+        assert result["state"] == "installed" and result["release_phase"] == "frozen"
+        public_connect = target.execute(
+            "SELECT EXISTS(SELECT 1 FROM aclexplode(datacl) "
+            "WHERE grantee=0 AND privilege_type='CONNECT') AS enabled "
+            "FROM pg_database WHERE datname=current_database()"
+        ).fetchone()[0]
+        assert not public_connect
