@@ -92,6 +92,27 @@ python -m scripts.p5_tools supplier --approval <私有预算JSON> --settings <�
 供应商套餐按 [OpenCode Go](https://opencode.ai/v2/docs/console/go) 核验，不套用 DeepSeek 原生价格；
 [DeepSeek API 字段定义](https://api-docs.deepseek.com/api/create-chat-completion/)仅用于用量子集解释。
 
+## 本机合成多用户负载观察（2026-10-08）
+
+固定本机测试版本 `4f0bd50`，Windows 主机上的公开 API/共享执行器、Docker 中的
+PostgreSQL 17、Redis、Keycloak 26.7.4 与一个 Linux RQ Worker；知识与模型均为
+`fixture` 合成实现，真实供应商调用 **0**。10 个专用测试账号各自通过真实 Keycloak
+授权码登录，获得同一个仅允许 `fixture/inbound/DC01/test` 的合成工作区成员资格。
+负载报告仅保存数值与终态，保存在本机受限目录 `D:/software/wms-test/config/p5-load-report.json`。
+
+| 同阶段提交请求数 | 独立 OIDC 账号数 | 请求接收 p95 | 完成情况 |
+|---:|---:|---:|---:|
+| 1 | 1 | 0.078 秒 | 1/1 成功 |
+| 2 | 2 | 0.093 秒 | 2/2 成功 |
+| 5 | 5 | 0.141 秒 | 5/5 成功 |
+| 10 | 10 | 0.328 秒 | 10/10 成功 |
+| 20 | 10 | 0.469 秒 | 20/20 成功，含 4 次旁路核验 |
+
+合计 38/38 个合成任务完成。对最后一档的 20 个任务，逐一以另一账号访问任务与父对话，
+各 20 次均返回 404。表中 p95 是这次小样本的 HTTP 接收耗时，不含排队和回答时间；
+第 20 档是 **10 个账号提交 20 请求**，不是 20 个独立用户。尚未采集 CPU/内存/连接池
+峰值、等待公平性和长历史读取，也未做真实供应商默认/旁路混合压测；不得以此替代灰度门禁。
+
 ## P5 尚待完成/外部前置
 
 - 部署主机/域名/HTTPS、PG/Redis/OIDC 与发信服务、正式管理员和已有历史的归属/证据来源确认。
