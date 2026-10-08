@@ -1,7 +1,10 @@
 """Production-style P5 DDL against fresh databases, never an existing workspace."""
 
+import json
 import os
 import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -13,7 +16,7 @@ from psycopg.conninfo import make_conninfo
 from multiuser.schema_install import inspect_schema, install_schema
 
 pytestmark = pytest.mark.skipif(
-    os.getenv("WMS_P5_INSTALL_TEST") != "1",
+    os.getenv("WMS_P5_INSTALL_TEST") != "1" and os.getenv("WMS_P5_LIVE") != "1",
     reason="Schema installation requires an explicit isolated PostgreSQL test target",
 )
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
@@ -21,7 +24,7 @@ MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 
 @pytest.fixture
 def fresh_database():
-    admin_dsn = os.environ["WMS_P5_INSTALL_TEST_DSN"]
+    admin_dsn = os.getenv("WMS_P5_INSTALL_TEST_DSN") or os.environ["P0_POSTGRES_DSN"]
     names = []
     with psycopg.connect(admin_dsn, autocommit=True) as server:
 
@@ -40,8 +43,8 @@ def fresh_database():
 
 def _secrets():
     return (
-        os.environ["WMS_P5_INSTALL_RUNTIME_PASSWORD"],
-        os.environ["WMS_P5_INSTALL_CONTROL_PASSWORD"],
+        os.getenv("WMS_P5_INSTALL_RUNTIME_PASSWORD") or os.environ["P1_DB_PASSWORD"],
+        os.getenv("WMS_P5_INSTALL_CONTROL_PASSWORD") or os.environ["P3_DB_PASSWORD"],
     )
 
 
@@ -76,6 +79,9 @@ def test_fresh_install_is_atomic_frozen_and_repeat_safe(fresh_database, tmp_path
             == 8
         )
         assert target.execute("SELECT count(*) FROM agent_business.sessions").fetchone()[0] == 0
+        with pytest.raises(psycopg.OperationalError):
+            install_schema(target, MIGRATIONS, name, "x" * 32, _secrets()[1])
+        assert inspect_schema(target, MIGRATIONS, name)["release_phase"] == "frozen"
         for role, password in zip(("p1_runtime", "p3_control"), _secrets(), strict=True):
             with psycopg.connect(make_conninfo(dsn, user=role, password=password)) as runtime:
                 assert runtime.execute("SELECT current_user").fetchone()[0] == role
@@ -110,3 +116,27 @@ def test_wrong_target_is_refused_before_any_ddl(fresh_database):
         with pytest.raises(ValueError, match="target database"):
             install_schema(target, MIGRATIONS, "unrelated_db", *_secrets())
         assert inspect_schema(target, MIGRATIONS, name)["state"] == "fresh"
+
+
+def test_cli_plan_apply_and_repeat_without_activation(fresh_database):
+    dsn, name = fresh_database()
+    env = os.environ.copy()
+    env.update(
+        WMS_SCHEMA_ADMIN_DSN=dsn,
+        WMS_P1_RUNTIME_PASSWORD=_secrets()[0],
+        WMS_P3_CONTROL_PASSWORD=_secrets()[1],
+    )
+    command = [sys.executable, "-m", "scripts.install_multiuser_schema", "--expected-db", name]
+    root = MIGRATIONS.parent
+    dry = subprocess.run(command, cwd=root, env=env, text=True, capture_output=True, check=False)
+    assert dry.returncode == 0
+    assert json.loads(dry.stdout)["state"] == "fresh"
+    for applied in (True, False):
+        run = subprocess.run(
+            [*command, "--apply"], cwd=root, env=env, text=True, capture_output=True, check=False
+        )
+        assert run.returncode == 0
+        result = json.loads(run.stdout)
+        assert result["state"] == "installed"
+        assert result["release_phase"] == "frozen"
+        assert result["applied"] is applied

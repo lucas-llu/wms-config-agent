@@ -8,6 +8,7 @@ require an operator audit; they are not silently adopted.
 import hashlib
 from pathlib import Path
 
+import psycopg
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import sql
 from psycopg.rows import dict_row
@@ -25,6 +26,21 @@ MIGRATIONS = (
 SCHEMAS = ("agent_business", "agent_checkpoints", "identity_business")
 RUNTIME_ROLES = ("p1_runtime", "p3_control")
 LOCK_ID = 91845076
+CHECKPOINT_MIGRATIONS_SHA256 = "98d38ed91d4a57a2fb066323f26f2902efcb01f483e09f3ff2be31304a799d35"
+CHECKPOINT_CONCURRENT_INDEXES = {
+    6: (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+        "checkpoints_thread_id_idx ON checkpoints(thread_id);"
+    ),
+    7: (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+        "checkpoint_blobs_thread_id_idx ON checkpoint_blobs(thread_id);"
+    ),
+    8: (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+        "checkpoint_writes_thread_id_idx ON checkpoint_writes(thread_id);"
+    ),
+}
 
 
 def migration_sources(directory):
@@ -171,9 +187,36 @@ def _create_roles(connection, existing, runtime_password, control_password):
             )
 
 
+def _verify_existing_logins(connection, roles, runtime_password, control_password):
+    for name, password in (("p1_runtime", runtime_password), ("p3_control", control_password)):
+        if name not in roles:
+            continue
+        with psycopg.connect(
+            connection.info.dsn, user=name, password=password, connect_timeout=5
+        ) as probe:
+            if probe.execute("SELECT current_user").fetchone()[0] != name:
+                raise PermissionError("Runtime database identity mismatch")
+
+
 def _checkpoint_tables(connection):
+    migrations = PostgresSaver.MIGRATIONS
+    source_hash = hashlib.sha256("\0".join(migrations).encode()).hexdigest()
+    if source_hash != CHECKPOINT_MIGRATIONS_SHA256 or len(migrations) != 10:
+        raise RuntimeError("Checkpoint migration source changed; review before installation")
+    if any(
+        migrations[version].strip() != statement
+        for version, statement in CHECKPOINT_CONCURRENT_INDEXES.items()
+    ):
+        raise RuntimeError("Checkpoint index migration changed")
     connection.execute("SET LOCAL search_path TO agent_checkpoints")
-    PostgresSaver(connection).setup()
+    # These tables are new and invisible until commit. Building their indexes
+    # without CONCURRENTLY is equivalent here and keeps the whole install atomic.
+    connection.execute(migrations[0])
+    for version, statement in enumerate(migrations):
+        if version in CHECKPOINT_CONCURRENT_INDEXES:
+            statement = statement.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX", 1)
+        connection.execute(statement)
+        connection.execute("INSERT INTO checkpoint_migrations(v) VALUES(%s)", (version,))
     for name in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
         table = sql.Identifier(name)
         connection.execute(sql.SQL("ALTER TABLE {} ENABLE ROW LEVEL SECURITY").format(table))
@@ -202,7 +245,19 @@ def install_schema(
     connection, migration_dir, expected_database, runtime_password, control_password
 ):
     """Install all eight migrations atomically; retain the initial frozen state."""
+    if (
+        not runtime_password
+        or not control_password
+        or len(runtime_password) < 24
+        or len(control_password) < 24
+    ):
+        raise ValueError("Strong, separately supplied runtime credentials required")
+    if runtime_password == control_password:
+        raise ValueError("Runtime and control roles need distinct credentials")
     before = inspect_schema(connection, migration_dir, expected_database)
+    _verify_existing_logins(
+        connection, _role_catalog(connection), runtime_password, control_password
+    )
     if before["state"] == "installed":
         return {**before, "applied": False}
     sources = migration_sources(migration_dir)
@@ -212,8 +267,14 @@ def install_schema(
         if again["state"] == "installed":
             return {**again, "applied": False}
         existing = _role_catalog(connection)
+        _verify_existing_logins(connection, existing, runtime_password, control_password)
         _create_roles(connection, existing, runtime_password, control_password)
         _role_catalog(connection)
+        connection.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO p1_runtime,p3_control").format(
+                sql.Identifier(expected_database)
+            )
+        )
         for schema in SCHEMAS:
             connection.execute(
                 sql.SQL("CREATE SCHEMA {} AUTHORIZATION p1_migrator").format(sql.Identifier(schema))
@@ -223,6 +284,10 @@ def install_schema(
             "CREATE TABLE agent_business.schema_migrations "
             "(version integer PRIMARY KEY,checksum text NOT NULL)"
         )
+        # 001 creates the three schemas before its own SET LOCAL ROLE. Even
+        # IF NOT EXISTS checks database CREATE privilege, so those statements
+        # must run under the installer identity, as in the original P1 setup.
+        connection.execute("RESET ROLE")
         for version, source, digest in sources:
             if version == 2:
                 _checkpoint_tables(connection)
@@ -234,4 +299,7 @@ def install_schema(
     after = inspect_schema(connection, migration_dir, expected_database)
     if after["state"] != "installed" or after["release_phase"] != "frozen":
         raise RuntimeError("Initial release was not frozen")
+    _verify_existing_logins(
+        connection, _role_catalog(connection), runtime_password, control_password
+    )
     return {**after, "applied": True}
