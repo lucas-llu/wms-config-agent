@@ -6,7 +6,11 @@ import pytest
 from PIL import Image
 
 from ingestion.storage import ImageStorage
-from multiuser.image_bundle import plan_image_bundle, stage_image_bundle
+from multiuser.image_bundle import (
+    plan_image_bundle,
+    stage_image_bundle,
+    verify_staged_image_bundle,
+)
 
 
 def png(color):
@@ -56,8 +60,13 @@ def test_private_staging_rewrites_paths_preserves_metadata_and_excludes_other_sc
         private_destination_ready=True,
     )
     assert result["status"] == "staged_not_activated"
+    assert result["bundle_version"] == 1
+    assert result["collections"] == ["approved"]
     assert result["created_files"] == 2
     assert result["source_index_sha256"] == plan["source_index_sha256"]
+    verified = verify_staged_image_bundle(destination)
+    assert verified["status"] == "verified_not_activated"
+    assert verified["selected"] == 2
     copied = ImageStorage(
         destination / "images", destination / "image_index.db", read_only=True
     ).list_images()
@@ -126,3 +135,30 @@ def test_empty_or_ambiguous_collection_selection_is_refused(tmp_path):
         plan_image_bundle(index, root, ())
     with pytest.raises(ValueError, match="Duplicate"):
         plan_image_bundle(index, root, ("approved", "approved"))
+
+
+def test_independent_verify_rejects_tampered_or_extra_image(tmp_path):
+    root, index = source(tmp_path)
+    destination = tmp_path / "private" / "bundle"
+    stage_image_bundle(
+        index,
+        root,
+        destination,
+        ("approved",),
+        writers_stopped=True,
+        private_destination_ready=True,
+    )
+    copied = ImageStorage(
+        destination / "images", destination / "image_index.db", read_only=True
+    ).list_images()
+    saved = copied[0].file_path.read_bytes()
+    copied[0].file_path.write_bytes(png("yellow"))
+    with pytest.raises(ValueError, match="checksum"):
+        verify_staged_image_bundle(destination)
+    copied[0].file_path.write_bytes(saved)
+    orphan = destination / "images" / "approved" / "orphan.png"
+    orphan.write_bytes(png("yellow"))
+    with pytest.raises(ValueError, match="files"):
+        verify_staged_image_bundle(destination)
+    orphan.unlink()
+    assert verify_staged_image_bundle(destination)["selected"] == 2

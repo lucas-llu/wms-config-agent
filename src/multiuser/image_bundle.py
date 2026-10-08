@@ -165,9 +165,86 @@ def stage_image_bundle(
         raise ValueError("Source image index changed during copying")
     summary = {key: value for key, value in planned.items() if key != "records"}
     summary.update(
+        bundle_version=1,
+        collections=sorted(frozenset(allowed_collections)),
         status="staged_not_activated",
         destination_index_sha256=_hash(storage.database_path),
         created_files=len({path for _, path in created}),
     )
     (target / "manifest.json").write_text(json.dumps(summary, sort_keys=True), encoding="utf-8")
     return summary
+
+
+def verify_staged_image_bundle(bundle):
+    """Read-only integrity check at the bundle's final absolute location."""
+    path = Path(bundle)
+    if path.is_symlink():
+        raise ValueError("Image bundle directory may not be a symlink")
+    path = path.resolve(strict=True)
+    if not path.is_dir() or {item.name for item in path.iterdir()} != {
+        "manifest.json", "image_index.db", "images"
+    }:
+        raise ValueError("Unexpected image bundle layout")
+    manifest_file = path / "manifest.json"
+    index = path / "image_index.db"
+    images = path / "images"
+    if any(item.is_symlink() for item in (manifest_file, index, images)) or not (
+        manifest_file.is_file() and index.is_file() and images.is_dir()
+    ):
+        raise ValueError("Unsafe image bundle component")
+    before = _hash(manifest_file)
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    expected_fields = {
+        "bundle_version", "collections", "status", "source_index_sha256",
+        "destination_index_sha256", "indexed", "selected", "excluded",
+        "distinct_files", "created_files", "bytes",
+    }
+    if not isinstance(manifest, dict) or set(manifest) != expected_fields:
+        raise ValueError("Unsupported image bundle manifest")
+    collections = manifest["collections"]
+    if (
+        type(manifest["bundle_version"]) is not int
+        or manifest["bundle_version"] != 1
+        or manifest["status"] != "staged_not_activated"
+        or not isinstance(collections, list)
+        or not collections
+        or any(not isinstance(value, str) or not value.strip() for value in collections)
+        or collections != sorted(set(collections))
+        or any(type(manifest[key]) is not int or manifest[key] < 0 for key in
+               ("indexed", "selected", "excluded", "distinct_files", "created_files", "bytes"))
+        or manifest["indexed"] != manifest["selected"] + manifest["excluded"]
+        or manifest["created_files"] != manifest["distinct_files"]
+        or any(not isinstance(manifest[key], str) or not _DIGEST.fullmatch(manifest[key])
+               for key in ("source_index_sha256", "destination_index_sha256"))
+    ):
+        raise ValueError("Invalid image bundle manifest")
+    if _hash(index) != manifest["destination_index_sha256"]:
+        raise ValueError("Image bundle index checksum changed")
+    planned = plan_image_bundle(index, images, tuple(collections))
+    if (
+        planned["indexed"] != manifest["selected"]
+        or planned["excluded"] != 0
+        or planned["selected"] != manifest["selected"]
+        or planned["distinct_files"] != manifest["distinct_files"]
+        or planned["bytes"] != manifest["bytes"]
+    ):
+        raise ValueError("Image bundle index or file counts changed")
+    indexed_files = {item.source_path for item in planned["records"]}
+    actual_files = set()
+    for item in images.rglob("*"):
+        if item.is_symlink():
+            raise ValueError("Image bundle contains a symlink")
+        if item.is_file():
+            actual_files.add(item.resolve(strict=True))
+        elif not item.is_dir():
+            raise ValueError("Image bundle contains an unsupported entry")
+    if actual_files != indexed_files or _hash(manifest_file) != before:
+        raise ValueError("Image bundle files or manifest changed")
+    return {
+        "status": "verified_not_activated",
+        "collections": collections,
+        "selected": planned["selected"],
+        "distinct_files": planned["distinct_files"],
+        "bytes": planned["bytes"],
+        "destination_index_sha256": planned["source_index_sha256"],
+    }
