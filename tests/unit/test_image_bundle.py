@@ -1,5 +1,6 @@
 import io
 import sqlite3
+from contextlib import closing
 
 import pytest
 from PIL import Image
@@ -90,7 +91,7 @@ def test_path_escape_and_changed_content_fail_before_any_copy(tmp_path):
     assert original is not None
     outside = tmp_path / "outside.png"
     outside.write_bytes(png("yellow"))
-    with sqlite3.connect(index) as connection:
+    with closing(sqlite3.connect(index)) as connection, connection:
         connection.execute(
             "UPDATE image_index SET file_path=? WHERE collection='approved' AND image_id='a_1'",
             (str(outside),),
@@ -106,7 +107,7 @@ def test_path_escape_and_changed_content_fail_before_any_copy(tmp_path):
             private_destination_ready=True,
         )
     assert not destination.exists()
-    with sqlite3.connect(index) as connection:
+    with closing(sqlite3.connect(index)) as connection, connection:
         connection.execute(
             "UPDATE image_index SET file_path=? WHERE collection='approved' AND image_id='a_1'",
             (str(original),),
