@@ -166,12 +166,18 @@ PostgreSQL 17、Redis、Keycloak 26.7.4 与一个 Linux RQ Worker；知识与模
 ```text
 python -m scripts.p5_image_bundle --source-index <图片索引> --source-root <图片根目录> --collection <已授权collection>
 python -m scripts.p5_image_bundle --source-index <图片索引> --source-root <图片根目录> --collection <已授权collection> --destination <全新私有目录> --apply --confirm-source-writers-stopped --confirm-private-destination
+python -m scripts.p5_verify_image_bundle --bundle <已暂存包的最终绝对路径>
 ```
 
 同一来源的多个已授权 collection 可重复提供 `--collection`；空列表和重复项拒绝。
 Windows 上目录创建模式不能替代 ACL 核验。暂存成功只表示 `staged_not_activated`，
 不更改当前应用的图片路径配置，也不证明用户归属或知识库授权；失败后留下的目标目录
 必须由运维审计，不能当成已完成包使用。真实 WMS 图片尚未复制或切换。
+独立复验仅只读检查 manifest、索引、全部被引用文件与额外文件；可重复运行，
+活跃 WAL 或任何内容变化均拒绝，不清理辅助文件。索引保存绝对路径，故必须在
+最终放置位置执行；移动已验证包后需要重新复验，不能直接激活。
+manifest 校验和只能发现意外变化，不是防恶意篡改的签名，来源授权与私有 ACL
+仍须另外核验。合成包的暂存、连续两次独立复验与无 WAL/SHM 副作用已通过。
 
 对当前旧索引的**只读**盘点得到 3,316 行、1,883 个唯一 PNG 文件，约 70.8 MB；
 未发现文件缺失、越出来源根目录或 SHA256 不匹配。该盘点不是停写证明，
