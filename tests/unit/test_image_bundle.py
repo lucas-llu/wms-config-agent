@@ -67,6 +67,9 @@ def test_private_staging_rewrites_paths_preserves_metadata_and_excludes_other_sc
     verified = verify_staged_image_bundle(destination)
     assert verified["status"] == "verified_not_activated"
     assert verified["selected"] == 2
+    assert verify_staged_image_bundle(destination) == verified
+    assert not (destination / "image_index.db-wal").exists()
+    assert not (destination / "image_index.db-shm").exists()
     copied = ImageStorage(
         destination / "images", destination / "image_index.db", read_only=True
     ).list_images()
@@ -162,3 +165,17 @@ def test_independent_verify_rejects_tampered_or_extra_image(tmp_path):
         verify_staged_image_bundle(destination)
     orphan.unlink()
     assert verify_staged_image_bundle(destination)["selected"] == 2
+
+
+def test_active_source_wal_is_refused_without_sidecar_cleanup(tmp_path):
+    root, index = source(tmp_path)
+    with closing(sqlite3.connect(index)) as connection:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute(
+            "UPDATE image_index SET page_num=2 WHERE collection='approved' AND image_id='a_1'"
+        )
+        connection.commit()
+        assert (index.parent / "image_index.db-wal").stat().st_size > 0
+        with pytest.raises(TimeoutError, match="stable SQLite snapshot"):
+            plan_image_bundle(index, root, ("approved",))
+        assert (index.parent / "image_index.db-wal").stat().st_size > 0
