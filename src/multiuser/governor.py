@@ -16,7 +16,6 @@ class ModelBusy(RuntimeError):
 @dataclass(frozen=True)
 class ModelLimits:
     inflight: int = 4
-    review_inflight: int = 1
     rpm: int = 60
     tpm: int = 200000
     wait_seconds: int = 60
@@ -27,10 +26,10 @@ class ModelLimits:
         for name, value in asdict(self).items():
             if type(value) is not int or not 0 <= value <= 100000000:
                 raise ValueError("Invalid model governor limits")
-            if value == 0 and name not in {"review_inflight", "retries"}:
+            if value == 0 and name != "retries":
                 raise ValueError("Positive model governor limit required")
-        if self.review_inflight > self.inflight or self.retries > 2:
-            raise ValueError("Invalid model sublimit/retry limit")
+        if self.retries > 2:
+            raise ValueError("Invalid model retry limit")
 
 
 class ModelGovernor:
@@ -47,10 +46,13 @@ class ModelGovernor:
             row = connection.execute(
                 "SELECT config_json FROM model_governors WHERE provider_key=%s", (self.key,)
             ).fetchone()
-            if row["config_json"] != config:
+            stored = json.loads(row["config_json"])
+            # Retain historical governor rows while retiring their unused review sublimit.
+            stored.pop("review_inflight", None)
+            if stored != asdict(self.limits):
                 raise ValueError("All execution replicas must use identical model limits")
 
-    def reserve(self, tokens, *, review=False):
+    def reserve(self, tokens):
         if type(tokens) is not int or tokens < 1 or tokens > self.limits.tpm:
             raise ModelBusy("Single call exceeds configured token window")
         with self.control.transaction() as connection:
@@ -60,8 +62,6 @@ class ModelGovernor:
             row = connection.execute(
                 "SELECT count(*) FILTER(WHERE NOT released AND "
                 "expires_at>clock_timestamp()) AS active,"
-                "count(*) FILTER(WHERE review AND NOT released AND "
-                "expires_at>clock_timestamp()) AS reviews,"
                 "count(*) FILTER(WHERE issued_at>clock_timestamp()-interval '60 seconds') AS rpm,"
                 "coalesce(sum(token_reservation) FILTER(WHERE "
                 "issued_at>clock_timestamp()-interval '60 seconds'),0) AS tpm "
@@ -72,7 +72,6 @@ class ModelGovernor:
             ).fetchone()
             if (
                 row["active"] >= self.limits.inflight
-                or (review and row["reviews"] >= self.limits.review_inflight)
                 or row["rpm"] >= self.limits.rpm
                 or row["tpm"] + tokens > self.limits.tpm
             ):
@@ -81,8 +80,8 @@ class ModelGovernor:
             connection.execute(
                 "INSERT INTO model_permits(permit_id,provider_key,review,"
                 "token_reservation,expires_at) "
-                "VALUES(%s,%s,%s,%s,clock_timestamp()+(%s*interval '1 second'))",
-                (permit, self.key, review, tokens, self.limits.hold_seconds),
+                "VALUES(%s,%s,false,%s,clock_timestamp()+(%s*interval '1 second'))",
+                (permit, self.key, tokens, self.limits.hold_seconds),
             )
             # Bounded metadata maintenance, not a full-keyspace Redis scan.
             connection.execute(
@@ -92,11 +91,11 @@ class ModelGovernor:
             )
             return permit
 
-    def acquire(self, tokens, guard, *, review=False):
+    def acquire(self, tokens, guard):
         deadline = time.monotonic() + self.limits.wait_seconds
         while True:
             guard()
-            if permit := self.reserve(tokens, review=review):
+            if permit := self.reserve(tokens):
                 return permit
             if time.monotonic() >= deadline:
                 raise ModelBusy("Model capacity wait exceeded")
@@ -117,9 +116,7 @@ class ModelGovernor:
 
 
 class GovernedLLM:
-    def __init__(
-        self, delegate, governor, repository, lease, guard, *, review=False, accounting=None
-    ):
+    def __init__(self, delegate, governor, repository, lease, guard, *, accounting=None):
         self.delegate, self.governor, self.repository, self.lease, self.guard = (
             delegate,
             governor,
@@ -127,7 +124,6 @@ class GovernedLLM:
             lease,
             guard,
         )
-        self.review = review
         self.accounting = accounting
         if getattr(delegate, "max_retries", 0) != 0:
             raise ValueError("Provider retries must be zero beneath the global gateway")
@@ -145,7 +141,7 @@ class GovernedLLM:
         incoming = sum(len(m["content"].encode()) + 32 for m in messages)
         tokens = incoming + getattr(self.delegate, "max_tokens", 4096)
         for retry in range(self.governor.limits.retries + 1):
-            permit = self.governor.acquire(tokens, self.guard, review=self.review)
+            permit = self.governor.acquire(tokens, self.guard)
             try:
                 self.guard()
                 attempt = (

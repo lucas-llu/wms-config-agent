@@ -76,8 +76,8 @@ class RunRequest:
             raise ValueError("Invalid idempotency key")
         if type(self.expected_revision) is not int or self.expected_revision < 1:
             raise ValueError("Positive revision required")
-        if self.answer_strategy not in {"standard", "review"}:
-            raise ValueError("Invalid answer strategy")
+        if self.answer_strategy != "standard":
+            raise ValueError("Only the standard answer strategy is available")
 
     @property
     def fingerprint(self):

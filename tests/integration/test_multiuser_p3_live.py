@@ -95,7 +95,7 @@ def test_idempotent_multitab_submit_and_private_parent(system):
         results = list(executor.map(lambda _: repo.submit(conversation, body), range(10)))
     assert {r["run_id"] for r in results} == {accepted["run_id"]}
     assert len(repo.pending()) == 1
-    for change in ({"message": "other"}, {"answer_strategy": "review"}, {"expected_revision": 2}):
+    for change in ({"message": "other"}, {"expected_revision": 2}):
         with pytest.raises(RunConflict, match="idempotency_conflict"):
             repo.submit(conversation, replace(body, **change))
     with pytest.raises(RunBusy, match="conversation_busy"):

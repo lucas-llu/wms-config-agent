@@ -3,8 +3,10 @@
 from dataclasses import replace
 
 import pytest
+from pydantic import ValidationError
 
-from api.runs import event_cursor
+from api.runs import SubmitRun, event_cursor
+from api.users import Continue, Start
 from multiuser.runs import RunLimits, RunRequest, public_run
 
 
@@ -24,6 +26,7 @@ from multiuser.runs import RunLimits, RunRequest, public_run
         ("expected_revision", True),
         ("expected_revision", 1.0),
         ("answer_strategy", "admin"),
+        ("answer_strategy", "review"),
     ],
 )
 def test_invalid_request(field, value):
@@ -31,12 +34,31 @@ def test_invalid_request(field, value):
         replace(RunRequest("中文 question", "key-001", 1), **{field: value})
 
 
-def test_fingerprint_covers_exact_message_strategy_and_revision():
+def test_fingerprint_covers_exact_message_and_revision():
     request = RunRequest("配置", "key-a", 1)
     assert len(request.fingerprint) == 64
     assert replace(request, idempotency_key="key-b").fingerprint == request.fingerprint
-    for change in ({"message": "配置 "}, {"expected_revision": 2}, {"answer_strategy": "review"}):
+    assert request.answer_strategy == "standard"
+    for change in ({"message": "配置 "}, {"expected_revision": 2}):
         assert replace(request, **change).fingerprint != request.fingerprint
+
+
+@pytest.mark.parametrize(
+    "model,payload",
+    [
+        (Start, {"goal": "question", "workspace_id": "workspace:test"}),
+        (Continue, {"message": "question", "expected_revision": 1}),
+        (SubmitRun, {"message": "question", "expected_revision": 1, "idempotency_key": "key"}),
+    ],
+)
+def test_new_api_requests_accept_default_and_reject_retired_review(model, payload):
+    assert model.model_validate(payload).answer_strategy == "standard"
+    assert (
+        model.model_validate({**payload, "answer_strategy": "standard"}).answer_strategy
+        == "standard"
+    )
+    with pytest.raises(ValidationError):
+        model.model_validate({**payload, "answer_strategy": "review"})
 
 
 @pytest.mark.parametrize(

@@ -1,9 +1,11 @@
 """Full P3 graph + current SID + PG governance, no external model or user data."""
 
+import json
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import asdict
 
 import psycopg
 import pytest
@@ -56,7 +58,7 @@ def executor(system, *, model=None, limits=None, capacity=4):
     governor = ModelGovernor(
         control,
         "test:" + uuid.uuid4().hex,
-        limits=ModelLimits(inflight=2, review_inflight=1, tpm=1000000),
+        limits=ModelLimits(inflight=2, tpm=1000000),
     )
     agent = UserAgent(
         system[4],
@@ -69,7 +71,7 @@ def executor(system, *, model=None, limits=None, capacity=4):
         retrieval = ModelGovernor(
             control,
             "retrieval:" + uuid.uuid4().hex,
-            limits=ModelLimits(inflight=1, review_inflight=0, tpm=1000000),
+            limits=ModelLimits(inflight=1, tpm=1000000),
         )
         yield RunExecutor(
             system[4],
@@ -168,27 +170,36 @@ def test_fair_owner_dispatch_and_ack_only_contains_opaque_ids(system):
         )  # owner's next conversation, not same queued head.
 
 
-def test_review_reservations_leave_standard_dispatch_capacity(system):
-    repo, first, _ = accepted(system, strategy="review")
-    other = RunRepository(system[4], system[2][1], system[3].workspace_id)
-    second = other.submit(new(system, 1), RunRequest("review", uuid.uuid4().hex, 1, "review"))
-    standard = repo.submit(new(system), RunRequest("SYN_MODE?", uuid.uuid4().hex, 1))
+def test_retired_review_cannot_create_owned_conversation_or_run(system):
+    before = system[-1].execute("SELECT count(*) FROM agent_business.sessions").fetchone()[0]
+    with pytest.raises(ValueError, match="standard"):
+        accepted(system, strategy="review")
+    assert (
+        system[-1].execute("SELECT count(*) FROM agent_business.sessions").fetchone()[0] == before
+    )
+
+
+@pytest.mark.parametrize("open_calls,status", [(0, "failed"), (1, "uncertain")])
+def test_persisted_review_is_retired_with_current_call_state(system, open_calls, status):
+    sid = new(system)
+    run_id = "run:" + uuid.uuid4().hex
+    system[-1].execute(
+        "INSERT INTO agent_business.runs(run_id,owner_user_id,conversation_id,idempotency_key,"
+        "content_hash,message,answer_strategy,expected_revision,status,stage,epoch,"
+        "queue_deadline,open_model_calls,model_attempts) "
+        "VALUES(%s,%s,%s,%s,'legacy-test','synthetic','review',1,'queued','queued',2,"
+        "clock_timestamp()+interval '600 seconds',%s,%s)",
+        (run_id, system[2][0].user_id, sid, uuid.uuid4().hex, open_calls, open_calls),
+    )
     with executor(system) as service:
-        offers = service.control.offers()
-        next_offers = service.control.offers()
-        combined = [*offers, *next_offers]
-        reviews = [o for o in combined if o["run_id"] in {first["run_id"], second["run_id"]}]
-        assert len(reviews) == 1
-        assert standard["run_id"] in {o["run_id"] for o in combined}
-        service.review_capacity.acquire()
-        try:
-            assert service.execute(second["run_id"])["reason"] == "review_execution_busy"
-            assert service.execute(standard["run_id"])["committed"]
-        finally:
-            service.review_capacity.release()
+        assert service.execute(run_id) == {"accepted": False, "reason": "answer_strategy_retired"}
+        assert service.control.load(run_id)["status"] == status
+        assert system[-1].execute(
+            "SELECT status,stage FROM agent_business.run_events WHERE run_id=%s", (run_id,)
+        ).fetchone() == (status, status)
 
 
-def test_global_permits_review_subcap_rpm_tpm_and_restart_do_not_reset(system):
+def test_global_permits_rpm_tpm_and_restart_do_not_reset(system):
     with executor(system) as service:
         gov = service.governor
         with ThreadPoolExecutor(max_workers=5) as pool:
@@ -198,10 +209,9 @@ def test_global_permits_review_subcap_rpm_tpm_and_restart_do_not_reset(system):
         for permit in permits:
             if permit:
                 gov.release(permit, actual=10)
-        first = gov.reserve(100, review=True)
+        first = gov.reserve(100)
         assert first
-        assert gov.reserve(100, review=True) is None
-        assert gov.reserve(100, review=False)
+        assert gov.reserve(100)
         reopened = ModelGovernor(service.control, gov.key, limits=gov.limits)
         assert reopened.reserve(1) is None
         with pytest.raises(ValueError):
@@ -218,6 +228,29 @@ def test_global_permits_review_subcap_rpm_tpm_and_restart_do_not_reset(system):
         assert reading  # Independent from the exhausted model permits, still globally bounded.
         assert service.retrieval_governor.reserve(1) is None
         service.retrieval_governor.release(reading)
+
+
+def test_historical_review_governor_config_is_read_without_overwriting_history(system):
+    with executor(system) as service:
+        gov = service.governor
+        legacy_config = json.dumps({**asdict(gov.limits), "review_inflight": 1}, sort_keys=True)
+        system[-1].execute(
+            "UPDATE agent_business.model_governors SET config_json=%s WHERE provider_key=%s",
+            (legacy_config, gov.key),
+        )
+        reopened = ModelGovernor(service.control, gov.key, limits=gov.limits)
+        permit = reopened.reserve(1)
+        assert permit
+        reopened.release(permit)
+        assert (
+            system[-1]
+            .execute(
+                "SELECT config_json FROM agent_business.model_governors WHERE provider_key=%s",
+                (gov.key,),
+            )
+            .fetchone()[0]
+            == legacy_config
+        )
 
 
 def test_cancel_during_model_does_not_publish_partial_user_or_late_answer(system):

@@ -50,7 +50,6 @@ class RunExecutor:
         self.capacity = threading.BoundedSemaphore(capacity)
         self.retrieval = threading.BoundedSemaphore(capacity)
         self.retrieval_governor = retrieval_governor
-        self.review_capacity = threading.BoundedSemaphore(1)
 
     def repository(self, row):
         context = self.control.context(row)
@@ -93,15 +92,13 @@ class RunExecutor:
         if not self.capacity.acquire(blocking=False):
             return {"accepted": False, "reason": "execution_busy"}
         row, repository, lease = None, None, None
-        reviewing = False
         try:
             row = self.control.load(run_id)
             if row is None or row["status"] in TERMINAL:
                 return {"accepted": False}
-            if row["answer_strategy"] == "review":
-                if not self.review_capacity.acquire(blocking=False):
-                    return {"accepted": False, "reason": "review_execution_busy"}
-                reviewing = True
+            if row["answer_strategy"] != "standard":
+                self.control.retire_strategy(run_id, row["epoch"])
+                return {"accepted": False, "reason": "answer_strategy_retired"}
             repository = self.repository(row)
             lease = repository.claim(run_id)
             if lease is None:
@@ -114,7 +111,6 @@ class RunExecutor:
                     repository,
                     lease,
                     guard,
-                    review=repository.execution(lease)["answer_strategy"] == "review",
                     accounting=self.store.usage,
                 )
                 knowledge = SharedKnowledge(
@@ -226,14 +222,15 @@ class RunExecutor:
                 "error_type": type(exc).__name__,
             }
         finally:
-            if reviewing:
-                self.review_capacity.release()
             self.capacity.release()
 
     def reconcile(self):
         if self.store.usage is not None:
             self.store.usage.reconcile_terminal()
         for row in self.control.expired():
+            if row["answer_strategy"] != "standard":
+                self.control.retire_strategy(row["run_id"], row["epoch"])
+                continue
             try:
                 repository = self.repository(row)
                 repository.recover()
