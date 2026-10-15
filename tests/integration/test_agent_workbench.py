@@ -71,7 +71,8 @@ def button(app, label):
 
 def test_workbench_read_only_render_and_feedback(tmp_path):
     service, call = fixture(tmp_path)
-    app = AppTest.from_function(render, args=(service,)).run()
+    # The first Streamlit render includes cold imports and coverage instrumentation.
+    app = AppTest.from_function(render, args=(service,)).run(timeout=10)
     assert not app.exception
     assert len(app.tabs) == 6
     assert not app.json
