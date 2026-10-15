@@ -158,7 +158,8 @@ class RunControl:
         """Decide uncertainty from the current row, including concurrent call admission."""
         with self.transaction() as connection:
             row = connection.execute(
-                "UPDATE runs SET status=CASE WHEN open_model_calls>0 THEN 'uncertain' ELSE 'failed' END,"
+                "UPDATE runs SET status=CASE WHEN open_model_calls>0 "
+                "THEN 'uncertain' ELSE 'failed' END,"
                 "stage=CASE WHEN open_model_calls>0 THEN 'uncertain' ELSE 'failed' END,"
                 "lease_until=NULL,event_sequence=event_sequence+1 "
                 "WHERE run_id=%s AND epoch=%s AND answer_strategy<>'standard' "
