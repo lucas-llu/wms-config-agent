@@ -20,7 +20,7 @@ class SubmitRun(BaseModel):
     message: str = Field(min_length=1, max_length=16000)
     idempotency_key: str = Field(min_length=1, max_length=128)
     expected_revision: int = Field(ge=1, strict=True)
-    answer_strategy: Literal["standard", "review"] = "standard"
+    answer_strategy: Literal["standard"] = "standard"
 
 
 def event_cursor(run_id, value):

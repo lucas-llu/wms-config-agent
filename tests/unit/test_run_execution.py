@@ -11,7 +11,7 @@ from agents.repositories import SessionRepository
 from libs.llm import ChatResponse
 from libs.llm.openai_compatible_llm import LLMProviderError
 from multiuser.access import AccessDenied, UserContext
-from multiuser.executor import SharedKnowledge
+from multiuser.executor import RunExecutor, SharedKnowledge
 from multiuser.governor import GovernedLLM, ModelLimits
 from multiuser.identity import IdentityUnavailable
 from multiuser.session_authority import SessionAuthority
@@ -19,6 +19,39 @@ from multiuser.staged_session import StagedSessionRepository
 from workers.runs import ExecutionClient, TrustedWorker
 
 CONTEXT = UserContext("user-a", "https://identity.invalid/realms/wms", "a/b", "SID", 100, 1000)
+
+
+@pytest.mark.parametrize("open_calls", [0, 1])
+def test_legacy_queued_review_is_retired_before_any_model_or_checkpoint_use(open_calls):
+    control, authority, agent = Mock(), Mock(), Mock()
+    control.load.return_value = {
+        "status": "queued",
+        "answer_strategy": "review",
+        "epoch": 2,
+        "open_model_calls": open_calls,
+    }
+    executor = RunExecutor(Mock(), control, authority, Mock(), agent)
+    assert executor.execute("run:old") == {"accepted": False, "reason": "answer_strategy_retired"}
+    control.retire_strategy.assert_called_once_with("run:old", 2)
+    agent.llm.chat.assert_not_called()
+    agent.saver.assert_not_called()
+    authority.check.assert_not_called()
+
+
+def test_expired_legacy_review_keeps_unknown_provider_result_uncertain():
+    control = Mock()
+    control.expired.return_value = [
+        {
+            "run_id": "run:old",
+            "answer_strategy": "review",
+            "epoch": 3,
+            "open_model_calls": 1,
+        }
+    ]
+    store = Mock(usage=None)
+    executor = RunExecutor(store, control, Mock(), Mock(), Mock())
+    executor.reconcile()
+    control.retire_strategy.assert_called_once_with("run:old", 3)
 
 
 @pytest.mark.parametrize(

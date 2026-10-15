@@ -9,8 +9,7 @@ from dataclasses import replace
 from agents.language import localized
 from agents.llm_json import StructuredLLMError, _response_tokens, invoke_json
 from agents.nodes.grounded_answer import GroundedAnswer, answer_question
-from agents.services.answer_review import review_answer
-from agents.services.evidence_decision import SCOPE_FIELDS, EvidenceDecisionService
+from agents.services.evidence_decision import SCOPE_FIELDS
 
 
 class AnswerBudgetExceeded(Exception):
@@ -18,13 +17,13 @@ class AnswerBudgetExceeded(Exception):
 
 
 def validate_answer_strategy(value: str) -> str:
-    if value not in ("standard", "review"):
-        raise ValueError("answer_strategy must be standard or review")
+    if value != "standard":
+        raise ValueError("Only the standard answer strategy is available")
     return value
 
 
 class AnswerPipeline:
-    """One initial search, then at most one targeted search; review is explicit opt-in."""
+    """One initial search, then at most one targeted search for a missing fact."""
 
     def __init__(self, llm, adapter, *, check_budget: Callable[[int, int], bool]):
         self.llm = llm
@@ -165,29 +164,7 @@ class AnswerPipeline:
             self.recovery = "new_evidence" if fresh else "no_new_evidence"
             return fresh
 
-        if strategy == "review":
-            trial = review_answer(
-                self,
-                EvidenceDecisionService(self, include_counter_evidence=True),
-                question,
-                self.evidence,
-                baseline=answer,
-                confirmed_context=context,
-                language=language,
-                retrieve=retrieve,
-            )
-            self.retries = trial.retries
-            self.ensure_budget()
-            self.evidence = trial.evidence
-            answer = trial.final
-            self.report = {
-                "outcome": trial.outcome,
-                "revisions": trial.revisions,
-                "retrievals": trial.retrievals,
-                "error_code": trial.error_code,
-                "reports": [report.to_dict() for report in trial.reports],
-            }
-        elif answer.status == "insufficient_evidence":
+        if answer.status == "insufficient_evidence":
             try:
                 additional = retrieve(question, context, ())
                 if additional:
@@ -204,7 +181,7 @@ class AnswerPipeline:
             except Exception:
                 self.recovery = "retrieval_unavailable"
         self.ensure_budget()
-        if shadow_service is not None and strategy == "standard":
+        if shadow_service is not None:
             report = shadow_service.evaluate(
                 question, answer.claims, self.evidence, confirmed_context=context
             )

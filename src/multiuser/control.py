@@ -78,7 +78,7 @@ class RunControl:
             connection.execute("SELECT pg_advisory_xact_lock(9134201)")
             rows = connection.execute(
                 "WITH candidates AS (SELECT run_id,owner_user_id,created_at,"
-                "row_number() OVER(PARTITION BY owner_user_id,answer_strategy "
+                "row_number() OVER(PARTITION BY owner_user_id "
                 "ORDER BY created_at,run_id) AS n "
                 "FROM runs r WHERE status='queued' AND queue_deadline>clock_timestamp() "
                 "AND dispatch_after<=clock_timestamp() AND (SELECT count(*) FROM runs a "
@@ -91,23 +91,9 @@ class RunControl:
             ).fetchall()
             offers = []
             offered_owners = set()
-            review_busy = bool(
-                connection.execute(
-                    "SELECT 1 FROM runs WHERE answer_strategy='review' AND "
-                    "(status IN ('running','cancelling') OR "
-                    "(status='queued' AND dispatch_after>clock_timestamp())) LIMIT 1"
-                ).fetchone()
-            )
             for row in rows:
                 if row["owner_user_id"] in offered_owners:
                     continue
-                strategy = connection.execute(
-                    "SELECT answer_strategy FROM runs WHERE run_id=%s", (row["run_id"],)
-                ).fetchone()["answer_strategy"]
-                if strategy == "review":
-                    if review_busy:
-                        continue
-                    review_busy = True
                 offered_owners.add(row["owner_user_id"])
                 existing = connection.execute(
                     "SELECT * FROM run_outbox WHERE run_id=%s FOR UPDATE", (row["run_id"],)
@@ -166,4 +152,22 @@ class RunControl:
                 connection.execute(
                     "INSERT INTO run_events(run_id,sequence,status,stage) VALUES(%s,%s,%s,%s)",
                     (run_id, row["event_sequence"], status, status),
+                )
+
+    def retire_strategy(self, run_id, epoch):
+        """Decide uncertainty from the current row, including concurrent call admission."""
+        with self.transaction() as connection:
+            row = connection.execute(
+                "UPDATE runs SET status=CASE WHEN open_model_calls>0 THEN 'uncertain' ELSE 'failed' END,"
+                "stage=CASE WHEN open_model_calls>0 THEN 'uncertain' ELSE 'failed' END,"
+                "lease_until=NULL,event_sequence=event_sequence+1 "
+                "WHERE run_id=%s AND epoch=%s AND answer_strategy<>'standard' "
+                "AND status IN ('queued','running','cancelling','recovery_required') "
+                "RETURNING status,event_sequence",
+                (run_id, epoch),
+            ).fetchone()
+            if row:
+                connection.execute(
+                    "INSERT INTO run_events(run_id,sequence,status,stage) VALUES(%s,%s,%s,%s)",
+                    (run_id, row["event_sequence"], row["status"], row["status"]),
                 )

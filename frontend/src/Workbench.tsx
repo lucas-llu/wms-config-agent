@@ -182,7 +182,6 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [nickname, setNickname] = useState("");
   const [message, setMessage] = useState("");
-  const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState("");
   const [activeRun, setActiveRun] = useState<Run>();
@@ -456,7 +455,6 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     setData(undefined);
     setPending("");
     setMessage("");
-    setReview(false);
     setTab("chat");
     setPanel(undefined);
     setError("");
@@ -470,8 +468,6 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
     setPending(message.trim());
     setMessage("");
     setTab("chat");
-    const strategy = review ? "review" : "standard";
-    setReview(false);
     try {
       if (profile?.durable_runs) {
         const key = crypto.randomUUID();
@@ -488,13 +484,11 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
             ? {
                 message: message.trim(),
                 expected_revision: data!.session.current_revision,
-                answer_strategy: strategy,
                 idempotency_key: key,
               }
             : {
                 goal: message.trim(),
                 workspace_id: workspace,
-                answer_strategy: strategy,
                 idempotency_key: key,
               },
         );
@@ -520,12 +514,10 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
           ? {
               message: message.trim(),
               expected_revision: data.session.current_revision,
-              answer_strategy: strategy,
             }
           : {
               goal: message.trim(),
               workspace_id: workspace,
-              answer_strategy: strategy,
             },
       );
       const id = result.session?.session_id || result.session_id;
@@ -1411,7 +1403,7 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                                 </button>
                                 <span>
                                   {t.metadata?.answer_strategy === "review"
-                                    ? "本次已开启旁路核验"
+                                    ? "历史核验记录（已停用）"
                                     : "默认回答"}
                                 </span>
                               </div>
@@ -1495,15 +1487,6 @@ export function WorkbenchApp({ api, auth }: { api: Api; auth: Auth }) {
                   rows={2}
                 />
                 <div className="composer-bottom">
-                  <button
-                    type="button"
-                    className={`review-toggle ${review ? "enabled" : ""}`}
-                    aria-pressed={review}
-                    disabled={busy}
-                    onClick={() => setReview(!review)}
-                  >
-                    ✧ 单次旁路核验{review ? " · 已开启" : ""}
-                  </button>
                   <button
                     className="send"
                     aria-label="发送问题"

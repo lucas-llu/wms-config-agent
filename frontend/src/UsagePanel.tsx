@@ -172,7 +172,7 @@ export function UsagePanel({
         >
           <option value="">全部</option>
           <option value="standard">默认</option>
-          <option value="review">旁路</option>
+          <option value="review">历史核验（已停用）</option>
         </select>
       </label>
       <label>

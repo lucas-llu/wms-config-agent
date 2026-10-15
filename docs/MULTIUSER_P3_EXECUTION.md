@@ -47,8 +47,9 @@ UTF-8 输入字节加 framing/最大输出作为保守预算，已知实际 toke
 检索另有全局许可及本地上限，限制“用户数 × hybrid 线程”的放大；dense/sparse 仍可并行。
 只读索引进程不做 ingestion；原生嵌入/数值计算线程还需配置 OMP/MKL 上限。
 
-默认执行并发 4、模型在途 4、review 模型 1、review 运行/派发最多 1，避免旁路占满执行槽；
-同用户 standard/review 分开取队首后每批只派一个，review 队首等待不阻塞其标准问答。
+默认执行并发 4、模型在途 4；同用户取队首后每批只派一个。
+2026-10-13 移除旁路执行与子额度；升级后遇到旧旁路待执行任务会停止执行，
+已有未知模型结果仍保持 uncertain，历史记录和账本保留。
 RPM 60、TPM 200000；排队/执行 600 秒、租约 45 秒。
 未知许可保持时间必须超过供应商 timeout 加保护窗口。1M context 不等于 1M 输出/TPM，限额需供应商确认。
 
@@ -94,7 +95,7 @@ python -m uvicorn api.bootstrap:from_environment --factory --host 127.0.0.1 --po
 
 必填：WMS_OIDC_ISSUER、USER_DB_DSN、CONTROL_DB_DSN、API_CLIENT_SECRET、SESSION_CLIENT_ID/SECRET、
 EXECUTION_URL/TOKEN、REDIS_URL；上述全部变量均以 WMS_ 开头，模型/索引沿用 settings。
-可调同前缀：EXECUTORS、MODEL_INFLIGHT、REVIEW_INFLIGHT、MODEL_RPM/TPM、MODEL_WAIT_SECONDS、
+可调同前缀：EXECUTORS、MODEL_INFLIGHT、MODEL_RPM/TPM、MODEL_WAIT_SECONDS、
 MODEL_HOLD_SECONDS、PENDING_PER_USER、RUNNING_PER_USER、RUN_LEASE_SECONDS、QUEUE_SECONDS、EXECUTION_SECONDS。
 Windows 可运行公开/执行 API；RQ fork Worker 的验收部署基线为 Linux。
 

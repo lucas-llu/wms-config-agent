@@ -1,6 +1,7 @@
-"""Real graph boundaries: context, scoped follow-up retrieval, citations and opt-in review."""
+"""Real graph boundaries: context, scoped follow-up retrieval and citations."""
 
 import asyncio
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -9,13 +10,14 @@ import pytest
 from agents.repositories import SessionRepository
 from agents.runtime import open_configured_checkpointer
 from agents.services import SessionService
+from agents.services.answer_pipeline import AnswerPipeline
 from agents.supervisor import RequirementSessionRunner, Supervisor
 from agents.tools import KnowledgeSearchResult
 from agents.tools.knowledge_adapter import _evidence_from_citations
 from agents.workspace import Workspace
 from core.response.citation_generator import CitationGenerator
 from core.settings import load_settings
-from tests.unit.test_answer_review import Model, repaired_payload, verdict
+from libs.llm import ChatResponse
 
 GAP = {
     "status": "insufficient_evidence",
@@ -23,6 +25,28 @@ GAP = {
     "gap": "The supplied evidence does not establish the default.",
 }
 FACT = "SYN_MODE defaults to MANUAL."
+
+
+class Model:
+    def __init__(self, outputs):
+        self.outputs = iter(outputs)
+        self.calls = 0
+        self.messages = []
+
+    def chat(self, messages):
+        self.calls += 1
+        self.messages.append(messages)
+        return ChatResponse(
+            json.dumps(next(self.outputs)), metadata={"usage": {"total_tokens": 20}}
+        )
+
+
+def repaired_payload(source_id="1", text="SYN_MODE records events."):
+    return {
+        "status": "answered",
+        "gap": "",
+        "claims": [{"text": text, "source_id": source_id, "quote": text}],
+    }
 
 
 def source(text, identifier="1", version="v1"):
@@ -158,27 +182,23 @@ def test_failed_revision_keeps_original_answer_and_accounts_all_calls():
     assert result["tokens_used"] == 80 and result["retry_count"] == 1
 
 
-@pytest.mark.parametrize("strategy", ["standard", "review"])
-def test_budget_stops_before_followup_calls(strategy):
+def test_budget_stops_before_followup_calls():
     model = Model([GAP])
     search = Search([[source("Unrelated reporting section.")]])
-    result = run(model, search, strategy=strategy, budget=10)
+    result = run(model, search, budget=10)
     assert result["pause_reason"] == "token_budget_exceeded"
     assert result["tokens_used"] == 20
     assert result["answer_evidence"] == []
     assert model.calls == len(search.calls) == 1
 
 
-def test_review_is_executed_only_when_selected_and_returns_verified_citations():
-    item = source(FACT)
-    decision = verdict()
-    decision["decisions"][0]["evidence_ids"] = [item.evidence_id]
-    model = Model([repaired_payload(text=FACT), decision])
-    result = run(model, Search([[item]]), strategy="review")
-    assert result["answer_status"] == "answered" and model.calls == 2
-    assert result["evidence_decision_report"]["outcome"] == "accepted"
-    assert result["answer_evidence"][0]["supporting_quotes"] == [FACT]
-    assert result["tokens_used"] == 40
+def test_retired_review_strategy_is_rejected_before_retrieval_or_model_calls():
+    model = Model([])
+    search = Search([])
+    pipeline = AnswerPipeline(model, search, check_budget=lambda *_: True)
+    with pytest.raises(ValueError, match="standard"):
+        pipeline.run("question", filters={}, context={}, language="en", strategy="review")
+    assert model.calls == 0 and search.calls == []
 
 
 def test_invalid_rewrite_is_not_used_as_answer_or_retrieval_filter():
@@ -197,11 +217,9 @@ def test_new_search_scores_do_not_mark_unchanged_evidence_as_mutated():
     assert result["answer_recovery"] == "new_evidence"
 
 
-def test_review_selection_does_not_persist_into_next_checkpoint_turn(tmp_path):
+def test_old_review_checkpoint_does_not_activate_review_on_followup(tmp_path):
     item = source(FACT)
-    decision = verdict()
-    decision["decisions"][0]["evidence_ids"] = [item.evidence_id]
-    model = Model([repaired_payload(text=FACT), decision, repaired_payload(text=FACT)])
+    model = Model([repaired_payload(text=FACT), repaired_payload(text=FACT)])
     settings = replace(
         load_settings().agent,
         session_db_path=tmp_path / "sessions.db",
@@ -217,8 +235,10 @@ def test_review_selection_does_not_persist_into_next_checkpoint_turn(tmp_path):
 
     async def scenario():
         async with open_configured_checkpointer(settings) as saver:
-            first = await runner.start(
-                "What is SYN_MODE's default?", checkpointer=saver, answer_strategy="review"
+            first = await runner.start("What is SYN_MODE's default?", checkpointer=saver)
+            await runner.supervisor.compile(saver).aupdate_state(
+                {"configurable": {"thread_id": first.session.checkpoint_thread_id}},
+                {"answer_strategy": "review"},
             )
             second = await runner.continue_session(
                 first.session.session_id, "What is SYN_MODE's default?", checkpointer=saver
@@ -226,9 +246,9 @@ def test_review_selection_does_not_persist_into_next_checkpoint_turn(tmp_path):
         return first, second
 
     first, second = asyncio.run(scenario())
-    assert first.state["evidence_decision_report"]["outcome"] == "accepted"
+    assert first.state["evidence_decision_report"] == {}
     assert second.state["answer_strategy"] == "standard"
     assert second.state["evidence_decision_report"] == {}
-    assert model.calls == 3
+    assert model.calls == 2
     replies = [t for t in repository.list_turns(first.session.session_id) if t.role == "assistant"]
-    assert [t.metadata["answer_strategy"] for t in replies] == ["review", "standard"]
+    assert [t.metadata["answer_strategy"] for t in replies] == ["standard", "standard"]
