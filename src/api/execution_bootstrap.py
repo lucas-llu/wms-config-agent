@@ -44,7 +44,6 @@ def execution_settings():
     )
     models = ModelLimits(
         inflight=integer("MODEL_INFLIGHT", 4),
-        review_inflight=integer("REVIEW_INFLIGHT", 1),
         rpm=integer("MODEL_RPM", 60),
         tpm=integer("MODEL_TPM", 200000),
         wait_seconds=integer("MODEL_WAIT_SECONDS", 60),
@@ -99,7 +98,6 @@ def from_environment():
         "wms-retrieval",
         limits=ModelLimits(
             inflight=capacity,
-            review_inflight=0,
             rpm=100000,
             tpm=1000000,
             hold_seconds=models.hold_seconds,

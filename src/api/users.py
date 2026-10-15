@@ -25,7 +25,7 @@ class Input(BaseModel):
 class Start(Input):
     goal: str = Field(min_length=1, max_length=16000)
     workspace_id: str
-    answer_strategy: Literal["standard", "review"] = "standard"
+    answer_strategy: Literal["standard"] = "standard"
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
 
 
@@ -63,7 +63,7 @@ class RPC(Input):
 class Continue(Input):
     message: str = Field(min_length=1, max_length=16000)
     expected_revision: int = Field(ge=1, strict=True)
-    answer_strategy: Literal["standard", "review"] = "standard"
+    answer_strategy: Literal["standard"] = "standard"
 
 
 class Review(Input):

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 from agents import ExportArtifact
 from core.settings import load_settings
 from mcp_server.tool_registry import ToolRegistry
@@ -176,6 +178,8 @@ def test_application_facade_runs_all_six_paths(tmp_path) -> None:
         settings=settings,
     )
 
+    with pytest.raises((TypeError, ValueError), match="answer_strategy|standard"):
+        app.start("goal", answer_strategy="review")
     assert app.start("goal")["event"] == "interrupt"
     assert app.continue_session("session:real", "next", 1)["event"] == "final"
     assert app.get("session:real")["status"] == "validating"

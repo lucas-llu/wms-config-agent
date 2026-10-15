@@ -67,7 +67,8 @@ def test_private_round_evidence_and_workbench_image_endpoint(system):
     )
 
 
-def test_invalid_review_strategy_does_not_start_owned_execution(system):
+@pytest.mark.parametrize("strategy", ["automatic", "review"])
+def test_invalid_strategy_does_not_start_owned_execution(system, strategy):
     client, headers, contexts, workspace, store, application, admin = system
     result = client.post(
         "/v1/conversations",
@@ -75,7 +76,7 @@ def test_invalid_review_strategy_does_not_start_owned_execution(system):
         json={
             "workspace_id": workspace.workspace_id,
             "goal": "Synthetic",
-            "answer_strategy": "automatic",
+            "answer_strategy": strategy,
         },
     )
     assert result.status_code == 422

@@ -501,20 +501,8 @@ details[open] > summary:before {
 .composer-bottom {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: 7px;
-}
-.review-toggle {
-  font-size: 11px;
-  border: 0;
-  background: none;
-  padding: 5px 8px;
-  color: #858f83;
-  border-radius: 7px;
-}
-.review-toggle.enabled {
-  background: #e3ecdc;
-  color: #466443;
 }
 .send {
   width: 34px;

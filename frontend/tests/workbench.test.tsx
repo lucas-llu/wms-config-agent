@@ -334,7 +334,7 @@ it("new users get no knowledge scope and cannot send", async () => {
   await screen.findByText(/尚未获工作区/);
   expect(screen.getByRole("button", { name: "发送问题" })).toBeDisabled();
 });
-it("puts the question in chat immediately, blocks duplicate Enter, resets per-turn review and removes old clarification", async () => {
+it("puts the question in chat immediately, blocks duplicate Enter and removes old clarification without a review option", async () => {
   let resolve!: (x: unknown) => void;
   const pending = new Promise((r) => (resolve = r));
   const { request, user } = fixture({
@@ -343,7 +343,7 @@ it("puts the question in chat immediately, blocks duplicate Enter, resets per-tu
   });
   await open(user);
   expect(screen.getByText("你使用哪个版本？")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /单次旁路核验/ }));
+  expect(screen.queryByRole("button", { name: /单次旁路核验/ })).not.toBeInTheDocument();
   await user.type(
     screen.getByRole("textbox", { name: "输入问题" }),
     "测试新问题",
@@ -361,16 +361,13 @@ it("puts the question in chat immediately, blocks duplicate Enter, resets per-tu
   expect(request).toHaveBeenCalledWith(
     "/v1/conversations/session%3Aa/continue",
     "POST",
-    { message: "测试新问题", expected_revision: 2, answer_strategy: "review" },
+    { message: "测试新问题", expected_revision: 2 },
   );
   await act(async () => resolve({ session }));
   await waitFor(() =>
     expect(screen.queryByRole("status")).not.toBeInTheDocument(),
   );
-  expect(screen.getByRole("button", { name: /单次旁路核验/ })).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
+  expect(screen.queryByRole("button", { name: /单次旁路核验/ })).not.toBeInTheDocument();
 });
 it("keeps Shift+Enter and IME composition from submitting", async () => {
   const { user, request } = fixture();
@@ -395,7 +392,6 @@ it("creates a conversation only once and preserves server identity ownership", a
   expect(request).toHaveBeenCalledWith("/v1/conversations", "POST", {
     goal: "我的新问题",
     workspace_id: "workspace:test",
-    answer_strategy: "standard",
   });
 });
 it("renders clean collapsed sources by turn and sticky workspace controls", async () => {

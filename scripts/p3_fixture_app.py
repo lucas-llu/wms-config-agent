@@ -56,7 +56,6 @@ def create_fixture_executor():
         "fixture:retrieval",
         limits=ModelLimits(
             inflight=4,
-            review_inflight=0,
             rpm=100000,
             tpm=1000000,
             retries=0,
