@@ -296,6 +296,29 @@ async function open(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText("先确认适用范围。");
 }
 
+it("keeps imported legacy history readable without enabling continuation or approval", async () => {
+  const { user } = fixture({
+    data: {
+      ...workbench,
+      session: { ...workbench.session, legacy_readonly: true },
+    },
+  });
+  await open(user);
+  expect(screen.getByRole("textbox", { name: "输入问题" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "发送问题" })).toBeDisabled();
+  expect(
+    screen.getByText("迁入的旧对话仅供阅读；请新建对话继续配置。"),
+  ).toBeVisible();
+  await user.click(
+    within(document.querySelector(".topbar") as HTMLElement).getByRole(
+      "button",
+      { name: "工作区" },
+    ),
+  );
+  expect(screen.getByText(/旧检查点不自动恢复/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "提交审查" })).toBeDisabled();
+});
+
 it("shows login/register/recovery without exposing secrets", async () => {
   const auth = fakeAuth();
   render(<Welcome auth={auth} />);
