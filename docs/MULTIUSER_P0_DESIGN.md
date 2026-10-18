@@ -67,7 +67,8 @@ runs 的 idempotency UNIQUE(owner_user_id, conversation_id, idempotency_key)，�
 P0 只验证哈希身份/会话命名空间和保存器兼容；生产执行代次检查点承接仍需 P3 实施和故障测试。
 
 POST `/v1/conversations/{id}/runs` 请求字段：message、answer_strategy、idempotency_key、expected_revision。
-拒绝调用者提供 owner_user_id、roles、thread_id、checkpoint_ns；strategy 仅 standard/review。
+拒绝调用者提供 owner_user_id、roles、thread_id、checkpoint_ns；strategy 仅接受 standard，省略时使用默认值。
+单次旁路已退役，显式传入 review 返回 422；历史用量过滤仍可读取旧策略记录。
 成功接收返回 202 `{run_id,status,events_url}`；同会话忙/幂等冲突返回 409；额度不足和繁忙有明确机器码。
 SSE 事件包含递增 sequence、run_id、stage 与已校验终态；重连只补读，不重新创建或计费。
 知识库、图片、导出、缓存键和记忆均含授权范围；不能仅按 conversation_id 或 query 缓存。
