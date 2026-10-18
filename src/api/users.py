@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Annotated, Literal
 
+import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -160,6 +161,14 @@ def create_app(
     @app.exception_handler(RuntimeError)
     async def unavailable(request, exc):
         return JSONResponse(status_code=503, content={"detail": "Execution unavailable"})
+
+    @app.exception_handler(psycopg.errors.ObjectNotInPrerequisiteState)
+    async def maintenance(request, exc):
+        return JSONResponse(status_code=503, content={"detail": "Release maintenance; read only"})
+
+    @app.exception_handler(psycopg.errors.InsufficientPrivilege)
+    async def database_denied(request, exc):
+        return JSONResponse(status_code=403, content={"detail": "Operation not permitted"})
 
     CurrentUser = Annotated[UserContext, Depends(identity)]
 

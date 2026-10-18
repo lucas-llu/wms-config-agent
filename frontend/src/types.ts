@@ -11,6 +11,7 @@ export type Profile = {
   workspaces: Workspace[];
 };
 export type Session = {
+  legacy_readonly?: boolean;
   session_id: string;
   goal: string;
   display_title?: string | null;
